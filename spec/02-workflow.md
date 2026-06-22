@@ -56,7 +56,7 @@ This stage ends at the **integrity gate**, the workflow's hardest precondition (
 - sample↔metadata pairing is complete and exact (every sample matched once, no orphans/duplicates, counts reconcile on both sides);
 - the scientist signs off.
 
-**No Stage 4 analysis may begin until the integrity gate passes.** This is enforced by a hook (doc 08), not by trusting the agent to remember.
+**No Stage 4 analysis may begin until the integrity gate passes**, not by trusting the agent to remember. *(Implementation divergence: as built, this ordering is carried by the `stage4-explore` command precondition + orchestrator behavior, and the finding-write side is hook-enforced via `guard_findings.sh`. It is **not** a standalone analysis-blocking hook — a single tool-use event can't cleanly separate exploratory analysis from legitimate Stage 3 loader/QC work. See `conventions/enforcement-map.md`.)*
 
 ## 2.4 Stage 4 — Explore ⇄ record findings (the heart)
 
@@ -89,7 +89,7 @@ All state files are canonical references that any fresh agent reads to rehydrate
 |---|---|---|
 | End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding |
 | Sample↔metadata pairing | Human checkpoint | Scientist confirms join resolution (esp. fuzzy matches) |
-| Integrity gate (end Stage 3) | Hook + human sign-off | Loaders verified; no analysis before pass |
+| Integrity gate (end Stage 3) | Command precondition + hook (finding writes) + human sign-off | Loaders verified; no analysis before pass |
 | Finding promotion | Gate (validation) + human | Independent validation cleared; scientist accepts |
 | Report finding-selection | Human checkpoint | Which findings the report is about (doc 07) |
 | Code promotion | Hook | Tests/types/lint pass before a script leaves `scratch/` |

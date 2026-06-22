@@ -17,7 +17,7 @@ A first-class goal: a user sets this up with a single Claude Code command, insta
 | Subagents (doc 04): findings manager, verifier, researcher, librarian, reviewers, coder, statistician, figure agents, writers | `agents/` |
 | Skills (doc 04): publication/protein/source-code research; stats boilerplate guidance; visualization; finding template; verification-task builder; report skills | `skills/` |
 | Workflow entry points (the staged process, doc 02) | `commands/` (slash commands) |
-| Deterministic gates (doc 05.5): integrity gate, promotion gate, read-only raw data, record-the-finding | `hooks/` |
+| Deterministic gates (doc 05.5): integrity-gate finding-write check, promotion gate, read-only raw data | `hooks/` |
 | Vetted analysis + visualization library | `lib/` (bundled scripts) |
 | Conventions and specs (docs 05, 06, 07) | `conventions/` + `CLAUDE.md` |
 | Templates: finding, research-finding, report, color registry | `templates/` |

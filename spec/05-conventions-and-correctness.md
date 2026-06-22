@@ -73,7 +73,7 @@ Where feasible, derive key numbers two independent ways and reconcile. Because l
 | Rule | Enforced by |
 |---|---|
 | Usable Python ≥ 3.11 project env before analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
-| No analysis before integrity gate passes | **Hook** + human sign-off |
+| No analysis before integrity gate passes | **Command precondition** + orchestrator behavior (hook gates finding writes) + human sign-off |
 | Script not promoted until tests/types/lint pass | **Hook** |
 | Raw data read-only; outputs regenerable | **Hook** (block writes to `data/`) |
 | Finding links only to a promoted script | **Hook** / findings-manager check |
