@@ -27,3 +27,7 @@ Every finding's numbers must be regenerable: pin `data_version`, the script (pat
 ## When candidates mature
 
 Run `stage5-validate` to put a finding through independent validation. Validation runs continuously as candidates mature — you don't have to finish exploring first.
+
+## Workflow state
+
+`current_stage` is already **4** (set when the integrity gate passed); Stage 4 is the open exploration loop, so there is no `*_done` flag to set. Bump `state/workflow.json` `updated` as exploration proceeds so `status` reflects recent activity.

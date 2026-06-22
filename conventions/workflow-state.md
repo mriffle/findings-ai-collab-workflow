@@ -37,7 +37,7 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
 ## Rules
 
 - **Seeded by `init`** with everything false / null and `current_stage: 0`.
-- **Each stage command updates it** when its work completes (set the stage's flag, raise `current_stage`, bump `updated`). A stage command must **refuse to run** if its preconditions (prior flags) are not met — defense in depth alongside the hooks.
+- **Each stage command updates it** when its work advances: set the stage's `*_done` flag *if it has one* (Stages 0–2 do; Stage 3 flips `integrity_gate.passed`; Stages 4–6 are continuous loops with **no** `*_done` flag), **raise `current_stage`** to the stage's number (highest reached — monotonic, so the `status` dashboard advances through validation and reporting), and bump `updated`. A stage command must **refuse to run** if its preconditions (prior flags) are not met — defense in depth alongside the hooks.
 - **`integrity_gate.passed` flips to `true` only inside Stage 3**, and only after the full integrity-gate checklist passes (doc 05) *and* the scientist signs off. It records the certified `data_version`. If the dataset changes (a new `data_version`), the gate is no longer valid: reset `passed` to `false` and re-run Stage 3.
 - **`guard_findings.sh`** blocks a finding write that claims `integrity_signoff: true` / `status: validated` when this file is absent or `integrity_gate.passed` is not `true` (absent ⇒ treated as not passed). It does **not** block analysis tool-calls; *no analysis before the gate* is carried by the `stage4-explore` command precondition + orchestrator behavior.
 - A finding's `integrity_signoff` (conventions/findings.md) may be `true` only while `integrity_gate.passed` is `true` for the finding's `data_version`.

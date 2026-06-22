@@ -35,3 +35,7 @@ The findings-manager enforces the full bar before writing `status: validated`:
 ## On failure
 
 If the verifier's result is discordant, do not promote. Record `failed`, consider moving the finding toward `invalidated` (the findings-manager will cascade re-review to dependents), and discuss with the scientist. A discordant result is information, not a setback.
+
+## Workflow state
+
+The first time validation runs for a project, raise `state/workflow.json` `current_stage` to **5** (highest stage reached) and bump `updated`. Validation is a continuous loop, so there is no per-stage `*_done` flag — raising `current_stage` keeps `status` from perpetually rendering "Stage 4" once validation is underway.

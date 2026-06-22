@@ -38,3 +38,7 @@ Title · Abstract/Summary · Methods · Results · Discussion · References.
 - **Claim-source checking.** A writer may assert only what traces back to a finding or a vetted research finding. Every sentence in Results and Discussion maps to a finding id, or it is flagged.
 - **Caveats and status propagate.** An `exploratory` finding must never be written up with the confidence of a `validated` one — that re-hides the multiplicity the whole system worked to expose. Status and caveats survive into the prose.
 - **No invented references.** References come only from the (fact-checked) findings and the environment; the reviewer re-checks any that appear.
+
+## Workflow state
+
+The first time a report is compiled, raise `state/workflow.json` `current_stage` to **6** (highest stage reached) and bump `updated`. Reporting is a loop with no per-stage `*_done` flag; raising `current_stage` keeps `status` from stalling at an earlier stage.
