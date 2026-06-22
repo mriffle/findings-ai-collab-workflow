@@ -26,7 +26,7 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 | `entities` | list[id] | yes if applicable | Normalized entity references (3.4): UniProt/HGNC/Reactome/MONDO/etc. |
 | `relationships` | list[edge] | no | Typed links to other findings (3.3) |
 | `provenance` | object | yes | `data_version` (hash), `script` (path+commit), `params`, `environment` (lock ref) |
-| `evidence` | object | yes | Effect sizes, statistics, intervals, corrected p-values |
+| `evidence` | list | yes | Effect sizes, statistics, intervals, corrected p-values (*as built:* a list of measurement objects — see `conventions/findings.md` §2.3) |
 | `figures` | list[path] | no | SVG/PNG artifacts (doc 06), regenerable |
 | `references` | list[ref] | conditional | Required for any background/interpretive claim (doc 04 invariant) |
 | `validation` | object | no | Which validation senses cleared, by whom/what, concordance result |
@@ -104,7 +104,7 @@ Every finding carries a `phase`. The hard rule: **the data used to generate a hy
 
 ## 3.7 The manifest
 
-`findings/manifest.json` is the graph index — compact enough to reason over as findings grow into the hundreds, with full findings pulled on demand. Per finding it holds: `id`, `title`, `status`, `phase`, `entities`, `relationships`, `updated`, and `data_version`. It is the structure the findings-manager queries to judge novelty, detect relationships, and run consistency checks. It is regenerable from the finding files (the files are the source of truth; the manifest is a derived index).
+`findings/manifest.md` is the graph index — compact enough to reason over as findings grow into the hundreds, with full findings pulled on demand. *(Implementation divergence: as built this is Markdown — `findings/manifest.md`, not the `.json` this section originally sketched; the file-format convention reserves JSON for files a non-LLM parser consumes. See `conventions/manifest.md`.)* Per finding it holds: `id`, `title`, `status`, `phase`, `entities`, `relationships`, `updated`, and `data_version`. It is the structure the findings-manager queries to judge novelty, detect relationships, and run consistency checks. It is regenerable from the finding files (the files are the source of truth; the manifest is a derived index).
 
 ## 3.8 The findings manager (subagent)
 

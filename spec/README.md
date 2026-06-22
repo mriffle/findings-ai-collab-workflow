@@ -70,7 +70,7 @@ my-study/
 ├── results/                   # regenerable CSVs
 ├── figures/                   # regenerable SVG + 300 DPI PNG + legend docs
 ├── findings/
-│   ├── manifest.json          # findings graph index
+│   ├── manifest.md            # findings graph index (Markdown — see conventions/manifest.md)
 │   └── NNNN-slug.md           # individual finding documents
 ├── research/                  # research-finding documents (with references)
 └── reports/                   # QC reports and research reports
