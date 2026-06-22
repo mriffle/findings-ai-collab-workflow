@@ -16,6 +16,7 @@
 | Raw data read-only | 05.1 | **Hook** | `guard_readonly_data.sh` — blocks Write/Edit under `data/`; best-effort Bash block |
 | No `integrity_signoff: true` / `validated` before the integrity gate passes | 02.3, 05.4 | **Hook** + human sign-off | `guard_findings.sh` reads `state/workflow.json .integrity_gate.passed`; gate flipped only in `stage3-loaders` after sign-off |
 | No exploratory analysis before the gate (stage ordering) | 02.3 | **Orchestrator behavior** + command precondition | `stage4-explore` hard-refuses unless the gate passed; project `CLAUDE.md` ordering rule |
+| Usable Python ≥ 3.11 project env before any analysis | 05.2 | **Command precondition** + `setup-env` | `stage3-loaders` live-verifies a working interpreter (not the stored flag); `setup-env` detects/installs project-local Python with transparent consent. Not a hook — "is this env usable?" needs a live probe, like stage ordering |
 | Finding links only to a promoted script | 03, 05 | **Hook** + findings-manager | `guard_findings.sh` blocks `validated` linking to `scripts/scratch/`; findings-manager enforces at promotion |
 | Script not promoted until **lint + types** pass | 05.4 | **Hook** | `guard_promotion.sh` — ruff + mypy on `scripts/promoted/*.py` (PreToolUse blocks; PostToolUse warns) |
 | Script not promoted until **tests** pass | 05.4 | **Code-reviewer** | tests aren't run in-hook (slow/unsafe); reviewer verifies unit/property/planted-truth/edge |

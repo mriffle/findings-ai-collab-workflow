@@ -5,7 +5,9 @@ description: "Stage 3 — Loaders, pairing, QC [INTEGRITY GATE]. Build and verif
 
 # Stage 3 — Loaders, pairing, QC  **[INTEGRITY GATE]**
 
-**Precondition:** `state/workflow.json` shows `data_done: true`. If not, run `stage2-data` first and say so.
+**Precondition — prior stage:** `state/workflow.json` shows `data_done: true`. If not, run `stage2-data` first and say so.
+
+**Precondition — Python environment (hard gate).** This is the first stage that *executes* Python, so a usable interpreter must exist before any loader work. **Live-verify** a working Python ≥ 3.11 (do not trust `state/workflow.json` `environment.configured` — check the interpreter): prefer the project venv (`./.venv/bin/python` on Unix, `.\.venv\Scripts\python.exe` on Windows), else a project-local/`PATH` `uv`, else a system `python3`/`python`/`py -3`, and confirm it reports ≥ 3.11. If none is usable, **stop and run `setup-env`** (which detects, transparently asks consent, and installs Python ≥ 3.11 *into the project* if approved). If the scientist previously declined the project-local install, tell them to install Python ≥ 3.11 themselves and re-run. Do not start loader work without a verified interpreter.
 
 This is the workflow's **hardest precondition and most important stage**. Correctness is upstream of everything: a silent loader error is common-mode and defeats independent validation (the verifier reads the same data through the same loader, so both sides agree on a falsehood). **No Stage 4 analysis may begin until this gate passes** — a hook enforces it; do not try to work around it.
 

@@ -22,6 +22,14 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
     "data_version": null,        // the data_version the gate certifies
     "qc_report": null            // path to the QC report backing the gate
   },
+  "environment": {               // the project Python environment (managed by setup-env)
+    "mode": null,                // "project-uv" | "system" | null (undecided)
+    "python_min": "3.11",        // the interpreter floor the Stage 3 gate enforces
+    "interpreter": null,         // path to the venv python, or "system"
+    "configured": false,         // a usable env (>= python_min) has been verified
+    "declined": false,           // scientist declined the project-local install
+    "updated": null              // YYYY-MM-DD of the last environment change
+  },
   "updated": "YYYY-MM-DD"
 }
 ```
@@ -33,6 +41,7 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
 - **`integrity_gate.passed` flips to `true` only inside Stage 3**, and only after the full integrity-gate checklist passes (doc 05) *and* the scientist signs off. It records the certified `data_version`. If the dataset changes (a new `data_version`), the gate is no longer valid: reset `passed` to `false` and re-run Stage 3.
 - **The integrity-gate hook** (Phase D) blocks analysis tool-calls when this file is absent or `integrity_gate.passed` is not `true`. Absent ⇒ treated as not passed.
 - A finding's `integrity_signoff` (conventions/findings.md) may be `true` only while `integrity_gate.passed` is `true` for the finding's `data_version`.
+- **The `environment` block is written by `setup-env`** and is **advisory**: it records the chosen Python provisioning (`mode`), the floor (`python_min`), and whether the scientist declined a project-local install. It is **not** read by any hook. The Stage 3 command live-verifies a working interpreter ≥ `python_min` rather than trusting `configured`, so a stale flag can never unlock analysis on a broken env.
 
 ## Hook read (illustrative)
 

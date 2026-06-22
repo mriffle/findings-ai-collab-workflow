@@ -29,17 +29,30 @@ case "$fp" in
   *) exit 0 ;;
 esac
 
+# Resolve a tool from the project-local venv first, then PATH. The zero-global-footprint
+# setup (setup-env) installs ruff/mypy into ./.venv rather than on PATH, so prefer that;
+# fall back to PATH. Echoes a runnable path, or nothing if unavailable (caller skips — fail open).
+resolve_tool() {
+  local name="$1"
+  if [ -x "$cwd/.venv/bin/$name" ]; then printf '%s' "$cwd/.venv/bin/$name"; return 0; fi
+  if [ -x "$cwd/.venv/Scripts/$name.exe" ]; then printf '%s' "$cwd/.venv/Scripts/$name.exe"; return 0; fi
+  if [ -x "$cwd/.venv/Scripts/$name" ]; then printf '%s' "$cwd/.venv/Scripts/$name"; return 0; fi
+  command -v "$name" 2>/dev/null
+}
+
 CHECK_MSGS=""
 run_checks() { # $1 = path to a python file; returns 0 if all available checks pass
-  local f="$1" failed=0 out
+  local f="$1" failed=0 out ruff_bin mypy_bin
   CHECK_MSGS=""
-  if command -v ruff >/dev/null 2>&1; then
-    if ! out=$(ruff check "$f" 2>&1); then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff]"$'\n'"$out"; fi
+  ruff_bin=$(resolve_tool ruff)
+  if [ -n "$ruff_bin" ]; then
+    if ! out=$("$ruff_bin" check "$f" 2>&1); then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff]"$'\n'"$out"; fi
   else
-    CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff] not installed — lint check skipped (install ruff to enforce)"
+    CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff] not installed — lint check skipped (install ruff, e.g. via setup-env, to enforce)"
   fi
-  if command -v mypy >/dev/null 2>&1 && { [ -f "$cwd/pyproject.toml" ] || [ -f "$cwd/mypy.ini" ] || [ -f "$cwd/setup.cfg" ]; }; then
-    if ! out=$(cd "$cwd" && mypy "$f" 2>&1); then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[mypy]"$'\n'"$out"; fi
+  mypy_bin=$(resolve_tool mypy)
+  if [ -n "$mypy_bin" ] && { [ -f "$cwd/pyproject.toml" ] || [ -f "$cwd/mypy.ini" ] || [ -f "$cwd/setup.cfg" ]; }; then
+    if ! out=$(cd "$cwd" && "$mypy_bin" "$f" 2>&1); then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[mypy]"$'\n'"$out"; fi
   else
     CHECK_MSGS="$CHECK_MSGS"$'\n'"[mypy] not installed or no type-check config — type check skipped"
   fi

@@ -27,7 +27,7 @@ The plugin is the engine; your project is the data. The plugin never carries a s
 /plugin install findings-workflow@findings-workflow
 ```
 
-Then, in the working directory for your study, run the init command (see `commands/`) to scaffold the project structure and project-scoped instructions.
+Then, in the working directory for your study, run the init command (see `commands/`) to scaffold the project structure and project-scoped instructions. Analysis runs on **Python ≥ 3.11**; the `setup-env` command establishes a **project-local** environment (detecting an existing Python, or — with your consent — installing one *into the project* via `uv`, with no changes to your system).
 
 ## How it works (the staged workflow)
 

@@ -12,6 +12,7 @@ Render a concise dashboard of the project's position. Read the state files direc
 1. **Pipeline position** — read `state/workflow.json`: `current_stage`, the `*_done` flags, and `integrity_gate` (`passed`, `signed_off_by`, `date`, `data_version`).
 2. **Findings breakdown** — read `findings/manifest.md` (the Markdown table): total findings, counts by `status` (candidate / under_exploration / validated / invalidated / superseded / closed) and by `phase` (exploratory / confirmatory). Note any findings flagged for re-review or staleness if recorded.
 3. **State files present** — note whether `state/PROJECT.md`, `state/METADATA.md`, `state/DATA_DESCRIPTION.md` exist.
+4. **Python environment** — read `state/workflow.json` `environment` (`mode`, `python_min`, `configured`, `declined`). For an accurate readout, quickly confirm the interpreter actually works (`./.venv/bin/python --version`, or system Python) rather than trusting the flag alone.
 
 If `state/workflow.json` is absent, tell the scientist the project isn't initialized and to run `init`.
 
@@ -30,8 +31,11 @@ Findings Workflow — status
     Stage 5  Independent validation
     Stage 6  Reporting
 
+  Env: Python 3.11 (project .venv) ✓        ← or: "not set up — run setup-env"
   Findings: 0
 ```
+
+Show the environment line near the pipeline: the verified interpreter version and where it lives (project `.venv`, or system), or — if no usable Python ≥ 3.11 — flag it and point to `setup-env` (this is the Stage 3 precondition).
 
 When the gate has passed, show it as passed with the signer/date/data_version, mark Stage 4+ available, and print the findings breakdown:
 

@@ -20,6 +20,6 @@ Hooks block via exit code 2 (reason on stderr) or a JSON `permissionDecision: "d
 |---|---|---|
 | `guard_readonly_data.sh` | PreToolUse `Write\|Edit`, `Bash` | Raw `data/` is read-only (Write/Edit blocked under `data/`; best-effort Bash block). |
 | `guard_findings.sh` | PreToolUse `Write\|Edit` | No `integrity_signoff: true` / `status: validated` on a finding before the integrity gate passes; a `validated` finding may link only to `scripts/promoted/`. |
-| `guard_promotion.sh` | PreToolUse `Write` (blocks), PostToolUse `Write\|Edit` (warns) | A `scripts/promoted/*.py` must pass `ruff` + `mypy` (where available/configured). Tests are verified by the code-reviewer, not in-hook. |
+| `guard_promotion.sh` | PreToolUse `Write` (blocks), PostToolUse `Write\|Edit` (warns) | A `scripts/promoted/*.py` must pass `ruff` + `mypy` (where available/configured). Resolves both from the **project `./.venv` first**, then `PATH` (the zero-footprint `setup-env` installs them into the venv, not globally). Tests are verified by the code-reviewer, not in-hook. |
 
 **Design invariants** (see `conventions/enforcement-map.md`): all guards **scope to initialized projects** (`state/workflow.json` present) so they never touch unrelated repos, and **fail open** if `jq`/`ruff`/`mypy` are missing so they never wedge a session over their own tooling. The "is this exploratory analysis?" judgment is deliberately left to command preconditions + orchestrator behavior — it can't be cleanly decided from one tool-use event. All three are tested against synthetic events.

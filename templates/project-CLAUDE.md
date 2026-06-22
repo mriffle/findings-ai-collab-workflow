@@ -48,6 +48,7 @@ The schema, status machine, edge ontology, phase semantics, and the `validated` 
 - **Scratch vs promoted scripts.** Exploration spawns throwaways in `scripts/scratch/`. Reviewed, tested, typed, linted scripts live in `scripts/promoted/`. **A finding may link only to a promoted script.**
 - **Defined homes:** project state in `state/`, findings + manifest in `findings/`, research in `research/`, reports in `reports/`, regenerable outputs in `results/` and `figures/`.
 - **Figures** are dual-exported (SVG + 300 DPI PNG) with a separate legend doc, use the Okabe–Ito palette via `state/color_registry.json`, and are reviewed as the rendered PNG.
+- **Python lives in the project.** Analysis runs on **Python ≥ 3.11** in a **project-local** environment (`./.venv`), with zero global footprint. Run `setup-env` to establish it — it detects an existing Python and, only if needed, asks before installing one **into this project** (the `uv` binary and interpreter under `./.uv`). Run code via `./.venv/bin/python …` (`.\.venv\Scripts\python …` on Windows); the gate tools (`ruff`, `mypy`, `pytest`, `hypothesis`) live in the env. `.uv/` and `.venv/` are git-ignored; `pyproject.toml`, `uv.lock`, and `.python-version` are committed (and feed `provenance.environment`). **Stage 3 will not start without a verified interpreter** — if there isn't one, run `setup-env` first.
 
 ## Project state files (rehydrate from these every session)
 

@@ -53,11 +53,15 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 5. **Initialize the workflow state** — if `state/workflow.json` is absent, create it (schema: `conventions/workflow-state.md`):
    ```json
-   { "schema_version": "1", "current_stage": 0, "science_done": false, "metadata_done": false, "data_done": false, "integrity_gate": { "passed": false, "signed_off_by": null, "date": null, "data_version": null, "qc_report": null }, "updated": "<today's date, YYYY-MM-DD>" }
+   { "schema_version": "1", "current_stage": 0, "science_done": false, "metadata_done": false, "data_done": false, "integrity_gate": { "passed": false, "signed_off_by": null, "date": null, "data_version": null, "qc_report": null }, "environment": { "mode": null, "python_min": "3.11", "interpreter": null, "configured": false, "declined": false, "updated": null }, "updated": "<today's date, YYYY-MM-DD>" }
    ```
    This is the single source of truth for pipeline position; the stage commands update it and the integrity-gate hook reads `integrity_gate.passed` from it.
 
 6. **Mark `data/` read-only by convention** — if `data/README.md` is absent, create it stating: raw data here is immutable and read-only (a hook blocks writes); place the dataset and its metadata file here; everything in `results/` and `figures/` is regenerated from this plus a script.
+
+## Offer to set up the Python environment (optional)
+
+After scaffolding, briefly check whether this project has a usable Python (≥ 3.11) and offer `setup-env`: *"This workflow runs analysis in Python ≥ 3.11. I can set up a project-local environment now (or later) with `setup-env` — it detects an existing Python and, only if needed, asks before installing one **into this project**."* Do not run any installer here and do not block on this — `setup-env` owns the detection, the consent prompt, and the install. Python isn't executed until Stage 3, so this can wait.
 
 ## After scaffolding
 
