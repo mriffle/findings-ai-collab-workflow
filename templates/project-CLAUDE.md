@@ -26,7 +26,7 @@ Stage 6  Reporting                     → reports/
 
 ## Always-on: record findings as they emerge
 
-During exploration, **every substantive insight is captured as a finding the moment it emerges** — automatically, with a brief non-disruptive notice ("recorded as finding 0042"). Dispatch the **findings-manager** to create/update findings and the manifest; never hand-edit `findings/manifest.json`.
+During exploration, **every substantive insight is captured as a finding the moment it emerges** — automatically, with a brief non-disruptive notice ("recorded as finding 0042"). Dispatch the **findings-manager** to create/update findings and the manifest; never hand-edit `findings/manifest.md`.
 
 - **What counts:** a tangible, specific, evidence-bearing observation about the data or its biology — if it has an effect, a statistic, or a concrete claim someone might later cite, record it.
 - **Bias toward capturing too much.** Capture is cheap and low-bar (`candidate`); rigor is applied at promotion. Clutter is cheaper than lost insight.

@@ -14,7 +14,7 @@ The durable artifact is never the conversation. It is this document **plus the p
 - One file per finding: `findings/NNNN-slug.md`.
 - `NNNN` is a zero-padded (4-digit minimum) unique integer assigned **in order** by the findings-manager. `slug` is a short kebab-case label derived from the title.
 - The frontmatter carries structured fields; the body carries the human narrative.
-- The finding files are the **source of truth**; `findings/manifest.json` is a derived index regenerable from them (doc 03.7).
+- The finding files are the **source of truth**; `findings/manifest.md` is a derived index regenerable from them (doc 03.7; format in `conventions/manifest.md`).
 
 ## 2. Frontmatter schema
 
@@ -38,7 +38,6 @@ All findings carry this YAML frontmatter. `R` = required, `C` = conditional, `O`
 | `references` | C | list[reference] | Required for any background/interpretive claim (§2.5; doc 04.5). |
 | `validation` | O | object | Which validation senses cleared, by what, with what concordance (§4). |
 | `integrity_signoff` | R | bool | `true` only if the data cleared the integrity gate (doc 05). A finding may not be `validated` while this is `false`. |
-| `lib_version` | C | string | The `lib/` engine version used; required when the finding's numbers came through `lib/`. Also mirrored in `provenance`. |
 
 ### 2.1 `entities` — normalized references
 
@@ -67,12 +66,13 @@ provenance:
   script: { path: "scripts/promoted/de_treatment.py", commit: "abc1234" }
   params: { contrast: "drug_A_vs_control", fdr: 0.05, min_obs: 3 }
   environment: "env/uv.lock@abc1234"        # reference to the locked environment
-  lib_version: "0.1.0"                      # engine lib/ version (doc 05, 08.7)
+  seeded_from: { template: "de-moderated", version: "0.3" }  # the lib/ template this script was adapted from (lineage); null if written from scratch
   seed: 12345                               # required where anything stochastic ran
 ```
 
 - `script.path` **must be under `scripts/promoted/`** before the finding can be `validated` — a finding may link only to a promoted (reviewed, tested) script (doc 05.1). A `candidate` may temporarily reference a scratch script, but promotion to `validated` requires a promoted path + commit.
 - `data_version` is the hash/stamp the staleness machinery compares against (§7, doc 03.8).
+- `seeded_from` records **template lineage** — which `lib/` template (and its version) this project-local script was adapted from. It is provenance/attribution, **not** a runtime dependency: the finding is regenerable from the promoted script itself. Lineage lets the findings-manager flag derived scripts for re-review when a `lib/` template is later corrected. `null` for a script written from scratch.
 
 ### 2.3 `evidence` — the numbers
 

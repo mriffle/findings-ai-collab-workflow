@@ -25,4 +25,4 @@ Review against doc 04.4–04.5. A research-finding is accepted only if it is fac
 
 ## Output contract
 
-Return **ACCEPT** or **REVISE**, with a **reference-check report**: for each reference, exists? supports-claim? verdict. List every unverifiable or misattributed citation and every factual overreach, specifically. On ACCEPT, the research-finding's `status` can move to `reviewed` (references marked verified). On REVISE, it goes back to the researcher. Do not accept a research-finding with any unverified reference — that is the whole point of the gate.
+Return **ACCEPT** or **REVISE**, with a **reference-check report**: for each reference, exists? supports-claim? verdict. List every unverifiable or misattributed citation and every factual overreach, specifically. On ACCEPT, the research-finding's `status` can move to `reviewed` (references marked verified), and the librarian registers/updates its row in `research/manifest.md`. On REVISE, it goes back to the researcher. Do not accept a research-finding with any unverified reference — that is the whole point of the gate.

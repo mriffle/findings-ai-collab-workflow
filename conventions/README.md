@@ -5,7 +5,9 @@ The convention/correctness specs that reviewer agents and hooks enforce (spec do
 Documents (all present):
 
 - **`findings.md`** — the finding object: frontmatter schema, the status state machine, the `validated` bar, the edge ontology, exploratory-vs-confirmatory phase, the recording trigger policy (doc 03).
-- **`manifest.md`** — the `findings/manifest.json` derived-index schema (doc 03.7).
+- **`manifest.md`** — the `findings/manifest.md` derived-index format (Markdown frontmatter + table; doc 03.7).
+- **`script-registry.md`** — the `scripts/manifest.md` registry: per-script `__script_meta__` headers, one-script-per-task, reuse/DRY via shared modules, promoted-imports-only.
+- **`research-corpus.md`** — the `research/manifest.md` index (managed by the librarian; only `reviewed` entries are corpus).
 - **`workflow-state.md`** — the `state/workflow.json` progress + integrity-gate contract (doc 02).
 - **`coding.md`** — Python, locked environments, seeds, non-interactive parameterized scripts, fail-loud data handling, max testing/typing/linting; names tool choices (uv, pytest, mypy, ruff) (doc 05.2).
 - **`statistics.md`** — no bare p-values, named multiple-testing correction (BH/FDR), report all tests, canonical/moderated models, no leakage, group CV matched to target, label-shuffle null, power honesty (doc 05.3).

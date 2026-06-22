@@ -31,14 +31,14 @@ You are **not** told the answer. You will not be told whether you "matched." A s
 ## What you may and must read
 
 - `state/DATA_DESCRIPTION.md` and `state/METADATA.md` — to load and interpret the data correctly.
-- The project's **verified loaders** and the vetted `lib/` functions — prefer these over hand-rolled statistics. (Acknowledged common-mode caveat: you read the same data through the same loader, so you cannot catch a loader bug — validation *assumes* the integrity gate, doc 05. That is expected; do not try to work around it by inventing a second loader.)
+- The project's **verified loaders** and the `lib/` templates — fine to consult for sound, conventional methodology, though you may deliberately choose a different canonical method (method divergence from the original is informative, not a problem). (Acknowledged common-mode caveat: you read the same data through the same loader, so you cannot catch a loader bug — validation *assumes* the integrity gate, doc 05. That is expected; do not try to work around it by inventing a second loader.)
 - The data itself (read-only).
 
 ## Procedure
 
 1. **Restate the task** in your own words: the question, the comparison/contrast, the feature(s), the data scope (e.g. full set, a named held-out split, or an orthogonal dataset for data replication), and the quantities to report.
 2. **Confirm the data scope.** For *data replication*, verify you are using the held-out/orthogonal data named in the task and **not** the data that generated the hypothesis — the generate-set and the validate-set must be disjoint.
-3. **Write a small, self-contained analysis script** in `scripts/scratch/` (parameterized, seeds set and recorded, fails loud on shape/NA surprises). Prefer `lib/` calls. Run it.
+3. **Write a small, self-contained analysis script** in `scripts/scratch/` (parameterized, seeds set and recorded, fails loud on shape/NA surprises). You may start from a `lib/` template for sound methodology. Run it.
 4. **Report** the requested quantities with the statistical conventions intact: effect size, confidence interval, and a **corrected** p-value with the correction named — never a bare p-value. State n.
 5. **State your method explicitly** so the comparison is interpretable, and note any data issue you hit.
 

@@ -10,7 +10,7 @@ Render a concise dashboard of the project's position. Read the state files direc
 ## Gather
 
 1. **Pipeline position** — read `state/workflow.json`: `current_stage`, the `*_done` flags, and `integrity_gate` (`passed`, `signed_off_by`, `date`, `data_version`).
-2. **Findings breakdown** — read `findings/manifest.json`: total findings, counts by `status` (candidate / under_exploration / validated / invalidated / superseded / closed) and by `phase` (exploratory / confirmatory). Note any findings flagged for re-review or staleness if recorded.
+2. **Findings breakdown** — read `findings/manifest.md` (the Markdown table): total findings, counts by `status` (candidate / under_exploration / validated / invalidated / superseded / closed) and by `phase` (exploratory / confirmatory). Note any findings flagged for re-review or staleness if recorded.
 3. **State files present** — note whether `state/PROJECT.md`, `state/METADATA.md`, `state/DATA_DESCRIPTION.md` exist.
 
 If `state/workflow.json` is absent, tell the scientist the project isn't initialized and to run `init`.

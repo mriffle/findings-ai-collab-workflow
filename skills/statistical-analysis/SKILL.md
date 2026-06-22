@@ -2,7 +2,7 @@
 name: statistical-analysis
 description: >-
   How to run a statistically sound analysis in a Findings Workflow project:
-  prefer the vetted lib/ functions, and apply the leakage-safe, multiplicity-honest
+  seed from the vetted lib/ templates, and apply the leakage-safe, multiplicity-honest
   patterns the conventions require. Use when performing differential abundance,
   group comparisons, classification, regression, or dimensionality reduction.
 ---
@@ -11,9 +11,9 @@ description: >-
 
 Authoritative rules: `conventions/statistics.md`. This skill is the *how*; that doc is the *what*.
 
-## Always prefer `lib/`
+## Always seed from a `lib/` template (or reuse the project's existing script)
 
-The vetted library (`${CLAUDE_PLUGIN_ROOT}/lib/`, version-recorded) implements these analyses with the assumptions and missingness handling already right. **Call it rather than generating fresh statistics code.** Record the `lib/` version in the finding's provenance. If `lib/` lacks what you need, write the analysis to `conventions/coding.md` standards and flag that a `lib/` addition may be warranted (a wrong default in `lib/` is wrong everywhere, so additions are reviewed).
+The `lib/` templates (`${CLAUDE_PLUGIN_ROOT}/lib/`) implement these analyses with the assumptions and missingness handling already right. **Copy the relevant template into `scripts/scratch/` and adapt it, rather than generating fresh statistics code** — and if the project already has a script for this analysis, reuse/extend that one (one script per task). Import the project's shared modules rather than re-implementing. Record the template lineage in `provenance.seeded_from`. If no template fits, write the analysis to `conventions/coding.md` standards and flag that a new `lib/` template may be worth contributing (templates are reviewed before they ship). Adapt parameters and specifics — but keep the **dangerous structure** (e.g. preprocessing inside CV folds, the label-shuffle null) intact; the stats-reviewer checks this.
 
 ## Reporting (every significance claim)
 

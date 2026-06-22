@@ -25,16 +25,31 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 3. **Write the project `CLAUDE.md`** — if absent, copy `${CLAUDE_PLUGIN_ROOT}/templates/project-CLAUDE.md` to `./CLAUDE.md`. This is the mechanism by which the workflow's standing behavior reaches the orchestrator every session (the plugin cannot auto-inject it). If a `CLAUDE.md` already exists, **do not overwrite it** — instead show the user the template path and offer to merge the Findings Workflow section in.
 
-4. **Initialize the findings graph** — if `findings/manifest.json` is absent, create it as:
-   ```json
-   { "schema_version": "1", "lib_version": "0.1.0", "generated": "<today's date, YYYY-MM-DD>", "next_id": 1, "findings": [] }
+4. **Initialize the findings graph** — if `findings/manifest.md` is absent, create it (format: `conventions/manifest.md`) as a Markdown file: a YAML frontmatter block then an empty findings table.
+   ```markdown
+   ---
+   schema_version: 1
+   generated: <today's date, YYYY-MM-DD>
+   next_id: 1
+   engine_version: 0.1.0
+   ---
+
+   # Findings manifest
+
+   Derived index of the findings graph — regenerable from the finding files. One row per finding.
+
+   | ID | Slug | Title | Status | Phase | Entities | Relationships | Updated | Data version |
+   |----|------|-------|--------|-------|----------|---------------|---------|--------------|
    ```
-   If `findings/exploration-log.md` is absent, create it with a heading:
+   The findings-manager is its only writer. If `findings/exploration-log.md` is absent, create it with a heading:
    ```
    # Exploration log
 
    Append-only record of what was looked at and discarded — the multiplicity context that informs each finding's caveats (doc 03.6). One dated entry per exploratory thread.
    ```
+   Also seed two empty Markdown indexes (formats: `conventions/script-registry.md`, `conventions/research-corpus.md`), each a YAML frontmatter block (`schema_version: 1`, `generated: <today>`) + a heading + an empty table:
+   - `scripts/manifest.md` — heading `# Script registry`; table header `| Task | Path | Kind | Status | Provides | Uses | Seeded from | Description |`.
+   - `research/manifest.md` — heading `# Research manifest`; table header `| Slug | Topic | Type | Status | Entities | Refs | Updated |`.
 
 5. **Initialize the workflow state** — if `state/workflow.json` is absent, create it (schema: `conventions/workflow-state.md`):
    ```json

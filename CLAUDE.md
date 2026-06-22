@@ -10,7 +10,7 @@ The full design is in [`spec/`](spec/) (docs 01–08). **The spec is the source 
 
 ## Current state
 
-Everything in the layout below is implemented and committed on `main` **except `lib/`** (the vetted analysis + visualization library, docs 04/06), which is the remaining build work. `claude plugin validate .` passes, and the engine was structurally reviewed end-to-end (no dangling references, consistent schemas, init dry-run + hooks all pass). See [`README.md`](README.md) for the component map and the per-directory `README.md` files for what each holds.
+Everything in the layout below is implemented and committed on `main` **except `lib/`** (the vetted analysis + visualization **template scripts**, docs 04/06), which is the remaining build work. `claude plugin validate .` passes, and the engine was structurally reviewed end-to-end (no dangling references, consistent schemas, init dry-run + hooks all pass). See [`README.md`](README.md) for the component map and the per-directory `README.md` files for what each holds.
 
 ## The load-bearing boundary (never blur it)
 
@@ -28,7 +28,7 @@ If you find yourself putting study-specific data in the plugin, or re-implementi
 | Context-isolated subagents | `agents/` | doc 04 |
 | Model-invoked procedures | `skills/<name>/SKILL.md` | doc 04 |
 | Deterministic enforcement gates | `hooks/hooks.json` (+ scripts) | docs 05, 08 |
-| Vetted analysis + visualization library | `lib/` | docs 04, 06 |
+| Vetted analysis + visualization **template scripts** | `lib/` | docs 04, 06 |
 | Convention/correctness specs | `conventions/` | docs 05, 06, 07 |
 | Finding / research / report / color templates | `templates/` | docs 03, 04, 06, 07 |
 
@@ -44,9 +44,10 @@ If you find yourself putting study-specific data in the plugin, or re-implementi
 - **Verify the plugin format against current Claude Code docs before writing manifests, hooks, agent/skill frontmatter, or commands.** The format shifts between releases (doc 08 version caveat). Don't build from memory.
 - **Validate after changing plugin structure:** `claude plugin validate .`. Caveat: this validates the **marketplace manifest** (and resolves the plugin) — it does **not** deeply check component frontmatter. After editing `agents/`, `commands/`, or `skills/`, also parse-check their YAML frontmatter (each needs `name` + `description`).
 - **Reference bundled files with `${CLAUDE_PLUGIN_ROOT}`** (e.g. hook scripts, `lib/` modules) — never hard-coded absolute paths.
+- **File-format convention.** Use **Markdown (+ YAML frontmatter)** for everything LLM/human-maintained — findings, research, agents, skills, commands, conventions, **and the manifests/registries** (`findings/manifest.md`, `scripts/manifest.md`, `research/manifest.md`). Reserve **JSON** for files a **non-LLM parser** actually consumes: `state/workflow.json` (bash/jq hook) and `state/color_registry.json` (Python plotting). Rationale: LLMs emit Markdown/YAML more reliably than JSON (no brace/comma fragility), and the consumer — not habit — decides the format. Each manifest is a *derived* index (source of truth = the underlying files / per-script `__script_meta__` headers), regenerable like the findings manifest.
 - **A convention is only real if something checks it** (spec principle 9). Prefer a deterministic hook; otherwise a reviewer-agent check. Every rule in `conventions/` must map to an enforcer (the enforcement map, doc 05.5).
 - **Keep hooks non-intrusive (preserve these invariants when editing `hooks/`):** each guard **scopes to initialized projects** (`state/workflow.json` present) so it never touches unrelated repos, and **fails open** if its tooling (`jq`/`ruff`/`mypy`) is missing so it can't wedge a session. Block (exit 2) only on genuine violations. The promotion hook runs lint+types only — **tests are the code-reviewer's job**, since running tests synchronously in a tool-use hook is slow and unsafe. Test guard changes against synthetic events before committing.
-- **`lib/` is held to the maximum** (doc 05): typed, tested, linted, seeds recorded. A wrong default in `lib/` is wrong in every project that calls it, so it is itself scientifically reviewed and version-recorded.
+- **`lib/` ships vetted *template scripts*, not a called library** (decision; see below): each template is held to the maximum (typed, tested, linted, seeds recorded) so it's a sound seed. Templates are copied into a project and adapted on demand; correctness is carried by the reviewer gates + template-lineage flagging, not by central propagation.
 - **Python only** for analysis code (doc 05.2).
 
 ## Key implementation decisions (divergences & resolutions)

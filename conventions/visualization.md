@@ -1,6 +1,6 @@
 # Convention — Visualization
 
-*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Implemented by the `lib/` visualization machinery; enforced by the figure-reviewer and a dual-export check.*
+*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Implemented by the `lib/` figure templates (seeded into the project); enforced by the figure-reviewer and a dual-export check.*
 
 ## Accuracy & review
 
@@ -23,7 +23,7 @@ Render **legends as separate documents** (`figures/<name>.legend.md`) alongside 
 
 ## Publication-ready defaults
 
-Figures default to publication quality: legible font sizes **at print scale**, no chartjunk, clear axis labels **with units**, appropriate aspect ratios, consistent typography. The `lib/` visualization library encodes these defaults (a shared matplotlib style) so every figure inherits them rather than re-specifying them.
+Figures default to publication quality: legible font sizes **at print scale**, no chartjunk, clear axis labels **with units**, appropriate aspect ratios, consistent typography. The `lib/` figure templates encode these defaults (a shared matplotlib style, imported by the project's figure scripts) so each figure starts from them rather than re-specifying them.
 
 ## Color — palette and the registry
 
@@ -40,7 +40,7 @@ Okabe–Ito provides eight distinguishable colors. Beyond eight categories, addi
 3. **Group the long tail** — collapse minor categories into an explicit "other."
 4. **Position/sequential encodings** — for ordinal/numeric categories, use position or a sequential scale instead of categorical color.
 
-The `lib/` plotting machinery **detects when a plot is about to exceed eight categorical colors and requires the script to choose an explicit strategy** rather than silently recycling colors.
+The shared figure module (seeded from `lib/`) includes a **guard that raises when a plot would exceed eight categorical colors, requiring the script to choose an explicit strategy** rather than silently recycling colors.
 
 ## Figure provenance
 

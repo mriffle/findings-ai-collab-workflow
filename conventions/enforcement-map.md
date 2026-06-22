@@ -19,17 +19,18 @@
 | Finding links only to a promoted script | 03, 05 | **Hook** + findings-manager | `guard_findings.sh` blocks `validated` linking to `scripts/scratch/`; findings-manager enforces at promotion |
 | Script not promoted until **lint + types** pass | 05.4 | **Hook** | `guard_promotion.sh` — ruff + mypy on `scripts/promoted/*.py` (PreToolUse blocks; PostToolUse warns) |
 | Script not promoted until **tests** pass | 05.4 | **Code-reviewer** | tests aren't run in-hook (slow/unsafe); reviewer verifies unit/property/planted-truth/edge |
+| One analysis script per task; shared code reused, no duplicates | project rule | **Code-reviewer** | script registry (`scripts/manifest.md`) + per-script `__script_meta__`; promoted-imports-only (`conventions/script-registry.md`) |
 | Record-the-finding during exploration | 03.9 | **Orchestrator behavior** | project `CLAUDE.md` always-on recording; findings-manager assigns/writes |
 | Loader tested + load verified + pairing exact | 05.4 | **Code-reviewer** + integrity-gate checklist + human sign-off | `stage3-loaders` checklist; scientist signs off |
 | Assumptions tested in code; results recorded | 05.4 | **Orchestrator behavior** + code/stats reviewers | Stages 1–2 test inferences rather than assert them |
 | No bare p; correction named; effect+CI present | 05.3 | **Stats-reviewer** | checks every analysis against `conventions/statistics.md` |
 | No leakage; CV matched to target; label-shuffle null | 05.3 | **Stats-reviewer** | preprocessing inside folds; group folds; permutation null |
-| Canonical tests; moderated models for DE | 05.3 | **Stats-reviewer** | prefer `lib/` moderated models |
+| Canonical tests; moderated models for DE | 05.3 | **Stats-reviewer** | seed from `lib/` moderated-model template |
 | All tests run are reported (→ exploration log) | 05.3, 03.6 | **Stats-reviewer** + orchestrator behavior | exploration log appended in Stage 4 |
 | Small-n / confounded → exploratory | 05.3, 03.6 | **Stats-reviewer** + findings-manager | `phase` field |
 | Every reference exists and supports its claim | 04.5 | **Research-reviewer** | fact-checks each reference before it enters the corpus |
 | Figure rendered, reviewed, dual-exported, legend present | 06 | **Figure-reviewer** (+ optional dual-export hook) | reviews the PNG render; checks SVG+PNG+legend trio |
-| ≤8 categorical colors; explicit strategy beyond | 06.6 | `lib/` (raises) + **figure-reviewer** | library detects overflow |
+| ≤8 categorical colors; explicit strategy beyond | 06.6 | shared figure module guard (raises) + **figure-reviewer** | the seeded figure template detects overflow |
 | No finding `validated` without independent validation | 03.5 | **Verifier** + findings-manager | blinded re-derivation; manager enforces the full `validated` bar |
 | Report claims map to findings; status/caveats propagate; no invented refs | 07.5 | **Report-reviewer** | claim-source check at compile time |
 

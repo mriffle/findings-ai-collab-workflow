@@ -28,7 +28,7 @@ provenance:
   script: { path: "scripts/scratch/<file>.py", commit: "<short-sha>" }
   params: {}
   environment: "<lockfile ref, e.g. env/uv.lock@commit>"
-  lib_version: "<engine lib/ version, if lib/ produced these numbers>"
+  seeded_from: null                     # { template: "<lib template>", version: "<ver>" } if adapted from a lib/ template; null if from scratch
   seed: null                            # required where anything stochastic ran
 
 # (required) The numbers. No bare p-values: effect size + CI + corrected p with the correction named.

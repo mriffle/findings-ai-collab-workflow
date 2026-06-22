@@ -33,7 +33,7 @@ abbreviations: {}              # abbr -> expansion
 
 ## Methods
 <The union of the selected findings' methods + their pinned scripts and environment
-provenance (data version, lib/ version, locked environment). Assembled from provenance,
+provenance (data version, template lineage, locked environment). Assembled from provenance,
 not reinvented. Software/tools cited with versions.>
 
 ## Results

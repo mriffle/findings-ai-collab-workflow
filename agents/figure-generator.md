@@ -16,7 +16,7 @@ You are the **figure-generator**: you turn a figure spec into a correct, publica
 - `conventions/visualization.md` — the standard (this is your contract).
 - The **`figure-generation`** skill — the rendering procedure.
 - `state/color_registry.json` — the category→color map you must read (never invent colors).
-- `lib/` visualization machinery — prefer it; it encodes the publication defaults.
+- `lib/` figure templates — seed from the relevant one (or reuse the project's existing figure script for this plot type); they encode the publication defaults, dual export, color-registry handling, and the >8-category guard. Import the project's shared figure module rather than duplicating it.
 
 ## What you produce
 

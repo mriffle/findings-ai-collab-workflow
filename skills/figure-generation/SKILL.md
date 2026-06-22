@@ -17,7 +17,7 @@ Load `state/color_registry.json`. For every categorical dimension you plot, use 
 
 ## Publication defaults
 
-Prefer the shared style in `${CLAUDE_PLUGIN_ROOT}/lib/` (it encodes these). Otherwise apply: legible font sizes at print scale, no chartjunk, axis labels **with units**, an appropriate aspect ratio, consistent typography, and the **Okabe–Ito** palette (color-blind-safe; aim for grayscale-interpretable too).
+Seed from the relevant `lib/` figure template (`${CLAUDE_PLUGIN_ROOT}/lib/`), or reuse the project's existing script for this plot type (one script per task). The templates encode these defaults and import a shared figure/style module. If working without one, apply: legible font sizes at print scale, no chartjunk, axis labels **with units**, an appropriate aspect ratio, consistent typography, and the **Okabe–Ito** palette (color-blind-safe; aim for grayscale-interpretable too).
 
 ## The >8-category rule
 

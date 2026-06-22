@@ -13,7 +13,7 @@ Standing rule for this stage and the whole workflow: **assume nothing, verify ev
 
 ## Build robust, tested loaders
 
-Build loaders (in `scripts/`, prefer the vetted `lib/` loaders where they fit) that load **both the data and the metadata** and **correctly pair every sample with its metadata description**. Hold this code to the maximum (doc 05): type hints + a type checker, lint/format, seeds recorded, logging over print, fail-loud on shape mismatch or silent NA coercion. Dispatch the **coder** and **code-reviewer** agents for this where available; otherwise write and self-review against `conventions/` directly.
+Build loaders (in `scripts/`, seeding from the `lib/` loader template where it fits) that load **both the data and the metadata** and **correctly pair every sample with its metadata description**. Hold this code to the maximum (doc 05): type hints + a type checker, lint/format, seeds recorded, logging over print, fail-loud on shape mismatch or silent NA coercion. Dispatch the **coder** and **code-reviewer** agents for this where available; otherwise write and self-review against `conventions/` directly.
 
 ## Data loading is two obligations — both must pass
 

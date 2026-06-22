@@ -65,7 +65,7 @@ findings-workflow/
 ├── agents/                # context-isolated subagents (spec doc 04)
 ├── skills/                # research / stats / viz / finding / report procedures (doc 04)
 ├── hooks/                 # deterministic enforcement gates (docs 05, 08)
-├── lib/                   # vetted, tested analysis + visualization library
+├── lib/                   # vetted, tested analysis + visualization template scripts (seed project-local scripts)
 ├── conventions/           # coding, statistical, correctness, visualization specs (docs 05, 06)
 ├── templates/             # finding, research-finding, report, color-registry templates
 └── spec/                  # the design specification suite (docs 01–08)
