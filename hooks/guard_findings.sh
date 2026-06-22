@@ -49,7 +49,12 @@ if [ "$passed" != "true" ] && { [ "$claims_signoff" = "yes" ] || [ "$claims_vali
   exit 2
 fi
 
-if [ "$claims_validated" = "yes" ] && printf '%s' "$content" | grep -Eq 'path:[[:space:]]*"?'"'"'?scripts/scratch/'; then
+# Scope the scratch-link check to an actual YAML script-path value — a `path:` key line
+# (block form) or an inline `script: { path: ... }` mapping — so a mere prose mention of
+# scripts/scratch/ (e.g. in a Caveat) doesn't trigger a false block.
+if [ "$claims_validated" = "yes" ] && {
+     printf '%s' "$content" | grep -Eq '^[[:space:]]*path:[[:space:]]*"?'"'"'?scripts/scratch/' \
+  || printf '%s' "$content" | grep -Eq 'script:[[:space:]]*\{[^}]*scripts/scratch/'; }; then
   echo "Blocked: a validated finding may link only to a promoted script (scripts/promoted/), not scripts/scratch/ (docs 03, 05). Promote the script and re-point provenance.script.path before validating." >&2
   exit 2
 fi
