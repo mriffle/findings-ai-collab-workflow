@@ -37,9 +37,12 @@ content=$(printf '%s' "$input" | jq -r '.tool_input.content // .tool_input.new_s
 passed=$(jq -r '.integrity_gate.passed // false' "$cwd/state/workflow.json" 2>/dev/null)
 
 claims_signoff=no
-printf '%s' "$content" | grep -Eq '^[[:space:]]*integrity_signoff:[[:space:]]*true\b' && claims_signoff=yes
+# Allow an optional single/double quote before the value, so a YAML-legal quoted
+# scalar (integrity_signoff: "true") can't slip past the gate. Matches the quote
+# handling on the promoted-link check below.
+printf '%s' "$content" | grep -Eq '^[[:space:]]*integrity_signoff:[[:space:]]*"?'"'"'?true\b' && claims_signoff=yes
 claims_validated=no
-printf '%s' "$content" | grep -Eq '^[[:space:]]*status:[[:space:]]*validated\b' && claims_validated=yes
+printf '%s' "$content" | grep -Eq '^[[:space:]]*status:[[:space:]]*"?'"'"'?validated\b' && claims_validated=yes
 
 if [ "$passed" != "true" ] && { [ "$claims_signoff" = "yes" ] || [ "$claims_validated" = "yes" ]; }; then
   echo "Blocked: a finding cannot claim integrity_signoff: true or status: validated before the integrity gate passes (state/workflow.json .integrity_gate.passed is not true). Complete stage3-loaders and obtain sign-off first (docs 02.3, 05)." >&2
