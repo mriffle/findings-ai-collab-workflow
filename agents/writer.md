@@ -32,6 +32,7 @@ The selection discipline is inverted between them; write to the mode you were gi
 - **No invented references.** Use only the (fact-checked) references the findings already carry, plus software/environment citations. Don't introduce a citation that isn't in a source finding.
 - **Methods come from provenance.** Your section's methods are the union of the findings' methods + their pinned scripts/environment — assemble, don't reinvent.
 - **Stay in your lane.** Use the shared spec's terminology and abbreviations so you don't drift from or duplicate parallel writers.
+- **Findings are read-only to you.** You read findings (and vetted research-findings) as source material, but you **never write or edit `findings/`** — the findings-manager is their only writer. Your writes go only to the report draft area under `reports/`.
 
 ## Output contract
 
