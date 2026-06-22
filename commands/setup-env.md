@@ -95,7 +95,16 @@ name = "findings-workflow-study"
 version = "0.0.0"
 requires-python = ">=3.11"
 dependencies = []
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true     # makes the promotion type-gate real, not a no-op
+warn_redundant_casts = true
+warn_unused_ignores = true
+ignore_missing_imports = true    # scientific deps often ship no stubs; don't fail the gate on those
 ```
+
+Seed the `[tool.mypy]` block above. Without it, `mypy` runs with permissive defaults (untyped functions are not errors), so the promotion gate's "types pass" check is a near-no-op on a project's own untyped code; `disallow_untyped_defs` is what gives it teeth, while `ignore_missing_imports` keeps it from failing on unstubbed scientific libraries rather than on real type errors.
 
 Then add the baseline with uv (this resolves, installs into `./.venv`, and writes `./uv.lock` — the lockfile recorded in every finding's `provenance.environment`). Invoke uv with `UV_PYTHON_INSTALL_DIR` set (as in 3b):
 
