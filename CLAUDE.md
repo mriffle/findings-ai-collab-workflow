@@ -8,6 +8,10 @@ This repo is the **engine** of the Findings Workflow: a Claude Code plugin (agen
 
 The full design is in [`spec/`](spec/) (docs 01–08). **The spec is the source of truth for intent.** When code and spec disagree, the spec wins unless the spec is wrong about a verifiable external fact (e.g. the current Claude Code plugin format) — in which case fix the code to match reality and note the divergence.
 
+## Current state
+
+Everything in the layout below is implemented and committed on `main` **except `lib/`** (the vetted analysis + visualization library, docs 04/06), which is the remaining build work. `claude plugin validate .` passes, and the engine was structurally reviewed end-to-end (no dangling references, consistent schemas, init dry-run + hooks all pass). See [`README.md`](README.md) for the component map and the per-directory `README.md` files for what each holds.
+
 ## The load-bearing boundary (never blur it)
 
 - **Plugin = engine.** Versioned, shared, identical for every user. Ships in this repo. Carries no study data.
@@ -28,12 +32,20 @@ If you find yourself putting study-specific data in the plugin, or re-implementi
 | Convention/correctness specs | `conventions/` | docs 05, 06, 07 |
 | Finding / research / report / color templates | `templates/` | docs 03, 04, 06, 07 |
 
+## Architecture notes (durable)
+
+- **The orchestrator is the main session, not a subagent.** It is governed by the user's project `CLAUDE.md` (materialized from `templates/project-CLAUDE.md` by `init`) plus the stage commands. There is deliberately **no `agents/orchestrator.md`** — the files in `agents/` are the *dispatched* workers the orchestrator calls.
+- **Generator/reviewer pairing** is used wherever an artifact's correctness matters (code, stats, figures, research, reports): the reviewer checks the *artifact*, not the intent. The **verifier** is deliberately starved of conversation history (the clean context is the blind); the **findings-manager** is the sole writer of the findings graph + manifest.
+- **Workflow progress and the integrity gate live in `state/workflow.json`** (in the user's project; schema in `conventions/workflow-state.md`). Commands update it; the `status` command renders it; the integrity-gate hook reads `.integrity_gate.passed` from it. It is the one source of truth for "where are we in the pipeline."
+- **Three distinct `CLAUDE.md` contexts:** this repo's root `CLAUDE.md` (engine dev) → never reaches users; `templates/project-CLAUDE.md` → the template; the user's project `CLAUDE.md` → written by `init`, auto-loads in their session. A plugin cannot auto-inject the third (current Claude Code behavior), which is why `init` writes it.
+
 ## Build conventions for the engine
 
 - **Verify the plugin format against current Claude Code docs before writing manifests, hooks, agent/skill frontmatter, or commands.** The format shifts between releases (doc 08 version caveat). Don't build from memory.
-- **Validate after changing plugin structure:** `claude plugin validate .`.
+- **Validate after changing plugin structure:** `claude plugin validate .`. Caveat: this validates the **marketplace manifest** (and resolves the plugin) — it does **not** deeply check component frontmatter. After editing `agents/`, `commands/`, or `skills/`, also parse-check their YAML frontmatter (each needs `name` + `description`).
 - **Reference bundled files with `${CLAUDE_PLUGIN_ROOT}`** (e.g. hook scripts, `lib/` modules) — never hard-coded absolute paths.
 - **A convention is only real if something checks it** (spec principle 9). Prefer a deterministic hook; otherwise a reviewer-agent check. Every rule in `conventions/` must map to an enforcer (the enforcement map, doc 05.5).
+- **Keep hooks non-intrusive (preserve these invariants when editing `hooks/`):** each guard **scopes to initialized projects** (`state/workflow.json` present) so it never touches unrelated repos, and **fails open** if its tooling (`jq`/`ruff`/`mypy`) is missing so it can't wedge a session. Block (exit 2) only on genuine violations. The promotion hook runs lint+types only — **tests are the code-reviewer's job**, since running tests synchronously in a tool-use hook is slow and unsafe. Test guard changes against synthetic events before committing.
 - **`lib/` is held to the maximum** (doc 05): typed, tested, linted, seeds recorded. A wrong default in `lib/` is wrong in every project that calls it, so it is itself scientifically reviewed and version-recorded.
 - **Python only** for analysis code (doc 05.2).
 
