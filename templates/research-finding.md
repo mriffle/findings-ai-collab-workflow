@@ -8,8 +8,8 @@ created: <YYYY-MM-DD>                     # (required)
 updated: <YYYY-MM-DD>                     # (required)
 
 status: draft                            # draft | reviewed  (reviewed = passed the research-reviewer)
-reviewed_by: null                        # set by the research-reviewer on acceptance
-reviewed_date: null
+reviewed_by: null                        # set by the librarian on the reviewer's ACCEPT (review provenance)
+reviewed_date: null                      # YYYY-MM-DD, stamped alongside reviewed_by
 
 # Normalized domain-entity references this research is about (same scheme as findings; canonical IDs).
 entities:
@@ -22,8 +22,8 @@ references:
   - id: "<doi:... | pmid:... | url:... | software-name@version>"
     type: doi                            # doi | pmid | url | software
     claim: "<the specific claim this source supports>"
-    verified: false                      # set true by the research-reviewer
-    verified_by: null
+    verified: false                      # set true by the librarian on the reviewer's ACCEPT
+    verified_by: null                    # who/what verified, stamped by the librarian
 ---
 
 # Research: <topic>

@@ -46,6 +46,6 @@ Use `—` for empty cells.
 
 1. The **researcher** writes a research-finding (`research/<slug>.md`, `status: draft`).
 2. The **research-reviewer** verifies factual accuracy and **every reference** and returns ACCEPT/REVISE. It holds no write access — generator/reviewer separation, so it never edits the artifact it reviews.
-3. On the reviewer's ACCEPT, the **librarian** — the sole writer of corpus state — applies the verdict to the research-finding file (`status → reviewed`, accepted references marked `verified`) and registers/updates its row in `research/manifest.md`, marking it `reviewed`. The librarian regenerates the manifest from the files whenever it is suspected stale.
+3. On the reviewer's ACCEPT, the **librarian** — the sole writer of corpus state — applies the verdict to the research-finding file (`status → reviewed`, accepted references marked `verified`, and stamps `reviewed_by`/`reviewed_date` as review provenance — file-level only, not projected into the manifest) and registers/updates its row in `research/manifest.md`, marking it `reviewed`. The librarian regenerates the manifest from the files whenever it is suspected stale.
 
 The librarian answers questions only from `reviewed` corpus, always carrying the references (the references invariant, doc 04.5).
