@@ -12,7 +12,7 @@ Proteomics is the proving ground; the design is discipline-agnostic.
 
 A persistent boundary runs through the whole system:
 
-- **This plugin repository ships the *engine*** — agents, skills, slash commands, hooks, conventions, a vetted analysis/visualization library, and universal defaults (e.g. the base color palette). Versioned and shared; identical for every user.
+- **This plugin repository ships the *engine*** — agents, skills, slash commands, hooks, conventions, vetted analysis/visualization template scripts (seeding project-local analysis code), and universal defaults (e.g. the base color palette). Versioned and shared; identical for every user.
 - **Your project holds the *data and derived state*** — the dataset, project-state files, the findings graph, the per-project color registry, results, figures, and reports. Generated per dataset; unique to your study.
 
 The plugin is the engine; your project is the data. The plugin never carries a study's data, and a study never re-implements the engine.
