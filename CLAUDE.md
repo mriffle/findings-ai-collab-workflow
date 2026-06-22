@@ -10,7 +10,7 @@ The full design is in [`spec/`](spec/) (docs 01–08). **The spec is the source 
 
 ## Current state
 
-Everything in the layout below is implemented and committed on `main` **except `lib/`** (the vetted analysis + visualization **template scripts**, docs 04/06), which is the remaining build work. `claude plugin validate .` passes, and the engine was structurally reviewed end-to-end (no dangling references, consistent schemas, init dry-run + hooks all pass). See [`README.md`](README.md) for the component map and the per-directory `README.md` files for what each holds.
+Everything in the layout below is implemented and committed on `main` **except `lib/`** (the vetted analysis + visualization **template scripts**, docs 04/06), which is the remaining build work — see **Next: building `lib/`** below. `claude plugin validate .` passes, and the engine was structurally reviewed end-to-end (no dangling references, consistent schemas, init dry-run + hooks all pass). See [`README.md`](README.md) for the component map and the per-directory `README.md` files for what each holds.
 
 ## The load-bearing boundary (never blur it)
 
@@ -50,7 +50,27 @@ If you find yourself putting study-specific data in the plugin, or re-implementi
 - **`lib/` ships vetted *template scripts*, not a called library** (decision; see below): each template is held to the maximum (typed, tested, linted, seeds recorded) so it's a sound seed. Templates are copied into a project and adapted on demand; correctness is carried by the reviewer gates + template-lineage flagging, not by central propagation.
 - **Python only** for analysis code (doc 05.2).
 
+## Next: building `lib/` (phase E) — start here if you're picking this up
+
+`lib/` is the only unbuilt component. Goal: add **vetted template scripts** that seed project-local analysis scripts and shared modules. Read first: `lib/README.md` (the model) and `conventions/script-registry.md` (how project scripts are governed).
+
+**Constraints already decided — don't relitigate:** pure template-copy, on-demand; one analysis script per task in a project (variations = parameters); templates seed both `analysis` scripts and shared `module`s (the project's `common/`); each template has a stable name+version referenced by `provenance.seeded_from`; templates encode the dangerous structure safely (leakage-safe CV inside folds; the figure dual-export / color-registry / >8-category guards) and are held to the maximum (typed, tested incl. planted-truth, linted).
+
+**Open design questions to settle first:**
+1. **`lib/` internal layout + template naming** — e.g. `lib/analysis/`, `lib/figures/`, `lib/common/`.
+2. **Template identity + versioning** — where each template's name+version live (a header in the template?) and how they bump, since `seeded_from` references them.
+3. **The canonical shared `common/` modules** (loader/io, stats, figures+color) and the first analysis templates to ship.
+
+**Follow:** `conventions/coding.md`, `correctness.md`, `statistics.md`, `visualization.md`, `script-registry.md`.
+
+**Suggested first slice:** a tested loader + integrity helpers; the figure/color machinery (dual export, registry, >8-category guard); descriptive/QC plots; one moderated-model differential-abundance template; one leakage-safe classifier template.
+
+**Tooling note:** `ruff`/`mypy`/`pytest` are **not installed** in this dev env — install them for template TDD (the promotion hook and code-reviewer expect them).
+
 ## Key implementation decisions (divergences & resolutions)
 
 - **Shipping standing instructions to the user's project.** Plugins cannot auto-inject a project `CLAUDE.md` (current Claude Code behavior), which doc 08.6 assumed. Resolution: the **init command writes a project `CLAUDE.md`** (from `templates/project-CLAUDE.md`) into the user's working directory at setup; it then auto-loads as a normal project memory file. Must-fire rules are additionally backed by hooks.
 - **The `validated` bar** (doc 03.2) is fixed as: **independent re-derivation (blinded analytic replication) + the phase bar** (exploratory vs confirmatory). Data replication is encouraged and recorded when available but is not mandatory for `validated`.
+- **`lib/` is template scripts, not a called library** (diverges from doc 04.3, by design). Templates are copied into a project and adapted on demand (one analysis script per task); findings link to the project-local promoted script and record template lineage in `provenance.seeded_from`. Model + trade-offs in `lib/README.md`; governance in `conventions/script-registry.md`.
+- **Manifests are Markdown; the file-format convention** (diverges from doc 03.7's JSON). Markdown(+frontmatter) for all LLM/human-maintained files incl. every manifest; JSON only where a non-LLM parser consumes it. Full statement under *Build conventions* above.
+- **Script governance:** one analysis script per task (variations are parameters), reuse/DRY via shared `common/` modules (imported, never copy-pasted), per-script `__script_meta__` header as source of truth, `scripts/manifest.md` the derived index, **code-reviewer enforces** (no hook), and a promoted script imports only promoted modules. See `conventions/script-registry.md`.
