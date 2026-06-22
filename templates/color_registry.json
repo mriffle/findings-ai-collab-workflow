@@ -1,0 +1,17 @@
+{
+  "_comment": "Category -> color registry (spec doc 06.5). Keys starting with '_' are reserved metadata; every other top-level key is a category dimension with {scope, values}. Universal defaults ship with the plugin; project-specific categories are added after METADATA.md exists. Every plotting script reads this file so a given category value uses the SAME color in every figure.",
+  "_palette": {
+    "name": "Okabe-Ito",
+    "scope": "universal",
+    "colors": ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"],
+    "max_categorical": 8,
+    "note": "Color-blind-friendly categorical palette. Color encodes at most 8 categories; beyond 8, change the encoding strategy (facet, second channel, group the tail, or position/sequential) rather than adding colors (doc 06.6)."
+  },
+  "sex": {
+    "scope": "universal",
+    "values": {
+      "male": "#0072B2",
+      "female": "#D55E00"
+    }
+  }
+}

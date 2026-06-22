@@ -1,0 +1,16 @@
+{
+  "name": "findings-workflow",
+  "owner": {
+    "name": "Michael Riffle",
+    "email": "mriffle@uw.edu"
+  },
+  "description": "Marketplace for the Findings Workflow plugin. This repository is its own single-plugin marketplace.",
+  "plugins": [
+    {
+      "name": "findings-workflow",
+      "source": "./",
+      "description": "Collaborative, provenance-tracked scientific data analysis: scientist + Claude Code build an independently validated findings graph.",
+      "version": "0.1.0"
+    }
+  ]
+}

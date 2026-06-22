@@ -1,0 +1,12 @@
+{
+  "name": "findings-workflow",
+  "version": "0.1.0",
+  "description": "A collaborative, provenance-tracked workflow for AI-assisted scientific data analysis. A scientist and Claude Code turn exploratory analysis into a curated, independently validated findings graph instead of a disposable chat transcript.",
+  "author": {
+    "name": "Michael Riffle",
+    "email": "mriffle@uw.edu"
+  },
+  "homepage": "https://github.com/mriffle/findings-ai-collab-workflow",
+  "repository": "https://github.com/mriffle/findings-ai-collab-workflow",
+  "license": "Apache-2.0"
+}
