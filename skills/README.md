@@ -2,7 +2,7 @@
 
 Reusable, model-invoked procedures — *how to do something well* (spec doc 04). Each skill is a directory containing `SKILL.md` (YAML frontmatter `name` + `description`, then markdown instructions) and optional supporting files.
 
-A skill is invoked by its description when relevant; an agent invokes a skill to produce an artifact (e.g. the protein-researcher agent invokes the protein-research skill to produce a research finding).
+A skill is invoked by its description when relevant; an agent invokes a skill to produce an artifact (e.g. the `researcher` agent invokes the `research-protein` skill to produce a research finding).
 
 Skills (doc 04.3):
 
