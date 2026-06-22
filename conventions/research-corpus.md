@@ -45,7 +45,7 @@ Use `—` for empty cells.
 ## Lifecycle
 
 1. The **researcher** writes a research-finding (`research/<slug>.md`, `status: draft`).
-2. The **research-reviewer** verifies factual accuracy and **every reference**; on ACCEPT, `status → reviewed` and references marked verified.
-3. The **librarian** registers/updates the row in `research/manifest.md`, marking it `reviewed`. The librarian regenerates the manifest from the files whenever it is suspected stale.
+2. The **research-reviewer** verifies factual accuracy and **every reference** and returns ACCEPT/REVISE. It holds no write access — generator/reviewer separation, so it never edits the artifact it reviews.
+3. On the reviewer's ACCEPT, the **librarian** — the sole writer of corpus state — applies the verdict to the research-finding file (`status → reviewed`, accepted references marked `verified`) and registers/updates its row in `research/manifest.md`, marking it `reviewed`. The librarian regenerates the manifest from the files whenever it is suspected stale.
 
 The librarian answers questions only from `reviewed` corpus, always carrying the references (the references invariant, doc 04.5).

@@ -27,7 +27,7 @@ A topic may need more than one; use them together.
 
 ## What you produce
 
-A research-finding document in `research/<slug>.md` from `templates/research-finding.md`: topic, summary, detailed findings (with inline citations), methods/sources consulted, and the mandatory non-empty `references` list (each `verified: false` — the research-reviewer flips it). Normalize entities to canonical IDs and verify those IDs.
+A research-finding document in `research/<slug>.md` from `templates/research-finding.md`: topic, summary, detailed findings (with inline citations), methods/sources consulted, and the mandatory non-empty `references` list (each `verified: false` — the **librarian** marks them verified once the research-reviewer accepts). Normalize entities to canonical IDs and verify those IDs.
 
 ## Output contract
 
