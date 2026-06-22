@@ -29,6 +29,13 @@ case "$fp" in
   *) exit 0 ;;
 esac
 
+# Resolve a relative file_path against the JSON cwd (the rest of the hook trusts cwd, not the
+# hook process's cwd), so the PostToolUse on-disk re-check can't silently no-op on a relative path.
+case "$fp" in
+  /*) fpath="$fp" ;;
+  *)  fpath="$cwd/$fp" ;;
+esac
+
 # Resolve a tool from the project-local venv first, then PATH. The zero-global-footprint
 # setup (setup-env) installs ruff/mypy into ./.venv rather than on PATH, so prefer that;
 # fall back to PATH. Echoes a runnable path, or nothing if unavailable (caller skips — fail open).
@@ -75,7 +82,7 @@ if [ "$event" = "PreToolUse" ]; then
   fi
 else
   # PostToolUse — file is on disk; cannot block, so warn.
-  if [ -f "$fp" ] && ! run_checks "$fp"; then
+  if [ -f "$fpath" ] && ! run_checks "$fpath"; then
     printf 'Warning: promoted script %s currently fails the promotion checks; it is not validly promoted and findings must not link to it until fixed (doc 05).%s\n' "$(basename "$fp")" "$CHECK_MSGS" >&2
   fi
   exit 0
