@@ -20,13 +20,43 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)
 
+lexnorm() {
+  # Lexically normalize a path (collapse '', '.', '..', '//') with NO filesystem access, so a
+  # traversal like sub/../data/raw.csv can't slip past the data/ check. Symlink-agnostic by design.
+  local p="$1" seg out abs=0 n
+  local -a stack=()
+  case "$p" in /*) abs=1 ;; esac
+  local oldIFS="$IFS"; IFS='/'
+  for seg in $p; do
+    case "$seg" in
+      ''|.) ;;
+      ..)
+        n=${#stack[@]}
+        if [ "$n" -gt 0 ] && [ "${stack[n-1]}" != ".." ]; then
+          unset 'stack[n-1]'
+        elif [ "$abs" = 0 ]; then
+          stack+=("..")
+        fi
+        ;;
+      *) stack+=("$seg") ;;
+    esac
+  done
+  out="${stack[*]}"; IFS="$oldIFS"
+  if [ "$abs" = 1 ]; then printf '/%s' "$out"; else printf '%s' "$out"; fi
+}
+
 is_under_data() {
-  # Return 0 if $1 resolves under <cwd>/data/.
-  local p="$1"
-  case "$p" in
-    "$cwd"/data/*|"$cwd"/data) return 0 ;;
-    /*) return 1 ;;                                   # other absolute path
-    data/*|data|./data/*|./data) return 0 ;;
+  # Return 0 if $1 — after lexical normalization, with relative paths anchored to cwd —
+  # is under <cwd>/data/.
+  local p="$1" cand cwd_norm
+  cand=$(lexnorm "$p")
+  case "$cand" in
+    /*) : ;;
+    *)  cand=$(lexnorm "$cwd/$cand") ;;
+  esac
+  cwd_norm=$(lexnorm "$cwd")
+  case "$cand" in
+    "$cwd_norm"/data/*|"$cwd_norm"/data) return 0 ;;
   esac
   return 1
 }
