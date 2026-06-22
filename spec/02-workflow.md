@@ -49,6 +49,8 @@ For the sample-by-feature matrix the agent:
 
 The agent builds robust, tested loaders that load both the data and the metadata and **correctly pair every sample with its metadata description**. It then verifies the loaded data against the source and produces descriptive QC: abundance boxplots across samples, PCA, missingness maps, correlation structure.
 
+**Environment precondition.** Stage 3 is the first stage that executes Python, so a usable interpreter must exist before it runs. The floor is **Python ≥ 3.11**; the `setup-env` command establishes a **project-local** environment — detecting an existing Python or, only with the scientist's explicit consent, installing one *into the project* (zero global footprint). It is **live-verified as a Stage 3 precondition** (doc 05.2).
+
 This stage ends at the **integrity gate**, the workflow's hardest precondition (full requirements in doc 05). The gate passes only when:
 
 - loader tests pass (unit, property, planted-truth, edge cases);

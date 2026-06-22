@@ -4,11 +4,10 @@ Deterministic enforcement gates (spec docs 05.5, 08.3). Hook configuration lives
 
 "A convention is only real if something checks it." Hooks fire deterministically on events, so the highest-stakes gates are hooks rather than model memory:
 
-- **No analysis before the integrity gate passes** (doc 02.3 / 05).
+- **The integrity gate's finding-write side** — no `integrity_signoff` / `validated` before the gate passes (doc 02.3 / 05). The *no-analysis-before-the-gate* ordering itself is a command precondition + orchestrator behavior, not a hook.
 - **A script cannot be promoted until tests, types, and lint pass** (doc 05).
 - **Raw data is read-only** — block writes to `data/`.
 - **A finding links only to a promoted script** (doc 03 / 05).
-- **Record-the-finding** behavior during exploration (paired with the project `CLAUDE.md`).
 
 Hooks block via exit code 2 (reason on stderr) or a JSON `permissionDecision: "deny"` on stdout for `PreToolUse`.
 

@@ -74,10 +74,10 @@ Where feasible, derive key numbers two independent ways and reconcile. Because l
 |---|---|
 | Usable Python ≥ 3.11 project env before analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
 | No analysis before integrity gate passes | **Command precondition** + orchestrator behavior (hook gates finding writes) + human sign-off |
-| Script not promoted until tests/types/lint pass | **Hook** |
+| Script not promoted until lint + types pass | **Hook**; tests verified by **code-reviewer** |
 | Raw data read-only; outputs regenerable | **Hook** (block writes to `data/`) |
 | Finding links only to a promoted script | **Hook** / findings-manager check |
-| Record-the-finding during exploration | **Hook** + orchestrator behavior (CLAUDE.md) |
+| Record-the-finding during exploration | **Orchestrator behavior** (CLAUDE.md) |
 | No bare p; correction named; effect+CI present | Stats reviewer |
 | No leakage; CV matched to target; label-shuffle null | Stats reviewer |
 | Canonical tests; moderated models for DE | Stats reviewer |

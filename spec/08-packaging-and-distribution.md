@@ -16,7 +16,7 @@ A first-class goal: a user sets this up with a single Claude Code command, insta
 |---|---|
 | Subagents (doc 04): findings manager, verifier, researcher, librarian, reviewers, coder, statistician, figure agents, writers | `agents/` |
 | Skills (doc 04): publication/protein/source-code research; stats boilerplate guidance; visualization; finding template; verification-task builder; report skills | `skills/` |
-| Workflow entry points (the staged process, doc 02) | `commands/` (slash commands) |
+| Workflow entry points (the staged process, doc 02) + `setup-env` (project-local Python ≥ 3.11 bootstrap) | `commands/` (slash commands) |
 | Deterministic gates (doc 05.5): integrity-gate finding-write check, promotion gate, read-only raw data | `hooks/` |
 | Vetted analysis + visualization library | `lib/` (bundled scripts) |
 | Conventions and specs (docs 05, 06, 07) | `conventions/` + `CLAUDE.md` |
@@ -26,11 +26,10 @@ A first-class goal: a user sets this up with a single Claude Code command, insta
 
 The principle "a convention is only real if something checks it" (doc 01) gets its teeth here. Plugin **skills are model-invoked** (loaded when relevant), which is fine for procedures but unreliable for must-always-fire rules. **Hooks fire deterministically on events**, so the highest-stakes gates are implemented as hooks rather than relying on the model to remember:
 
-- **No analysis before the integrity gate passes** (doc 02.3 / 05).
+- **The integrity gate's finding-write side** — no `integrity_signoff` / `validated` before the gate passes (doc 02.3 / 05). The *no-analysis-before-the-gate* ordering itself is a command precondition + orchestrator behavior, not a hook (doc 02.3; `conventions/enforcement-map.md`).
 - **A script cannot be promoted until tests, types, and lint pass** (doc 05).
 - **Raw data is read-only** (block writes to `data/`).
 - **A finding links only to a promoted script** (doc 03 / 05).
-- **Record-the-finding** behavior during exploration (paired with `CLAUDE.md`).
 
 These map onto Claude Code's tool-use and session lifecycle events; the exact event names are version-dependent (see caveat). Community plugins already use hooks this way (e.g. test-first gates that block writes lacking a failing test, destructive-command blockers), which confirms the pattern is supported.
 
@@ -43,7 +42,7 @@ The plugin manifest (`.claude-plugin/plugin.json`) declares metadata and the com
 This boundary is load-bearing and must stay crisp:
 
 - **The plugin ships the engine** — workflow, agents, skills, commands, hooks, conventions, the `lib/` analysis library, and **universal defaults** (e.g. the base Okabe–Ito color registry). Versioned and shared; identical across all users.
-- **The user's project holds the data and derived state** — the dataset, `state/PROJECT.md`, `state/METADATA.md`, `state/DATA_DESCRIPTION.md`, the project color registry extension, the findings graph and manifest, research, results, figures, and reports. Generated per dataset; unique to the study.
+- **The user's project holds the data and derived state** — the dataset, `state/PROJECT.md`, `state/METADATA.md`, `state/DATA_DESCRIPTION.md`, the project color registry extension, the findings graph and manifest, research, results, figures, reports, and the **project-local Python environment** (`.uv/`, `.venv/` — git-ignored and regenerable from the committed `pyproject.toml` / `uv.lock` / `.python-version`). Generated per dataset; unique to the study.
 
 Plugin skills live in a namespaced cache and coexist with any project-level `.claude/skills/`, so the separation is clean: the engine never carries a study's data, and a study never re-implements the engine.
 
