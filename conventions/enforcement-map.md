@@ -20,7 +20,8 @@
 | Finding links only to a promoted script | 03, 05 | **Hook** + findings-manager | `guard_findings.sh` blocks `validated` linking to `scripts/scratch/`; findings-manager enforces at promotion |
 | Script not promoted until **lint + types** pass | 05.4 | **Hook** | `guard_promotion.sh` — ruff + mypy on `scripts/promoted/*.py` (PreToolUse blocks; PostToolUse warns) |
 | Script not promoted until **tests** pass | 05.4 | **Code-reviewer** | tests aren't run in-hook (slow/unsafe); reviewer verifies unit/property/planted-truth/edge |
-| One analysis script per task; shared code reused, no duplicates | project rule | **Code-reviewer** | script registry (`scripts/manifest.md`) + per-script `__script_meta__`; promoted-imports-only (`conventions/script-registry.md`) |
+| One analysis script per task; shared code reused, no duplicates | project rule | **Code-reviewer** | script registry (`scripts/manifest.md`) + per-script `__script_meta__` header |
+| Promoted script imports only promoted modules | project rule | **Code-reviewer** | a `scripts/promoted/` script may import other promoted modules only — never scratch/unreviewed code, so a finding's computation never silently depends on unreviewed code (`conventions/script-registry.md`) |
 | Record-the-finding during exploration | 03.9 | **Orchestrator behavior** | project `CLAUDE.md` always-on recording; findings-manager assigns/writes |
 | Loader tested + load verified + pairing exact | 05.4 | **Code-reviewer** + integrity-gate checklist + human sign-off | `stage3-loaders` checklist; scientist signs off |
 | Assumptions tested in code; results recorded | 05.4 | **Orchestrator behavior** + code/stats reviewers | Stages 1–2 test inferences rather than assert them |
