@@ -1,6 +1,6 @@
 # Convention — Visualization
 
-*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Implemented by the `lib/` figure templates (seeded into the project); enforced by the figure-reviewer and a dual-export check.*
+*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**; the `lib/` figure templates (seeded into the project) are intended to carry these defaults mechanically but are **pending phase E** — until they ship, the figure-reviewer is the sole active enforcer.*
 
 ## Accuracy & review
 
@@ -40,7 +40,7 @@ Okabe–Ito provides eight distinguishable colors. Beyond eight categories, addi
 3. **Group the long tail** — collapse minor categories into an explicit "other."
 4. **Position/sequential encodings** — for ordinal/numeric categories, use position or a sequential scale instead of categorical color.
 
-The shared figure module (seeded from `lib/`) includes a **guard that raises when a plot would exceed eight categorical colors, requiring the script to choose an explicit strategy** rather than silently recycling colors.
+The shared figure module (seeded from `lib/`) includes a **guard that raises when a plot would exceed eight categorical colors, requiring the script to choose an explicit strategy** rather than silently recycling colors. *(This guard ships with the `lib/` figure template in phase E; until then the figure-reviewer is the sole check for category overflow — and a reviewer cannot reliably see a silently-recycled color, so building this guard is the real fix.)*
 
 ## Figure provenance
 
@@ -52,6 +52,6 @@ Every figure records — and the finding that uses it pins — the producing **s
 |---|---|
 | Render reviewed (PNG), not just code | **Figure-reviewer** |
 | Dual export (SVG + 300 DPI PNG) + separate legend present | **Figure-reviewer** (+ optional hook checking the trio exists) |
-| Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** + `lib/` reads `state/color_registry.json` |
-| ≤8 categorical colors; explicit strategy beyond | `lib/` (raises) + **figure-reviewer** |
+| Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `lib/` reads `state/color_registry.json` — *pending phase E*) |
+| ≤8 categorical colors; explicit strategy beyond | **figure-reviewer** (`lib/` raising-guard *pending phase E*) |
 | Figure provenance pinned; staleness tracked | findings-manager (staleness) + finding `provenance` |

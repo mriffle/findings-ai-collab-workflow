@@ -1,6 +1,6 @@
 # Convention — Statistics
 
-*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts implement these defaults, so agents inherit them by seeding from a template rather than writing fresh statistics code.*
+*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts are intended to implement these defaults so agents inherit them by seeding from a template rather than writing fresh statistics code — but `lib/` is **pending phase E**; until it ships, the stats-reviewer is the sole active enforcer.*
 
 ## Reporting
 
