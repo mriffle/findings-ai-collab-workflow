@@ -21,4 +21,5 @@ Roster (doc 04.2):
 | `researcher` | ✅ | Research one bounded topic → research-finding. |
 | `librarian` | ✅ | Control the research corpus; scope/dispatch research. |
 | `research-reviewer` | ✅ | Fact-check research; verify every reference. |
-| `writer` / `report-reviewer` | ⬜ | Draft + check report sections (reporting phase). |
+| `writer` | ✅ | Draft a report section by projecting selected findings. |
+| `report-reviewer` | ✅ | Claim-source check + status/caveat propagation + coherence pass. |

@@ -8,4 +8,4 @@ Templates:
 - **`research-finding.md`** ✅ — external-knowledge finding: topic, summary, detailed findings, and a mandatory verified-references section (doc 04.4).
 - **`color_registry.json`** ✅ — the category→color map, seeded with universal Okabe–Ito defaults and extended per project (doc 06.5).
 - **`project-CLAUDE.md`** ✅ — the project-scoped standing-instructions file the init command writes into the user's working directory.
-- **`report.md`** ⬜ — report skeleton (Title · Abstract · Methods · Results · Discussion · References), for both QC and research modes (reporting phase, doc 07.3).
+- **`report.md`** ✅ — report skeleton (Title · Abstract · Methods · Results · Discussion · References), for both QC and research modes (doc 07.3).

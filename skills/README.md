@@ -14,6 +14,6 @@ Skills (doc 04.3):
 | `research-publications` | ✅ | Research the literature; cite verifiable DOI/PMID sources. |
 | `research-protein` | ✅ | Research a protein/gene via UniProt/PDB/AlphaFold/STRING/GO, with ID verification. |
 | `research-source-code` | ✅ | Ground a methodological claim in what a tool (DIA-NN, limma, …) actually computes. |
-| report skills | ⬜ | Writing conventions, report structure, assembly/coherence (reporting phase, doc 07). |
+| `report-writing` | ✅ | Report structure, shared-spec discipline, the write/review/assembly/coherence procedure. |
 
 The finding template lives in `templates/finding.md`; the conventions live in `conventions/`.
