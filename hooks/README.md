@@ -13,7 +13,7 @@ Hooks block via exit code 2 (reason on stderr) or a JSON `permissionDecision: "d
 
 ## Built hooks
 
-`hooks.json` wires three guard scripts (invoked as `bash ${CLAUDE_PLUGIN_ROOT}/hooks/<script>`):
+`hooks.json` wires three guard scripts, invoked as `bash "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>` (the quoted path survives an install directory containing spaces). The `bash` wrapper is deliberate: a plugin install isn't guaranteed to preserve the executable bit, and the wrapper runs the script regardless. The scripts also carry a `#!/usr/bin/env bash` shebang and the executable bit, so direct invocation works too.
 
 | Script | Events | Enforces |
 |---|---|---|
