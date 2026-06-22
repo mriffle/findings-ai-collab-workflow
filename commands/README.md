@@ -7,6 +7,7 @@ Commands (invoked as `/findings-workflow:<name>`):
 | Command | Stage | Purpose |
 |---|---|---|
 | `init` | — | Scaffold a user project + write the project `CLAUDE.md` + seed registry/manifest/workflow state. |
+| `setup-env` | — | Establish a project-local Python ≥ 3.11 environment (the Stage 3 precondition). |
 | `stage0-science` | 0 | State the science → `state/PROJECT.md`. |
 | `stage1-metadata` | 1 | Understand + validate the metadata → `state/METADATA.md` (human checkpoint). |
 | `stage2-data` | 2 | Understand the data matrix → `state/DATA_DESCRIPTION.md`. |
