@@ -24,6 +24,11 @@ deliberately omits them.
 
 Scale & missingness: abundances are returned on the file's own scale (proteomics:
 linear intensity, where ``0`` means "not detected"); zeros are preserved exactly.
+The returned :class:`Dataset` carries a ``scale`` tag recording which scale the values
+are on (``"linear"`` by default). The loader does *not* infer scale — that is a Stage-2
+determination — it merely **records** what the scientist established, so the downstream
+normalization / batch-correction templates can refuse scale-incorrect operations (e.g.
+double-logging, or running ComBat on linear intensities) at the contract boundary.
 NaN/missing values are governed by the ``missing`` policy — ``"error"`` (default)
 refuses to load if any value is missing, ``"preserve"`` keeps them — and ``na_values``
 declares which tokens count as missing.
@@ -52,11 +57,21 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+# The scale an abundance matrix is on. The contract that lets the normalization and
+# batch-correction templates enforce scale-correctness (no double-log; ComBat only on a
+# log-ish scale) instead of trusting a convention:
+#   * "linear" — raw intensity (proteomics default); ``0`` = not detected.
+#   * "log2"   — ``log2(x + 1)`` of a linear matrix.
+#   * "glog2"  — VSN / arsinh variance-stabilized (log2-comparable).
+#   * "zscore" — per-sample robust (MAD) z-score in log space; centred at 0.
+Scale = Literal["linear", "log2", "glog2", "zscore"]
+
 __script_meta__: dict[str, object] = {
-    "template": {"name": "wide-data-loader", "version": "0.1"},
+    "template": {"name": "wide-data-loader", "version": "0.2"},
     "kind": "module",
     "provides": [
         "Dataset",
+        "Scale",
         "ReplicateCollapse",
         "load_wide_data",
         "load_precursor_data",
@@ -66,7 +81,8 @@ __script_meta__: dict[str, object] = {
     "description": (
         "Verified loader for wide feature x sample omics matrices + a sample-metadata "
         "table: orientation/pairing checks, optional technical-replicate collapse, "
-        "zero-preserving, fail-loud. Study-agnostic (column names are arguments)."
+        "zero-preserving, fail-loud, scale-tagged. Study-agnostic (column names are "
+        "arguments)."
     ),
 }
 
@@ -105,12 +121,18 @@ class Dataset:
         ``(n_samples, ...)`` the kept sample-metadata rows, in ``abundances`` row
         order, indexed by the sample key (``join_key`` with ``strip_suffix``
         removed). Carries every column from the source metadata file.
+    scale:
+        Which scale ``abundances`` is on — ``"linear"`` (default), ``"log2"``,
+        ``"glog2"``, or ``"zscore"`` (see :data:`Scale`). Stamped by the loader from
+        the Stage-2 determination and updated by each transform (normalization,
+        log2). Downstream templates read it to refuse scale-incorrect operations.
     """
 
     abundances: np.ndarray
     feature_names: np.ndarray
     feature_metadata: pd.DataFrame
     metadata: pd.DataFrame
+    scale: Scale = "linear"
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +332,7 @@ def _assemble(
     require_unique_features: bool,
     expected_n_samples: int | None,
     expected_n_features: int | None,
+    scale: Scale,
 ) -> Dataset:
     """Align ``frame`` (features x samples) to its metadata; build a Dataset."""
     meta_full = _load_metadata(metadata_file, join_key, metadata_sep, numeric_columns)
@@ -361,6 +384,7 @@ def _assemble(
         feature_names=feature_names,
         feature_metadata=feature_ids.reset_index(drop=True),
         metadata=metadata,
+        scale=scale,
     )
 
 
@@ -387,6 +411,7 @@ def load_wide_data(
     expected_n_features: int | None = None,
     data_sep: str = "\t",
     metadata_sep: str = ",",
+    scale: Scale = "linear",
 ) -> Dataset:
     """Load a wide feature x sample matrix and align it to a sample-metadata table.
 
@@ -423,12 +448,16 @@ def load_wide_data(
         If ``True`` (default), raise on duplicate ``feature_id_column`` values.
     expected_n_samples, expected_n_features:
         Optional sanity check on the loaded shape; raise on mismatch.
+    scale:
+        The scale the data file is on, **recorded** on the returned ``Dataset`` (not
+        inferred). Default ``"linear"`` (raw proteomics intensity). Set from the
+        Stage-2 determination — e.g. ``"log2"`` if the file already ships log2 values.
 
     Returns
     -------
     Dataset
         Abundances ``(n_samples, n_features)`` row-aligned to ``metadata``; zeros
-        preserved, missing values governed by ``missing``.
+        preserved, missing values governed by ``missing``; tagged with ``scale``.
     """
     data_path = Path(data_file)
     metadata_path = Path(metadata_file)
@@ -457,6 +486,7 @@ def load_wide_data(
         require_unique_features=require_unique_features,
         expected_n_samples=expected_n_samples,
         expected_n_features=expected_n_features,
+        scale=scale,
     )
 
 
@@ -539,6 +569,7 @@ def load_precursor_data(
     expected_n_features: int | None = None,
     data_sep: str = "\t",
     metadata_sep: str = ",",
+    scale: Scale = "linear",
 ) -> Dataset:
     """Load a precursor (peptide) matrix, collapsing charges to one row per sequence.
 
@@ -547,7 +578,7 @@ def load_precursor_data(
     sequence via :func:`_collapse_charge_states`. ``feature_names`` are the modified
     sequences; the joined protein accessions and chosen charge go in
     ``feature_metadata``. The ``missing`` / ``na_values`` / ``require_unique_features``
-    / ``expected_*`` controls behave as in :func:`load_wide_data`.
+    / ``expected_*`` / ``scale`` controls behave as in :func:`load_wide_data`.
     """
     data_path = Path(data_file)
     metadata_path = Path(metadata_file)
@@ -575,4 +606,5 @@ def load_precursor_data(
         require_unique_features=require_unique_features,
         expected_n_samples=expected_n_samples,
         expected_n_features=expected_n_features,
+        scale=scale,
     )

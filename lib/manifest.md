@@ -18,4 +18,4 @@ with the template as a guide — but it should return the **same structure** so 
 
 | Template | Version | Path | Kind | Provides | Description |
 |----------|---------|------|------|----------|-------------|
-| wide-data-loader | 0.1 | lib/common/data_loading.py | module | `Dataset`, `ReplicateCollapse`, `load_wide_data`, `load_precursor_data` | Verified loader for wide feature×sample omics matrices + a sample-metadata table: orientation/pairing checks, optional technical-replicate collapse, precursor charge-state collapse, zero-preserving, fail-loud. Study-agnostic (column names are arguments); returns the standard `Dataset` contract. |
+| wide-data-loader | 0.2 | lib/common/data_loading.py | module | `Dataset`, `Scale`, `ReplicateCollapse`, `load_wide_data`, `load_precursor_data` | Verified loader for wide feature×sample omics matrices + a sample-metadata table: orientation/pairing checks, optional technical-replicate collapse, precursor charge-state collapse, zero-preserving, fail-loud. Study-agnostic (column names are arguments); returns the standard `Dataset` contract, tagged with a recorded `scale` (`linear`/`log2`/`glog2`/`zscore`). |

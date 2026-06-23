@@ -135,6 +135,50 @@ def test_metadata_carries_all_columns_row_aligned(
 
 
 # --------------------------------------------------------------------------- #
+# Unit — scale tag (recorded, not inferred)
+# --------------------------------------------------------------------------- #
+
+
+def test_scale_defaults_to_linear(protein_case: tuple[Path, Path]) -> None:
+    data_file, meta_file = protein_case
+    ds = dl.load_wide_data(
+        data_file, meta_file, join_key="Replicate", strip_suffix=".raw"
+    )
+    assert ds.scale == "linear"
+
+
+def test_scale_is_recorded_when_given(protein_case: tuple[Path, Path]) -> None:
+    """The loader records the Stage-2 scale verbatim; it does not transform values."""
+    data_file, meta_file = protein_case
+    ds = dl.load_wide_data(
+        data_file, meta_file, join_key="Replicate", strip_suffix=".raw", scale="log2"
+    )
+    assert ds.scale == "log2"
+    # recording the scale must not alter the abundances
+    assert float(ds.abundances.max()) == 302.0
+
+
+def test_precursor_scale_is_recorded(tmp_path: Path) -> None:
+    data = pd.DataFrame(
+        {
+            "protein": ["PA"],
+            "modifiedSequence": ["SEQ1"],
+            "precursorCharge": [2],
+            "sA": [10.0],
+            "sB": [12.0],
+        }
+    )
+    meta = pd.DataFrame({"Replicate": ["sA", "sB"]})
+    ds = dl.load_precursor_data(
+        _write_protein(tmp_path, data),
+        _write_meta(tmp_path, meta),
+        join_key="Replicate",
+        scale="glog2",
+    )
+    assert ds.scale == "glog2"
+
+
+# --------------------------------------------------------------------------- #
 # Unit — technical-replicate collapse
 # --------------------------------------------------------------------------- #
 
