@@ -113,5 +113,5 @@ jobs:
 
       - name: Install from local marketplace (offline, no auth)
         run: |
-          claude plugin marketplace add .
+          claude plugin marketplace add ./
           claude plugin install findings-workflow@findings-workflow

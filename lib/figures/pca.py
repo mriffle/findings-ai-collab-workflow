@@ -397,7 +397,8 @@ def _categorical_values(dataset: Dataset, color_by: str) -> np.ndarray:
             f"color_by column {color_by!r} has {n_bad} missing value(s); a missing "
             f"label cannot be colored. Resolve or relabel them before plotting."
         )
-    return series.to_numpy().astype(str)
+    arr: np.ndarray = series.to_numpy().astype(str)
+    return arr
 
 
 def _continuous_values(dataset: Dataset, color_by: str) -> np.ndarray:
@@ -410,7 +411,8 @@ def _continuous_values(dataset: Dataset, color_by: str) -> np.ndarray:
             f"continuous color_by column {color_by!r} has {n_bad} value(s) that are "
             f"missing or non-numeric; cannot map them to a colormap."
         )
-    return numeric.to_numpy(dtype=float)
+    arr: np.ndarray = numeric.to_numpy(dtype=float)
+    return arr
 
 
 # --------------------------------------------------------------------------- #

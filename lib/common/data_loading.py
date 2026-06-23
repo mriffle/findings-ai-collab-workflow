@@ -316,7 +316,7 @@ def _build_abundances(
             f"{non_numeric[0]!r} (e.g. {example!r}). Declare missing-value tokens via "
             f"na_values, or fix the data."
         )
-    abundances = values.to_numpy(dtype=float).T
+    abundances: np.ndarray = values.to_numpy(dtype=float).T
     if missing == "error":
         nan_count = int(np.isnan(abundances).sum())
         if nan_count:

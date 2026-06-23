@@ -5,6 +5,13 @@
 #
 # This is the ENGINE-DEV env only — it never ships to or governs a user's project.
 # A user's project env is separate, seeded by `setup-env` and pinned in their uv.lock.
+#
+# DELIBERATELY NO type-stub packages (pandas-stubs, scipy-stubs, types-*): a user's
+# setup-env project won't have them, so the templates must pass `mypy --strict` against
+# the libraries' own bundled types. Stubs installed locally can MASK real strict-typing
+# errors (e.g. pandas-stubs types Series.to_numpy() precisely; without it mypy sees Any
+# and flags no-any-return). CI installs exactly this set, so it catches what a dev .venv
+# carrying stubs would hide — keep stubs out of this file.
 
 # Scientific baseline the lib/ templates build on
 numpy==2.4.6

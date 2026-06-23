@@ -160,7 +160,7 @@ def _batch_vector(dataset: Dataset, batch_column: str) -> np.ndarray:
             f"{list(dataset.metadata.columns)}."
         )
     _require_no_na(dataset.metadata[batch_column], batch_column, "combat_correct")
-    batch = dataset.metadata[batch_column].to_numpy().astype(str)
+    batch: np.ndarray = dataset.metadata[batch_column].to_numpy().astype(str)
     if batch.shape[0] != dataset.abundances.shape[0]:
         raise ValueError(
             f"batch vector length {batch.shape[0]} does not match n_samples "
