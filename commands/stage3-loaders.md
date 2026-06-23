@@ -33,7 +33,7 @@ Build loaders (in `scripts/`, seeding from the `lib/` loader template where one 
 - Value ranges plausible.
 - Identifier integrity (no truncation/reformatting — watch the spreadsheet-corruption traps).
 - Missing-value encoding made explicit.
-- Transformation/normalization state confirmed.
+- Transformation/normalization state confirmed, and the loader **records the matching `scale`** on its `Dataset` (`linear`/`log2`/`glog2`/`zscore`, per Stage 2) — this is what lets the normalization/batch templates refuse scale-incorrect steps.
 - **Sample↔metadata pairing complete and exact** — every sample matched once, no orphans/duplicates, counts reconcile on both sides. (Fuzzy matches are a **human checkpoint**: have the scientist confirm the join resolution.)
 
 Where feasible, **derive critical quantities two independent ways and reconcile** — especially the data read itself, here at the data boundary, before any analysis.
@@ -41,6 +41,8 @@ Where feasible, **derive critical quantities two independent ways and reconcile*
 ## QC report
 
 Produce descriptive QC so collaborators can trust the data: abundance boxplots across samples, PCA, missingness maps, correlation structure (figures dual-exported with legends, colored via the registry). Save a QC report under `reports/`.
+
+QC plots (boxplots, PCA) are normally read on **normalized, log-scale** data, so this is the first point the analysis normalization is applied: seed from the `lib/` `normalize` template, use the method confirmed in Stage 2 (median by default), and let the `scale` tag travel with the `Dataset`. **Color PCA/QC by the batch axis** to make batch structure visible, and run `assess_batch_confounding` (the `batch-correct-combat` template) against the covariates of interest — surface any batch↔biology confound to the scientist as part of QC sign-off. Do **not** batch-correct here; correction (batch-label-only, both-ways reporting) is a Stage 4 analysis decision.
 
 ## The integrity gate — pass criteria
 

@@ -16,6 +16,13 @@ This is the open loop the whole system exists to capture. With understanding est
 3. **Capture every substantive insight as a finding — the moment it emerges.** Dispatch the **findings-manager** to record it. *What counts:* a tangible, specific, evidence-bearing observation — if it has an effect, a statistic, or a concrete claim someone might later cite, record it. **Bias toward capturing too much**; capture is cheap and low-bar (`candidate`). Give the scientist a brief, non-disruptive notice ("recorded as finding 0042"). Do not stop the flow to apply rigor — rigor is applied at promotion (Stage 5).
 4. **Keep the exploration log honest.** Append what was looked at and discarded to `findings/exploration-log.md` — this is the multiplicity context that informs each finding's caveats. Mark findings `exploratory` by default; confirmatory requires held-out/orthogonal data (Stage 5).
 
+## Normalization & batch correction (analysis preprocessing)
+
+Most analyses run on normalized, log-scale data, and some warrant batch correction. Both are recorded scientific choices — seed from the `lib/` templates and carry the decision into `provenance.params` (`conventions/statistics.md`):
+
+- **Normalization** — seed from the `normalize` template; use the method confirmed in Stage 2 (median by default; MAD/VSN if the scientist chose them). The `scale` tag prevents double-logging.
+- **Batch correction** — seed from `batch-correct-combat`. It is **batch-label-only** (never hand ComBat the covariate of interest — under confounding that launders a batch artifact into the signal under test). Before correcting: run `assess_batch_confounding`, surface the result, and get explicit scientist **sign-off** if a covariate of interest is confounded with batch. Then **report the key analysis both corrected and uncorrected** — survival-of-correction is the test; if the signal disappears it is confounded with batch and not attributable to biology. Put that conclusion in the finding's caveats.
+
 ## Skepticism calibration
 
 **Generous here.** Capture freely as candidates. A main agent that doubts everything in real time kills the exploration the system exists to capture. The ruthless skepticism lives at promotion (Stage 5), not at every breath.

@@ -26,9 +26,9 @@ relationships: []
 provenance:
   data_version: "<sha256:... or version stamp>"
   script: { path: "scripts/scratch/<file>.py", commit: "<short-sha>" }
-  params: {}
+  params: {}                            # analysis params incl. preprocessing — e.g. { normalization: "median", log2: true, batch_correct: { method: "combat", batch_column: "Cohort", covariate_preserved: null } }. Record the normalization method; for batch correction, record the batch column and that no covariate was preserved (batch-label-only).
   environment: "<lockfile ref, e.g. env/uv.lock@commit>"
-  seeded_from: null                     # { template: "<lib template>", version: "<ver>" } if adapted from a lib/ template; null if from scratch
+  seeded_from: null                     # { template: "<lib template>", version: "<ver>" } if adapted from a lib/ template (e.g. wide-data-loader, normalize, batch-correct-combat); null if from scratch
   seed: null                            # required where anything stochastic ran
 
 # (required) The numbers. No bare p-values: effect size + CI + corrected p with the correction named.

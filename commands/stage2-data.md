@@ -15,11 +15,18 @@ For the data matrix:
 
 - **Orientation, shape, identifier formats** — determine (do not assume) whether rows are samples or features; get the shape; characterize the feature-id and sample-id schemes.
 - **Examine feature names, sample names, and values.**
-- **Transformation state** — log vs linear (don't guess; check distributions and ranges).
-- **Normalization state** — whether and how the data was normalized.
+- **Transformation state** — log vs linear (don't guess; check distributions and ranges). This is the `scale` the loader will record on its `Dataset` (`linear`/`log2`/`glog2`/`zscore`); the downstream normalization and batch-correction templates read it to refuse scale-incorrect steps (e.g. double-logging, ComBat on linear data), so getting it right here is load-bearing.
+- **Normalization state** — whether and how the data has *already* been normalized (distinct from the normalization *you* will apply for analysis — see the decisions below).
 - **Missing-value encoding** — how missingness is represented, and whether tokens are interchangeable. **They are not:** `0`, `NA`, `NaN`, empty string, and tool tokens like `"Filtered"` mean different things. Conflating a true zero with missing-not-at-random changes every downstream statistic. Identify and decide deliberately.
 - **Characterize missingness structure, contaminants, decoys, and duplicates.**
 - **Run tests against your current understanding and surface problems.** Assumptions are hypotheses (doc 05).
+
+### Preprocessing decisions to confirm with the scientist
+
+These are *analysis* choices (not facts about the raw file), but they depend on what you find above, so surface them now and record the decision in `state/DATA_DESCRIPTION.md`. They are applied later (QC in Stage 3, analysis in Stage 4), seeding from the `lib/` `normalize` and `batch-correct-combat` templates:
+
+- **Normalization method.** Recommend **median** (simple, interpretable, linear in → linear out) and confirm with the scientist; offer **MAD** (robust per-sample z-score) and **VSN** (variance-stabilizing) as alternatives. It is a recorded scientific choice, not a silent default. Respect scale — MAD and VSN already log internally, so don't log again (`conventions/statistics.md`).
+- **Batch axis and confounding.** If the design has a batch axis (e.g. cohort/run/plate, identified in Stage 1), name it and surface any **batch↔biology confounding** (carried from Stage 1; quantified later by `assess_batch_confounding`). A variable of interest aliased with batch limits what any statistic can claim. Batch correction, when done, uses the **batch label only** — never the covariate of interest (it would launder a confounded artifact into the signal under test).
 
 ### Watch for the domain fidelity traps (doc 05.4)
 
@@ -31,7 +38,7 @@ For the data matrix:
 
 ## Output — `state/DATA_DESCRIPTION.md`
 
-A verified description containing: orientation and shape; feature and sample identifier schemes; transformation/normalization state; missing-value semantics; contaminant/decoy handling decisions; known data-quality issues; and the **data-version stamp**. Same regeneration and stamping discipline as `METADATA.md`.
+A verified description containing: orientation and shape; feature and sample identifier schemes; transformation/normalization state (incl. the `scale` the loader will record); missing-value semantics; contaminant/decoy handling decisions; the **preprocessing decisions confirmed above** (normalization method; batch axis + any confound); known data-quality issues; and the **data-version stamp**. Same regeneration and stamping discipline as `METADATA.md`.
 
 ## Then
 

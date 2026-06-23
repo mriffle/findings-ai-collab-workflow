@@ -56,11 +56,11 @@ The schema, status machine, edge ontology, phase semantics, and the `validated` 
 |---|---|
 | `state/PROJECT.md` | Domain, design, scientific goals (Stage 0). |
 | `state/METADATA.md` | Verified column meanings, design, confounds, join key; data-version stamped (Stage 1). |
-| `state/DATA_DESCRIPTION.md` | Orientation, shape, transform/normalization, missingness semantics, issues; data-version stamped (Stage 2). |
+| `state/DATA_DESCRIPTION.md` | Orientation, shape, transform/normalization + the recorded `scale`, missingness semantics, the confirmed preprocessing decisions (normalization method; batch axis + any confound), issues; data-version stamped (Stage 2). |
 | `state/color_registry.json` | Category→color map; universal defaults seeded, extended per project once metadata is understood. |
 
 These are canonical, regenerable, version-stamped references — never hand-edited into inconsistency with the data.
 
 ## Statistical & correctness conventions (enforced by reviewer agents + hooks)
 
-No bare p-values (always effect size + CI + a **named** multiple-testing correction); report all tests run; prefer canonical/moderated models for differential abundance; **no data leakage** (learn preprocessing inside CV folds); match CV to the generalization target; mandate a label-shuffle null for classifiers; treat small-n as exploratory. Assumptions are hypotheses — test them in code and record the result. Full text in the plugin's `conventions/`.
+No bare p-values (always effect size + CI + a **named** multiple-testing correction); report all tests run; prefer canonical/moderated models for differential abundance; normalization is a recorded choice (median by default; respect the `scale` tag — never double-log); **batch correction is batch-label-only** (never hand ComBat the covariate of interest) and the key analysis is reported **corrected and uncorrected** (survival-of-correction is the test under confounding); **no data leakage** (learn preprocessing inside CV folds); match CV to the generalization target; mandate a label-shuffle null for classifiers; treat small-n as exploratory. Assumptions are hypotheses — test them in code and record the result. Full text in the plugin's `conventions/`.
