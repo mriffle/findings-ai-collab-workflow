@@ -122,6 +122,9 @@ Then add the baseline with uv (this resolves, installs into `./.venv`, and write
 # The normalize template is version-sensitive (MADNormalizer's scaling default and the
 # VSN engine API), so pin it; only add when the study normalizes (omics intensities):
 ./.uv/bin/uv add 'pronoms==0.4.0'
+# ComBat for the batch-correction template (pycombat exposes `Combat`); add only when
+# the study has a batch axis to correct:
+./.uv/bin/uv add 'pycombat==0.20'
 ```
 
 The **dev tooling is not optional**: `ruff` + `mypy` power the promotion hook and `pytest` + `hypothesis` power the code-reviewer's test check. Without them in `./.venv`, the promotion gate degrades to a no-op. The scientific baseline is a sensible default — add/remove packages as the study needs (`uv add` / `uv remove`), and the lockfile updates.
