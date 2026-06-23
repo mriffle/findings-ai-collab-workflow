@@ -4,15 +4,19 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard_readonly_data.sh" },
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard_findings.sh" },
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard_promotion.sh" }
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/bin/python", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_readonly_data.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_readonly_data.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/bin/python", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_findings.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_findings.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/bin/python", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_promotion.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_promotion.py"] }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard_readonly_data.sh" }
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/bin/python", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_readonly_data.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_readonly_data.py"] }
         ]
       }
     ],
@@ -20,7 +24,8 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard_promotion.sh" }
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/bin/python", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_promotion.py"] },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/guard_promotion.py"] }
         ]
       }
     ]

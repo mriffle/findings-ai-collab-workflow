@@ -5,7 +5,7 @@ description: "Stage 4 — Explore ⇄ record findings (the heart). Run boilerpla
 
 # Stage 4 — Explore ⇄ record findings  (the heart)
 
-**Precondition (hard):** `state/workflow.json` shows `integrity_gate.passed: true`. **If it is not true, refuse** — no analysis before the integrity gate passes (doc 02.3). Tell the scientist to complete `stage3-loaders`. (This ordering is enforced by *this precondition* + orchestrator behavior; `guard_findings.sh` additionally blocks any finding that claims sign-off / `validated` before the gate.)
+**Precondition (hard):** `state/workflow.json` shows `integrity_gate.passed: true`. **If it is not true, refuse** — no analysis before the integrity gate passes (doc 02.3). Tell the scientist to complete `stage3-loaders`. (This ordering is enforced by *this precondition* + orchestrator behavior; `guard_findings.py` additionally blocks any finding that claims sign-off / `validated` before the gate.)
 
 This is the open loop the whole system exists to capture. With understanding established and the read verified, explore the data *with* the scientist and turn insight into durable findings.
 

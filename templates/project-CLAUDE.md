@@ -20,7 +20,7 @@ Stage 5  Independent validation       → validated findings
 Stage 6  Reporting                     → reports/
 ```
 
-**No Stage 4 analysis may begin until the integrity gate passes** (loaders tested and verified against source; sample↔metadata pairing complete and exact; scientist signs off). The `stage4-explore` command enforces this as a hard precondition, and a hook (`guard_findings.sh`) blocks any finding that claims sign-off or `validated` status before the gate.
+**No Stage 4 analysis may begin until the integrity gate passes** (loaders tested and verified against source; sample↔metadata pairing complete and exact; scientist signs off). The `stage4-explore` command enforces this as a hard precondition, and a hook (`guard_findings.py`) blocks any finding that claims sign-off or `validated` status before the gate.
 
 **Driving the workflow.** Each stage has a command (invoked as `/findings-workflow:<name>`): `stage0-science`, `stage1-metadata`, `stage2-data`, `stage3-loaders`, `stage4-explore`, `stage5-validate`, `stage6-report`. Run `status` any time to see the pipeline position, the integrity-gate state, and the findings breakdown. Each stage command refuses to run until its preconditions are met; `state/workflow.json` is the single source of truth for progress and the gate (never hand-edit it loosely — the stage commands maintain it). The scientist can also just talk to you — the commands structure the work, but the collaboration drives it.
 

@@ -12,7 +12,7 @@ It is the structure the findings-manager queries to judge **novelty**, detect **
 
 ## Why Markdown (not JSON)
 
-This index is written and read by **LLM agents** (the findings-manager maintains it; the `status` command and writers read it) — it has no non-LLM parser. Markdown + a YAML frontmatter block is more robust for an LLM to emit correctly (no brace/comma/quote fragility), supports comments/notes, and is human-glanceable. JSON in this project is reserved for the files a non-LLM parser actually consumes (`state/workflow.json` → the bash/jq hook; `state/color_registry.json` → Python plotting). See the format convention in the engine `CLAUDE.md`.
+This index is written and read by **LLM agents** (the findings-manager maintains it; the `status` command and writers read it) — it has no non-LLM parser. Markdown + a YAML frontmatter block is more robust for an LLM to emit correctly (no brace/comma/quote fragility), supports comments/notes, and is human-glanceable. JSON in this project is reserved for the files a non-LLM parser actually consumes (`state/workflow.json` → the Python hook; `state/color_registry.json` → Python plotting). See the format convention in the engine `CLAUDE.md`.
 
 ## Format
 

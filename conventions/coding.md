@@ -33,10 +33,10 @@ Code that has not passed tests, **strict** type-checking, and **strict** lint is
 | Rule | Enforced by |
 |---|---|
 | Usable Python ≥ 3.11 project env before any analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
-| Raw data read-only; outputs regenerable | **Hook** (`guard_readonly_data.sh`) |
-| Script not promoted until **strict** lint + types pass | **Hook** (`guard_promotion.sh`: `ruff check` strict rule set + `mypy` strict, via the project config) |
+| Raw data read-only; outputs regenerable | **Hook** (`guard_readonly_data.py`) |
+| Script not promoted until **strict** lint + types pass | **Hook** (`guard_promotion.py`: `ruff check` strict rule set + `mypy` strict, via the project config) |
 | Script not promoted until **tests** pass | **Code-reviewer** agent (tests aren't run in-hook) |
-| Finding links only to a promoted script | **Hook** (`guard_findings.sh`) + findings-manager |
+| Finding links only to a promoted script | **Hook** (`guard_findings.py`) + findings-manager |
 | Seeds/locked-env/logging/fail-loud/parameterization | **Code-reviewer** agent (against this doc) |
 
 The hook enforces the fast, safe, deterministic checks (lint, types, read-only data, promoted-link). Test-passing and the qualitative rules (fail-loud, parameterization, seeds recorded) are verified by the code-reviewer, because running arbitrary tests synchronously inside a tool-use hook is slow and unsafe. See `conventions/enforcement-map.md`.

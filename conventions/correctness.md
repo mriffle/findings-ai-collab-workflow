@@ -57,7 +57,7 @@ Where feasible, **derive key numbers two independent ways and reconcile.** Becau
 | Rule | Enforced by |
 |---|---|
 | No exploratory analysis before the integrity gate passes (stage ordering) | **Command precondition** (`stage4-explore` refuses unless `state/workflow.json .integrity_gate.passed`) + orchestrator behavior — *not* a hook (a tool-use event can't separate exploratory analysis from legitimate Stage 3 loader/QC work) |
-| No finding claims `integrity_signoff: true` / `validated` before the gate | **Hook** (`guard_findings.sh` reads `state/workflow.json .integrity_gate.passed`) + findings-manager + human sign-off |
-| Raw data read-only | **Hook** (`guard_readonly_data.sh`) |
+| No finding claims `integrity_signoff: true` / `validated` before the gate | **Hook** (`guard_findings.py` reads `state/workflow.json .integrity_gate.passed`) + findings-manager + human sign-off |
+| Raw data read-only | **Hook** (`guard_readonly_data.py`) |
 | Loader tested + load verified + pairing exact | **Code-reviewer** + the Stage 3 integrity-gate checklist + human sign-off |
 | Assumptions tested in code, results recorded | Orchestrator behavior (Stages 1–2) + code/stats reviewers |

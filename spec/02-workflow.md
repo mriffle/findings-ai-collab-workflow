@@ -58,7 +58,7 @@ This stage ends at the **integrity gate**, the workflow's hardest precondition (
 - sample↔metadata pairing is complete and exact (every sample matched once, no orphans/duplicates, counts reconcile on both sides);
 - the scientist signs off.
 
-**No Stage 4 analysis may begin until the integrity gate passes**, not by trusting the agent to remember. *(Implementation divergence: as built, this ordering is carried by the `stage4-explore` command precondition + orchestrator behavior, and the finding-write side is hook-enforced via `guard_findings.sh`. It is **not** a standalone analysis-blocking hook — a single tool-use event can't cleanly separate exploratory analysis from legitimate Stage 3 loader/QC work. See `conventions/enforcement-map.md`.)*
+**No Stage 4 analysis may begin until the integrity gate passes**, not by trusting the agent to remember. *(Implementation divergence: as built, this ordering is carried by the `stage4-explore` command precondition + orchestrator behavior, and the finding-write side is hook-enforced via `guard_findings.py`. It is **not** a standalone analysis-blocking hook — a single tool-use event can't cleanly separate exploratory analysis from legitimate Stage 3 loader/QC work. See `conventions/enforcement-map.md`.)*
 
 ## 2.4 Stage 4 — Explore ⇄ record findings (the heart)
 

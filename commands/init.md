@@ -55,7 +55,7 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
    ```json
    { "schema_version": "1", "current_stage": 0, "science_done": false, "metadata_done": false, "data_done": false, "integrity_gate": { "passed": false, "signed_off_by": null, "date": null, "data_version": null, "qc_report": null }, "environment": { "mode": null, "python_min": "3.11", "interpreter": null, "configured": false, "declined": false, "updated": null }, "updated": "<today's date, YYYY-MM-DD>" }
    ```
-   This is the single source of truth for pipeline position; the stage commands update it, and `guard_findings.sh` reads `integrity_gate.passed` from it to gate finding writes (analysis ordering itself is enforced by the `stage4-explore` command precondition + orchestrator behavior).
+   This is the single source of truth for pipeline position; the stage commands update it, and `guard_findings.py` reads `integrity_gate.passed` from it to gate finding writes (analysis ordering itself is enforced by the `stage4-explore` command precondition + orchestrator behavior).
 
 6. **Mark `data/` read-only by convention** — if `data/README.md` is absent, create it stating: raw data here is immutable and read-only (a hook blocks writes); place the dataset and its metadata file here; everything in `results/` and `figures/` is regenerated from this plus a script.
 
