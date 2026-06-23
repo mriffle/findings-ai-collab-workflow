@@ -42,7 +42,7 @@ from pronoms.normalizers import MADNormalizer, MedianNormalizer, VSNNormalizer
 from common.data_loading import LOG_SCALES, Dataset, Scale
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "normalize", "version": "0.2"},
+    "template": {"name": "normalize", "version": "0.3"},
     "kind": "module",
     "provides": [
         "NormalizationMethod",
@@ -157,22 +157,29 @@ def normalize(dataset: Dataset, method: NormalizationMethod) -> Dataset:
     return _independent(dataset, normalized, _OUTPUT_SCALE[method])
 
 
-def log2_transform(dataset: Dataset) -> Dataset:
-    """Apply ``log2(x + 1)`` to a linear-scale :class:`Dataset`; return a log2 one.
+def log2_transform(dataset: Dataset, *, pseudocount: float = 1.0) -> Dataset:
+    """Apply ``log2(x + pseudocount)`` to a linear :class:`Dataset`; return a log2 one.
 
-    The ``+1`` pseudocount keeps not-detected zeros at exactly ``0`` and avoids
-    ``log2(0) = -inf``. Pair this with ``method="median"`` (which stays linear) to reach
-    a log scale; do **not** apply it to ``"mad"`` / ``"vsn"`` output (already logged) —
-    the scale guard enforces this.
+    ``pseudocount`` defaults to ``1.0``, which keeps not-detected zeros at exactly ``0``
+    and avoids ``log2(0) = -inf`` — appropriate for raw intensity where ``0`` means
+    not-detected. A different value shifts zeros to ``log2(pseudocount)``; choose it to
+    suit the dynamic range (a ``+1`` count is negligible for large intensities but
+    distorts values near 1, e.g. ratio data). Must be positive.
+
+    Pair this with ``method="median"`` (which stays linear) to reach a log scale; do
+    **not** apply it to ``"mad"`` / ``"vsn"`` output (already logged) — the scale guard
+    enforces this.
     """
+    if pseudocount <= 0:
+        raise ValueError(f"pseudocount must be positive; got {pseudocount}.")
     _require_linear(dataset, "log2_transform")
     _require_finite(dataset.abundances, "log2_transform")
-    if np.any(dataset.abundances < 0):
+    if np.any(dataset.abundances < -pseudocount):
         raise ValueError(
-            "log2_transform requires non-negative abundances (log2(x+1) is undefined "
-            "below -1); the Dataset has negative values."
+            f"log2_transform requires abundances >= -pseudocount ({-pseudocount}); the "
+            f"Dataset has smaller values (log2 would be undefined)."
         )
-    return _independent(dataset, np.log2(dataset.abundances + 1.0), "log2")
+    return _independent(dataset, np.log2(dataset.abundances + pseudocount), "log2")
 
 
 def median_center(dataset: Dataset) -> Dataset:

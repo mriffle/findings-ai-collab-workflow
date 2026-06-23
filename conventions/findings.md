@@ -72,7 +72,7 @@ provenance:
 
 - `script.path` **must be under `scripts/promoted/`** before the finding can be `validated` — a finding may link only to a promoted (reviewed, tested) script (doc 05.1). A `candidate` may temporarily reference a scratch script, but promotion to `validated` requires a promoted path + commit.
 - `data_version` is the hash/stamp the staleness machinery compares against (§7, doc 03.8).
-- `seeded_from` records **template lineage** — which `lib/` template (and its version) this project-local script was adapted from. It is provenance/attribution, **not** a runtime dependency: the finding is regenerable from the promoted script itself. Lineage lets the findings-manager flag derived scripts for re-review when a `lib/` template is later corrected. `null` for a script written from scratch.
+- `seeded_from` records **template lineage** — which `lib/` template (and its version) this project-local script was adapted from. It is provenance/attribution, **not** a runtime dependency: the finding is regenerable from the promoted script itself. Lineage lets the findings-manager flag derived scripts for re-review when a `lib/` template is later corrected. `null` for a script written from scratch. The fields map to the source template's `__script_meta__` `template:` block — `seeded_from.template` = its `name`, `seeded_from.version` = its `version`.
 
 ### 2.3 `evidence` — the numbers
 

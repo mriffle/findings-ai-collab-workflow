@@ -119,6 +119,19 @@ def test_median_then_log2_chains_to_log2_scale() -> None:
     assert out.scale == "log2"
 
 
+def test_log2_custom_pseudocount() -> None:
+    ds = _ds([[0.0, 3.0, 7.0]])
+    out = norm.log2_transform(ds, pseudocount=2.0)
+    np.testing.assert_allclose(out.abundances, np.log2([[2.0, 5.0, 9.0]]))
+    assert out.scale == "log2"
+
+
+def test_log2_rejects_nonpositive_pseudocount() -> None:
+    ds = _ds([[1.0, 2.0]])
+    with pytest.raises(ValueError, match="pseudocount must be positive"):
+        norm.log2_transform(ds, pseudocount=0.0)
+
+
 def test_median_center_planted_truth() -> None:
     """Log-domain median normalization: subtract each sample's median; scale kept."""
     ds = _ds([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], scale="log2")
@@ -174,9 +187,9 @@ def test_normalize_refuses_nan() -> None:
         norm.normalize(ds, "median")
 
 
-def test_log2_refuses_negative() -> None:
-    ds = _ds([[1.0, -2.0, 3.0]])
-    with pytest.raises(ValueError, match="non-negative"):
+def test_log2_refuses_below_minus_pseudocount() -> None:
+    ds = _ds([[1.0, -2.0, 3.0]])  # -2 < -pseudocount(1.0) -> log2 undefined
+    with pytest.raises(ValueError, match="log2 would be undefined"):
         norm.log2_transform(ds)
 
 

@@ -35,6 +35,8 @@ __script_meta__ = {
 }
 ```
 
+A **project script** declares `task` + `seeded_from` as above. A **`lib/` template** instead carries a `template: {name, version}` identity block (its *own* name+version — the source of truth that `lib/manifest.md` indexes) and sets `seeded_from: null`. The two link up: a project script's `seeded_from.template` is the source template's `template.name`, and `seeded_from.version` its `template.version`.
+
 ## Derived index: `scripts/manifest.md`
 
 A Markdown file (YAML frontmatter + one table), **regenerated from the per-script headers** — same model as the findings manifest. It is the at-a-glance "what scripts exist, what they provide/use" view, written/read by LLM agents (so Markdown, not JSON — see the format convention in the engine `CLAUDE.md`).

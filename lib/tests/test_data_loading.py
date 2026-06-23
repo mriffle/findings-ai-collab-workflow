@@ -414,6 +414,26 @@ def test_precursor_charge_selection_and_protein_join(tmp_path: Path) -> None:
     np.testing.assert_array_equal(ds.abundances[:, seq1_col], np.array([100.0, 120.0]))
 
 
+def test_precursor_raises_on_non_integer_charge(tmp_path: Path) -> None:
+    """A charge label like '2+' must fail loud with a clear message, not a raw cast."""
+    data = pd.DataFrame(
+        {
+            "protein": ["PA"],
+            "modifiedSequence": ["SEQ1"],
+            "precursorCharge": ["2+"],
+            "sA": [10.0],
+            "sB": [12.0],
+        }
+    )
+    meta = pd.DataFrame({"Replicate": ["sA", "sB"]})
+    with pytest.raises(ValueError, match="Non-integer values in charge column"):
+        dl.load_precursor_data(
+            _write_protein(tmp_path, data),
+            _write_meta(tmp_path, meta),
+            join_key="Replicate",
+        )
+
+
 def test_precursor_raises_when_shared_rows_disagree(tmp_path: Path) -> None:
     """Two proteins carry SEQ1 at the same (winning) charge but with different sample
     values — not the identical duplicates the collapse assumes. Must fail loud, not

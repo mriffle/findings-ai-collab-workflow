@@ -79,7 +79,7 @@ Scale = Literal["linear", "log2", "log10", "ln", "glog2", "zscore", "ratio"]
 LOG_SCALES: frozenset[Scale] = frozenset({"log2", "log10", "ln", "glog2", "zscore"})
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "wide-data-loader", "version": "0.3"},
+    "template": {"name": "wide-data-loader", "version": "0.4"},
     "kind": "module",
     "provides": [
         "Dataset",
@@ -555,7 +555,16 @@ def _collapse_charge_states(
         .agg(lambda s: ",".join(sorted(set(s.astype(str)))))
         .to_numpy(dtype=str)
     )
-    charges = grouped[charge_column].first().to_numpy(dtype=int)
+    charge_values = grouped[charge_column].first()
+    charges_numeric = pd.to_numeric(charge_values, errors="coerce")
+    if charges_numeric.isna().any():
+        bad = charge_values[charges_numeric.isna()].unique().tolist()
+        raise ValueError(
+            f"Non-integer values in charge column {charge_column!r}: {bad[:5]}. "
+            f"Charges must be plain integers (e.g. 2, 3); strip any suffix such as '+' "
+            f"in the loader call before collapsing."
+        )
+    charges = charges_numeric.to_numpy(dtype=int)
 
     feature_ids = pd.DataFrame(
         {protein_column: proteins, sequence_column: sequences, charge_column: charges}
