@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1 — the hook guards, on every OS. This is the cross-platform change the
+  # bash->Python port was made for, so it runs on Linux, macOS, AND Windows.
+  # Stdlib-only to run; ruff/mypy are installed so the real-tool promotion path
+  # (and the strict lint/type bar on the guards) is exercised on every OS.
+  hooks:
+    name: hooks (guards) — ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # the workflow's floor (conventions/coding.md)
+      - name: Install lint/type tools
+        run: python -m pip install ruff==0.15.18 mypy==2.1.0
+      - name: Guard synthetic-event tests
+        run: python hooks/test_guards.py
+      - name: Lint guards (ruff, strict config)
+        run: ruff check hooks/
+      - name: Type-check guards (mypy --strict)
+        run: mypy hooks/
+
+  # Job 2 — the lib/ template scripts: strict lint + types + the test suite.
+  # Linux on the floor (3.11) and the dev version (3.12). Numerics are largely
+  # platform-stable, so the cross-OS axis lives in Job 1; here the axis is Python
+  # version. Slow smoke tests (real testdata, git-ignored) are deselected.
+  lib:
+    name: lib templates — py${{ matrix.python }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dev/test deps (pinned)
+        run: python -m pip install -r requirements-dev.txt
+      - name: Lint (ruff, strict rule set)
+        run: ruff check lib/
+      - name: Type-check templates (mypy --strict)
+        run: mypy lib/common lib/figures
+      - name: Tests (pytest, excl. slow smoke)
+        run: pytest -m "not slow"
+
+  # Job 3 — the plugin installs cleanly on every OS. All steps are offline and
+  # need NO authentication: `plugin validate` is local schema checking, and a
+  # local marketplace add + install touches no remote. (No model is driven here.)
+  plugin:
+    name: plugin install — ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          found=
+          for d in "$HOME/.local/bin" "$HOME/.claude/bin" "$HOME/bin"; do
+            if [ -x "$d/claude" ]; then echo "$d" >> "$GITHUB_PATH"; found=1; break; fi
+          done
+          [ -n "$found" ] || { echo "claude not found after install"; exit 1; }
+
+      - name: Install Claude Code CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://claude.ai/install.ps1 | iex
+          $cands = @(
+            (Join-Path $env:USERPROFILE ".local\bin"),
+            (Join-Path $env:USERPROFILE ".claude\bin"),
+            (Join-Path $env:LOCALAPPDATA "Programs\claude")
+          )
+          $found = $false
+          foreach ($d in $cands) {
+            if (Test-Path (Join-Path $d "claude.exe")) {
+              Add-Content -Path $env:GITHUB_PATH -Value $d; $found = $true; break
+            }
+          }
+          if (-not $found) { Write-Error "claude.exe not found after install"; exit 1 }
+
+      - name: Version
+        run: claude --version
+
+      - name: Validate plugin (offline, no auth)
+        run: claude plugin validate .
+
+      - name: Install from local marketplace (offline, no auth)
+        run: |
+          claude plugin marketplace add .
+          claude plugin install findings-workflow@findings-workflow

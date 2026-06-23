@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+
+import guard_promotion
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PASS = 0
@@ -178,6 +181,15 @@ def test_promotion() -> None:
     check("clean content allowed",
           _promo(proj, "PreToolUse", "scripts/promoted/ok.py", CLEAN_PY), 0)
 
+    # Cross-platform: when a real ruff is available (e.g. in CI on every OS,
+    # incl. Windows), a lint-failing script must block — this exercises the actual
+    # tool-execution path, not a POSIX-only fake. `import os` (unused) trips F401.
+    if shutil.which("ruff"):
+        rp = init_project()
+        check("real ruff blocks a lint-failing script",
+              _promo(rp, "PreToolUse", "scripts/promoted/bad.py", "import os\n"),
+              2, "promotion checks")
+
     if os.name == "posix":
         blk = _seed_promo_project(ruff_rc=1, mypy_rc=0)
         check("failing ruff blocks (PreToolUse)",
@@ -197,10 +209,28 @@ def test_promotion() -> None:
               _promo(post, "PostToolUse", "scripts/promoted/p.py"), 0, "Warning")
 
 
+def test_resolve_tool() -> None:
+    """The OS-specific venv tool resolution (the Windows `.venv/Scripts/*.exe`
+    branch is the one the bash guard couldn't have on Windows)."""
+    print("guard_promotion.resolve_tool (project venv layout)")
+    proj = init_project()
+    rel = ("bin", "ruff") if os.name == "posix" else ("Scripts", "ruff.exe")
+    full = os.path.join(proj, ".venv", *rel)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w", encoding="utf-8") as fh:
+        fh.write("")
+    if os.name == "posix":
+        os.chmod(full, 0o755)
+    got = guard_promotion.resolve_tool("ruff", proj)
+    check("resolves the OS-specific .venv tool path",
+          (0 if got == full else 1, f"got={got!r} want={full!r}"), 0)
+
+
 def main() -> int:
     test_readonly()
     test_findings()
     test_promotion()
+    test_resolve_tool()
     print(f"\n{PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
 

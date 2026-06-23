@@ -1,5 +1,7 @@
 # The Findings Workflow
 
+[![CI](https://github.com/mriffle/findings-ai-collab-workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/mriffle/findings-ai-collab-workflow/actions/workflows/ci.yml)
+
 *A collaborative, provenance-tracked paradigm for AI-assisted scientific data analysis, distributed as a Claude Code plugin.*
 
 Today an AI assistant is used as a **transient analyst**: insights surface in conversation and evaporate, exploratory tests pile up untracked, results can't be regenerated, and speculative and solid claims blur together. The Findings Workflow inverts this. As a scientist and Claude Code explore a dataset together, **every substantive insight is captured as a structured, regenerable, independently validated finding** that pins its inputs, records its caveats and lifecycle status, and links into a queryable **findings graph**. The durable output is not a chat transcript — it is a curated body of knowledge.

@@ -1,0 +1,25 @@
+# Engine-development / CI dependency set for building & testing the lib/ template
+# scripts in THIS repo. Pinned to the known-good environment the committed test
+# suite passes against (mirrors the strict bar in conventions/coding.md). The
+# .venv it populates is git-ignored and regenerable: `pip install -r requirements-dev.txt`.
+#
+# This is the ENGINE-DEV env only — it never ships to or governs a user's project.
+# A user's project env is separate, seeded by `setup-env` and pinned in their uv.lock.
+
+# Scientific baseline the lib/ templates build on
+numpy==2.4.6
+pandas==3.0.3
+scipy==1.18.0
+scikit-learn==1.9.0
+matplotlib==3.11.0
+statsmodels==0.14.6
+
+# Domain deps the normalize / batch-correct templates seed from
+pronoms==0.4.0
+pycombat==0.20
+
+# Quality + test toolchain (the promotion-gate lint/types + the code-reviewer's test bar)
+ruff==0.15.18
+mypy==2.1.0
+pytest==9.1.1
+hypothesis==6.155.7
