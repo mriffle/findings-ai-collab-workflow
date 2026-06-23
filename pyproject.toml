@@ -1,0 +1,27 @@
+# Engine-development config for building & TDD'ing the lib/ template scripts in THIS repo.
+# It mirrors the STRICT quality bar that setup-env seeds into a user's project
+# (conventions/coding.md): ruff strict rule set + mypy --strict. This is the engine-dev
+# side of the same bar — it governs how templates are linted/typed/tested here, and never
+# ships to or governs a user's project. The .venv it drives is git-ignored (regenerable).
+[project]
+name = "findings-workflow-engine"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true    # niche scientific deps (e.g. pronoms) ship no stubs
+mypy_path = "lib"                 # resolve `from common import ...` as a project would
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Strict, explicit rule set (conventions/coding.md) — NOT ruff's minimal defaults.
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PD", "NPY", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["lib/tests"]
+pythonpath = ["lib"]    # import templates as a project would: `from common import data_loading`
+markers = ["slow: marks slow smoke tests (deselect with '-m \"not slow\"')"]

@@ -1,0 +1,11 @@
+# Python dev env for building/testing lib/ templates (regenerable from pyproject.toml)
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Real study data copied in for LOCAL loader testing — never committed.
+# Large (precursor TSV ~100MB) and is real study data; see testdata/README.md.
+/testdata/5xFAD/

@@ -32,7 +32,7 @@ A self-contained Python script in `scripts/scratch/` that:
 - carries **tests** alongside it (`pytest`): unit with hand-verified fixtures, property/invariant tests, a planted-truth check where applicable, and edge cases (empty, all-missing, single sample, duplicate IDs, ties);
 - writes regenerable outputs to `results/` (never to `data/`, which is read-only).
 
-For **loaders specifically**, satisfy both integrity obligations (test the loader; verify the loaded data on the real file) — this is the Stage 3 gate; see `conventions/correctness.md`.
+For **loaders specifically**, satisfy both integrity obligations (test the loader; verify the loaded data on the real file) — this is the Stage 3 gate; see `conventions/correctness.md`. **Never force the user's data into a fixed file format** — examine their actual data/metadata, confirm the structure with the scientist (Stages 1–2), and write a loader for *their* files, using the `lib/` loader template as a guide. But make every loader **return the project's standard in-memory container** (seeded from the template's `Dataset`: an abundance matrix + feature ids + a row-aligned metadata table) so the downstream analysis/figure templates compose unchanged. *Adapt the input; keep the output structure.*
 
 ## Self-check before handing off
 
