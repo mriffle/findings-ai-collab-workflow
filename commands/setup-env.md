@@ -98,13 +98,18 @@ dependencies = []
 
 [tool.mypy]
 python_version = "3.11"
-disallow_untyped_defs = true     # makes the promotion type-gate real, not a no-op
-warn_redundant_casts = true
-warn_unused_ignores = true
+strict = true                    # full strict type checking — the promotion type-gate has real teeth
 ignore_missing_imports = true    # scientific deps often ship no stubs; don't fail the gate on those
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Strict, explicit rule set (conventions/coding.md) — NOT ruff's minimal defaults.
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PD", "NPY", "RUF"]
 ```
 
-Seed the `[tool.mypy]` block above. Without it, `mypy` runs with permissive defaults (untyped functions are not errors), so the promotion gate's "types pass" check is a near-no-op on a project's own untyped code; `disallow_untyped_defs` is what gives it teeth, while `ignore_missing_imports` keeps it from failing on unstubbed scientific libraries rather than on real type errors.
+Seed the `[tool.mypy]` **and** `[tool.ruff]` blocks above — **the strictness lives in this config**, and the promotion hook (`ruff check` + `mypy`) reads it. Without them both gates are near-no-ops: bare `mypy` lets untyped functions through, and bare `ruff` checks only a minimal default rule set. `strict = true` gives the type-gate full teeth (untyped/partially-typed defs, implicit `Any`, and unused ignores all become errors), while `ignore_missing_imports = true` keeps it failing on *real* type errors rather than on unstubbed scientific libraries. The `select` set is the strict lint bar (`conventions/coding.md`); tune per-rule *ignores* per study if a rule genuinely doesn't fit, but do not weaken the set below this baseline.
 
 Then add the baseline with uv (this resolves, installs into `./.venv`, and writes `./uv.lock` — the lockfile recorded in every finding's `provenance.environment`). Invoke uv with `UV_PYTHON_INSTALL_DIR` set (as in 3b):
 

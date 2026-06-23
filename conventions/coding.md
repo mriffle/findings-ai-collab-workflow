@@ -23,10 +23,10 @@
 A script may move from `scripts/scratch/` to `scripts/promoted/` — and a finding may link to it — **only** when all of these pass:
 
 - **Testing (`pytest`):** unit tests with hand-verified fixtures; **property/invariant tests** (`hypothesis` where useful — e.g. CV folds partition without overlap; a normalization preserves shape; a transform is invertible where claimed); a **planted-truth** check where applicable (synthetic data with a known effect the code must recover); **edge cases** (empty, all-missing, single sample, duplicate IDs, ties).
-- **Typing:** **type hints throughout** with a type checker in the loop (**`mypy`** or `pyright`), clean on the file.
-- **Linting/formatting:** **`ruff check`** clean and **`ruff format`** applied (or an equivalent).
+- **Typing — strict (`mypy --strict`):** **type hints throughout**, and **`mypy` in strict mode** (`[tool.mypy] strict = true`, equivalent to `mypy --strict`) **clean** on the file — no untyped or partially-typed defs, no implicit `Any`, no `Any`-returns. A `# type: ignore` is permitted **only** scoped to a specific error code with a one-line justification (`# type: ignore[no-any-return]  — …`); a blanket `# type: ignore` fails review. The *only* sanctioned relaxation is `ignore_missing_imports` for third-party scientific libraries that ship no type stubs.
+- **Linting & formatting — strict (`ruff`):** **`ruff check` clean against an explicitly-configured strict rule set** — **not** ruff's minimal defaults; at minimum `E, F, W, I, B, UP, SIM, C4, PD, NPY, RUF` — and **`ruff format`** applied. A `# noqa` is permitted **only** rule-scoped and justified (`# noqa: E501 — …`); a bare `# noqa` fails review.
 
-Code that has not passed tests, types, and lint is `scratch`, and a finding may not link to it.
+Code that has not passed tests, **strict** type-checking, and **strict** lint is `scratch`, and a finding may not link to it.
 
 ## Enforcement
 
@@ -34,7 +34,7 @@ Code that has not passed tests, types, and lint is `scratch`, and a finding may 
 |---|---|
 | Usable Python ≥ 3.11 project env before any analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
 | Raw data read-only; outputs regenerable | **Hook** (`guard_readonly_data.sh`) |
-| Script not promoted until lint + types pass | **Hook** (`guard_promotion.sh`: ruff + mypy) |
+| Script not promoted until **strict** lint + types pass | **Hook** (`guard_promotion.sh`: `ruff check` strict rule set + `mypy` strict, via the project config) |
 | Script not promoted until **tests** pass | **Code-reviewer** agent (tests aren't run in-hook) |
 | Finding links only to a promoted script | **Hook** (`guard_findings.sh`) + findings-manager |
 | Seeds/locked-env/logging/fail-loud/parameterization | **Code-reviewer** agent (against this doc) |

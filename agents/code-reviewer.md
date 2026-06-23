@@ -18,8 +18,8 @@ Review against `conventions/coding.md` and `conventions/correctness.md`. A scrip
 ## What you do
 
 1. **Run the checks yourself** (don't trust a report):
-   - `ruff check` and `ruff format --check` — clean.
-   - `mypy` (or pyright) — clean, with real type hints throughout (not `Any`-escapes).
+   - `ruff check` (the project's **strict** rule set) and `ruff format --check` — clean; a bare `# noqa` is not acceptable (only rule-scoped, justified suppressions).
+   - `mypy --strict` — clean, with real type hints throughout (no implicit `Any`, no `Any`-returns, no blanket `# type: ignore`).
    - `pytest` — all tests pass, and the tests are *meaningful*: hand-verified unit fixtures, property/invariant tests, a **planted-truth** check where applicable, and edge cases (empty, all-missing, single sample, duplicate IDs, ties). A script with passing-but-trivial tests is not promotable.
 2. **Read for data-handling bugs** — the silent, common-mode kind:
    - silent NA coercion; string↔numeric coercion; dropped rows/cols;

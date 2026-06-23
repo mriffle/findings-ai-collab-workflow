@@ -36,7 +36,7 @@ For **loaders specifically**, satisfy both integrity obligations (test the loade
 
 ## Self-check before handing off
 
-Run what you can: `ruff check`, `ruff format`, `mypy`, and `pytest`. Fix what you find. A script that hasn't passed these is `scratch` and a finding may not link to it.
+Run what you can: `ruff check` (strict rule set), `ruff format`, `mypy --strict`, and `pytest`. Fix what you find. A script that hasn't passed these is `scratch` and a finding may not link to it.
 
 ## Output contract
 

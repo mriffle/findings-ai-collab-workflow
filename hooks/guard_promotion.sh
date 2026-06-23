@@ -3,11 +3,17 @@
 # A script under scripts/promoted/ must pass static checks before it is accepted, because a
 # finding may link only to a promoted script. This hook enforces the deterministic, fast,
 # side-effect-free part of the bar:
-#   - ruff  (lint/format)           — blocks on failure when available
-#   - mypy  (type checking)         — blocks on failure when available AND configured
+#   - ruff  (lint, strict rule set) — blocks on failure when available
+#   - mypy  (strict type checking)  — blocks on failure when available AND configured
 # TESTS (unit/property/planted-truth/edge cases) are also required by convention but are
 # verified by the code-reviewer agent, not run here (running arbitrary tests synchronously
 # in a hook is slow and unsafe). See conventions/enforcement-map.md.
+#
+# STRICTNESS is driven by the PROJECT config (pyproject [tool.mypy] strict=true and
+# [tool.ruff.lint].select), which setup-env seeds. mypy is run from the project dir so it
+# loads that config; ruff is pointed at it explicitly (--config) so the strict rule set
+# applies even when checking the PreToolUse temp copy (ruff resolves config from the file's
+# own directory, not cwd — without --config a temp copy would fall back to ruff's defaults).
 #
 # PreToolUse(Write): validate the incoming content on a temp file; exit 2 blocks the write.
 # PostToolUse(Write|Edit): re-validate the on-disk file; warn only (the write already happened).
@@ -53,7 +59,18 @@ run_checks() { # $1 = path to a python file; returns 0 if all available checks p
   CHECK_MSGS=""
   ruff_bin=$(resolve_tool ruff)
   if [ -n "$ruff_bin" ]; then
-    if ! out=$("$ruff_bin" check "$f" 2>&1); then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff]"$'\n'"$out"; fi
+    # Point ruff at the project config explicitly so the strict rule set applies even to the
+    # PreToolUse temp copy. Precedence follows ruff's own: .ruff.toml > ruff.toml > pyproject.toml.
+    local ruff_cfg="" rc
+    [ -f "$cwd/pyproject.toml" ] && ruff_cfg="$cwd/pyproject.toml"
+    [ -f "$cwd/ruff.toml" ] && ruff_cfg="$cwd/ruff.toml"
+    [ -f "$cwd/.ruff.toml" ] && ruff_cfg="$cwd/.ruff.toml"
+    if [ -n "$ruff_cfg" ]; then
+      out=$("$ruff_bin" check --config "$ruff_cfg" "$f" 2>&1); rc=$?
+    else
+      out=$("$ruff_bin" check "$f" 2>&1); rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then failed=1; CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff]"$'\n'"$out"; fi
   else
     CHECK_MSGS="$CHECK_MSGS"$'\n'"[ruff] not installed — lint check skipped (install ruff, e.g. via setup-env, to enforce)"
   fi
@@ -67,12 +84,15 @@ run_checks() { # $1 = path to a python file; returns 0 if all available checks p
 }
 
 if [ "$event" = "PreToolUse" ]; then
-  content=$(printf '%s' "$input" | jq -r '.tool_input.content // empty' 2>/dev/null)
   # Only Write carries full content; Edit is handled at PostToolUse.
-  [ -n "$content" ] || exit 0
   tmp=$(mktemp --suffix=.py 2>/dev/null || mktemp 2>/dev/null)
   [ -n "$tmp" ] || exit 0
-  printf '%s' "$content" > "$tmp"
+  # Materialize the incoming content with `jq -j` (raw, no added/stripped newline) so the temp
+  # copy is byte-faithful to what will land on disk. A $(...) capture strips trailing newlines,
+  # which under the strict ruleset trips a spurious W292 ("no newline at end of file") on every
+  # well-formed script. Absent/empty content (e.g. an Edit event) yields an empty file -> skip.
+  printf '%s' "$input" | jq -j '.tool_input.content // empty' > "$tmp" 2>/dev/null
+  [ -s "$tmp" ] || { rm -f "$tmp"; exit 0; }
   if run_checks "$tmp"; then
     rm -f "$tmp"; exit 0
   else
