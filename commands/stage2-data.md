@@ -27,6 +27,7 @@ These are *analysis* choices (not facts about the raw file), but they depend on 
 
 - **Normalization method.** Recommend **median** (simple, interpretable, linear in → linear out) and confirm with the scientist; offer **MAD** (robust per-sample z-score) and **VSN** (variance-stabilizing) as alternatives. It is a recorded scientific choice, not a silent default. Respect scale — MAD and VSN already log internally, so don't log again (`conventions/statistics.md`).
 - **Batch axis and confounding.** If the design has a batch axis (e.g. cohort/run/plate, identified in Stage 1), name it and surface any **batch↔biology confounding** (carried from Stage 1; quantified later by `assess_batch_confounding`). A variable of interest aliased with batch limits what any statistic can claim. Batch correction, when done, uses the **batch label only** — never the covariate of interest (it would launder a confounded artifact into the signal under test).
+- **Missing-value handling.** If the matrix has missing values (NaN, distinct from a real `0` — settled in the encoding step above), the normalization and batch-correction templates require **complete data** and will fail loud on NaN. So the handling is a scientist decision to make here, not in the templates: present the options — **leave as `0`** (only if missing genuinely means not-detected/zero), **impute** (per-sample mean/median, or **KNN**), or **drop** features/samples above a missingness threshold — with their trade-offs, and record the choice. The workflow does not bake in an imputation method; it is study-specific and lives in the project copy.
 
 ### Watch for the domain fidelity traps (doc 05.4)
 
@@ -38,7 +39,7 @@ These are *analysis* choices (not facts about the raw file), but they depend on 
 
 ## Output — `state/DATA_DESCRIPTION.md`
 
-A verified description containing: orientation and shape; feature and sample identifier schemes; transformation/normalization state (incl. the `scale` the loader will record); missing-value semantics; contaminant/decoy handling decisions; the **preprocessing decisions confirmed above** (normalization method; batch axis + any confound); known data-quality issues; and the **data-version stamp**. Same regeneration and stamping discipline as `METADATA.md`.
+A verified description containing: orientation and shape; feature and sample identifier schemes; transformation/normalization state (incl. the `scale` the loader will record); missing-value semantics; contaminant/decoy handling decisions; the **preprocessing decisions confirmed above** (normalization method; batch axis + any confound; missing-value handling); known data-quality issues; and the **data-version stamp**. Same regeneration and stamping discipline as `METADATA.md`.
 
 ## Then
 
