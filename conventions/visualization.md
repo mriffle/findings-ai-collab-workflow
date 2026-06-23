@@ -1,6 +1,6 @@
 # Convention — Visualization
 
-*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**; the `lib/` figure templates (seeded into the project) are intended to carry these defaults mechanically but are **pending phase E** — until they ship, the figure-reviewer is the sole active enforcer.*
+*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**, now backed by the shipped `lib/figures/` machinery — `figure-io` (dual export + separate legend + publication style) and `okabe-ito-colors` (the color registry + the >8-category raising guard) — which carries these defaults mechanically for any project figure script that routes through it. The QC/descriptive and analysis plot templates that build on it remain phase-E work.*
 
 ## Accuracy & review
 
@@ -15,11 +15,11 @@ Every visualization is saved in **both**:
 - **SVG** — vector master, for editing and publication.
 - **PNG at 300 DPI** — raster, the review and embedding target.
 
-Both go to `figures/`. In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend doc.
+Both go to `figures/`. In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend image.
 
-## Legends as separate documents
+## Legends as separate images
 
-Render **legends as separate documents** (`figures/<name>.legend.md`) alongside each figure rather than only baking them into the image. This keeps figures clean, supports publication workflows where legends are typeset separately, and makes the figure's encoding explicit and reviewable.
+Render the **legend as its own image** (`figures/<name>.legend.svg` + `figures/<name>.legend.png`) alongside the figure rather than baking it into the plot. A legend drawn inside the axes routinely overlaps the data; rendering it as a standalone swatch key (categorical) or colorbar (continuous) keeps the figure clean and lets publication workflows place the legend separately. The figure's free-text caption lives in the finding's `figures[].caption`, so the legend artifact is purely the visual key. (`lib/figures/figure_io.save_figure` dual-exports a companion legend figure to `<name>.legend.{svg,png}`; `lib/figures/pca.save_pca` builds the swatch/colorbar legend.)
 
 ## Publication-ready defaults
 
@@ -40,7 +40,7 @@ Okabe–Ito provides eight distinguishable colors. Beyond eight categories, addi
 3. **Group the long tail** — collapse minor categories into an explicit "other."
 4. **Position/sequential encodings** — for ordinal/numeric categories, use position or a sequential scale instead of categorical color.
 
-The shared figure module (seeded from `lib/`) includes a **guard that raises when a plot would exceed eight categorical colors, requiring the script to choose an explicit strategy** rather than silently recycling colors. *(This guard ships with the `lib/` figure template in phase E; until then the figure-reviewer is the sole check for category overflow — and a reviewer cannot reliably see a silently-recycled color, so building this guard is the real fix.)*
+The shared color module (`lib/figures/colors.py`, `okabe-ito-colors`) includes a **guard that raises (`CategoricalPaletteExceededError`) when a category would exceed eight colors, requiring the script to choose an explicit strategy** rather than silently recycling colors. *(This guard has shipped — it is the deterministic enforcer of the rule. The figure-reviewer still confirms the script routes its colors through the registry, since a reviewer cannot reliably see a silently-recycled color in a script that bypasses it.)*
 
 ## Figure provenance
 
@@ -51,7 +51,7 @@ Every figure records — and the finding that uses it pins — the producing **s
 | Rule | Enforced by |
 |---|---|
 | Render reviewed (PNG), not just code | **Figure-reviewer** |
-| Dual export (SVG + 300 DPI PNG) + separate legend present | **Figure-reviewer** (+ optional hook checking the trio exists) |
-| Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `lib/` reads `state/color_registry.json` — *pending phase E*) |
-| ≤8 categorical colors; explicit strategy beyond | **figure-reviewer** (`lib/` raising-guard *pending phase E*) |
+| Dual export (SVG + 300 DPI PNG) + separate legend image present | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
+| Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `okabe-ito-colors` reads/extends `state/color_registry.json`) |
+| ≤8 categorical colors; explicit strategy beyond | **Figure-reviewer** (+ `okabe-ito-colors` raises `CategoricalPaletteExceededError` past 8) |
 | Figure provenance pinned; staleness tracked | findings-manager (staleness) + finding `provenance` |

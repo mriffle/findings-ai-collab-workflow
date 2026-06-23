@@ -4,7 +4,7 @@ description: >-
   Produce a publication-ready figure for a Findings Workflow project from a spec
   and data. Use to render any figure a finding or report will use. Emits the
   matplotlib script plus a dual export (SVG vector master + 300 DPI PNG) and a
-  separate legend document, using the project color registry. Figures are
+  separate legend image, using the project color registry. Figures are
   regenerable artifacts, never hand-made images.
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
@@ -24,7 +24,7 @@ A parameterized matplotlib script (held to `conventions/coding.md`) that writes,
 
 - **`<name>.svg`** — vector master;
 - **`<name>.png`** at **300 DPI** — the review/embedding target;
-- **`<name>.legend.md`** — the legend as a separate document (encoding, axes/units, n, color meanings).
+- **`<name>.legend.svg`** + **`<name>.legend.png`** — the legend as a separate image (a swatch key for categorical, a colorbar for continuous), rendered as its own figure so it never overlaps the plot. The figure's textual caption (encoding, axes/units, n) goes in the finding's `figures[].caption`.
 
 Apply the publication defaults (legible fonts at print scale, no chartjunk, axis labels with units, sane aspect ratio), the **Okabe–Ito** palette via the registry, and **consistent category colors** (a value keeps its color across every figure).
 

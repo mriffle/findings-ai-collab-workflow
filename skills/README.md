@@ -10,7 +10,7 @@ Skills (doc 04.3):
 |---|---|---|
 | `verification-task-builder` | ✅ | Build a blind, answer-stripped validation task + pre-specify concordance (doc 03). |
 | `statistical-analysis` | ✅ | Seed from `lib/` templates and apply the leakage-safe, multiplicity-honest stats patterns. |
-| `figure-generation` | ✅ | Render publication figures: dual export, legend doc, color registry, >8-category rule. |
+| `figure-generation` | ✅ | Render publication figures: dual export, separate legend image, color registry, >8-category rule. |
 | `research-publications` | ✅ | Research the literature; cite verifiable DOI/PMID sources. |
 | `research-protein` | ✅ | Research a protein/gene via UniProt/PDB/AlphaFold/STRING/GO, with ID verification. |
 | `research-source-code` | ✅ | Ground a methodological claim in what a tool (DIA-NN, limma, …) actually computes. |

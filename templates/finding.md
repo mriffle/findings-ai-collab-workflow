@@ -43,9 +43,11 @@ evidence:
     n: <sample size>
     note: "<what this measures>"
 
-# Regenerable figure artifacts (dual export + separate legend doc, per doc 06).
+# Regenerable figure artifacts (dual export + separate legend image, per doc 06).
 figures: []
-  # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg", legend: "figures/<NNNN>-<name>.legend.md", caption: "<...>" }
+  # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg",
+  #     legend_png: "figures/<NNNN>-<name>.legend.png", legend_svg: "figures/<NNNN>-<name>.legend.svg",
+  #     caption: "<free-text caption>" }
 
 # Required for any background/interpretive claim. Each is fact-checked by the research-reviewer.
 references: []

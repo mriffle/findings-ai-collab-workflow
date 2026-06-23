@@ -97,10 +97,11 @@ evidence:
 
 ```yaml
 figures:
-  - png:    "figures/0042-volcano.png"      # 300 DPI raster; review + embed target
-    svg:    "figures/0042-volcano.svg"      # vector master
-    legend: "figures/0042-volcano.legend.md" # legend as a separate doc (doc 06.3)
-    caption: "Volcano plot of drug_A vs control."
+  - png:        "figures/0042-volcano.png"        # 300 DPI raster; review + embed target
+    svg:        "figures/0042-volcano.svg"        # vector master
+    legend_png: "figures/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3)
+    legend_svg: "figures/0042-volcano.legend.svg" # legend vector master
+    caption:    "Volcano plot of drug_A vs control."  # free-text caption
 ```
 
 Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version` or the producing script's commit changes, figures built on the old version are flagged.

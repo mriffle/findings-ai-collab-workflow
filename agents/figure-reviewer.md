@@ -23,7 +23,7 @@ Review against `conventions/visualization.md`. Pass only if the render is accura
    - no overplotting that hides structure; no clipped or overlapping labels/titles/legend;
    - the figure shows what the spec/finding claims it shows.
 3. **Check standards** — legible fonts at print scale, no chartjunk, sane aspect ratio, color-blind-safe (Okabe–Ito) and ideally grayscale-interpretable.
-4. **Check the artifacts exist** — `.svg`, `.png` (300 DPI), and a separate `.legend.md`. Verify the >8-category rule wasn't violated by recycled colors.
+4. **Check the artifacts exist** — `.svg`, `.png` (300 DPI), and the separate legend image (`.legend.svg` + `.legend.png`). Verify the legend was *not* baked into the plot (it should not overlap the data) and that the >8-category rule wasn't violated by recycled colors.
 
 ## Output contract
 

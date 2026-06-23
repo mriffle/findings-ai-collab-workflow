@@ -1,6 +1,6 @@
 # Convention — Statistics
 
-*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts are intended to implement these defaults so agents inherit them by seeding from a template rather than writing fresh statistics code — but `lib/` is **pending phase E**; until it ships, the stats-reviewer is the sole active enforcer.*
+*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts implement these defaults so agents inherit them by seeding from a template rather than writing fresh statistics code: the normalization (scale-tag guard) and batch-correction (log-scale / batch-label-only / confounding) templates ship and carry their guards. The **moderated differential-abundance, leakage-safe classifier, and regression templates are still phase-E work** — for those the stats-reviewer is the sole active enforcer until they ship.*
 
 ## Reporting
 

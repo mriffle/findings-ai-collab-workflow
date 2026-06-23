@@ -37,8 +37,13 @@ in-memory **`Dataset`** (abundances `(n_samples, n_features)` + `feature_names` 
 
 ## Layout & naming
 
-- `lib/common/` — shared modules (these seed a project's `scripts/promoted/common/`).
-  Add `lib/analysis/` and `lib/figures/` for entry-point templates as they arrive.
+- `lib/common/` — shared data-pipeline modules (these seed a project's
+  `scripts/promoted/common/`): the loader, normalize, batch-correct.
+- `lib/figures/` — the figure machinery + plot templates (`colors.py`, `figure_io.py`,
+  `pca.py`). Imported as `from figures.<mod> import …` here (the repo `pyproject.toml`
+  puts `lib/` on the path); a project adapts the prefix when it seeds them into its own
+  shared modules. Add `lib/analysis/` for the differential-abundance / classifier /
+  regression entry-point templates as they arrive.
 - `lib/tests/` — the tests, centralized (mirrors the module structure).
 - `lib/manifest.md` — the **derived** registry; regenerate by scanning `__script_meta__`
   headers (the headers are the source of truth, like the findings manifest).
