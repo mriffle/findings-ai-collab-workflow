@@ -39,17 +39,23 @@ from typing import Literal
 import numpy as np
 from pronoms.normalizers import MADNormalizer, MedianNormalizer, VSNNormalizer
 
-from common.data_loading import Dataset, Scale
+from common.data_loading import LOG_SCALES, Dataset, Scale
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "normalize", "version": "0.1"},
+    "template": {"name": "normalize", "version": "0.2"},
     "kind": "module",
-    "provides": ["NormalizationMethod", "normalize", "log2_transform"],
+    "provides": [
+        "NormalizationMethod",
+        "normalize",
+        "log2_transform",
+        "median_center",
+    ],
     "uses": ["common.data_loading"],
     "seeded_from": None,
     "description": (
-        "Verified Dataset normalization (median / mad / vsn) + log2 transform: "
-        "scale-tag guarded against double-logging, fail-loud, shape-preserving. "
+        "Verified Dataset normalization (median / mad / vsn), log2 transform, and "
+        "log-domain median centering: scale-tag guarded against double-logging, "
+        "fail-loud, shape-preserving, returns an independent (non-aliased) Dataset. "
         "Study-agnostic; consumes and returns the standard Dataset contract."
     ),
 }
@@ -62,6 +68,25 @@ _OUTPUT_SCALE: dict[NormalizationMethod, Scale] = {
     "mad": "zscore",
     "vsn": "glog2",
 }
+
+
+def _independent(dataset: Dataset, abundances: np.ndarray, scale: Scale) -> Dataset:
+    """Build a new Dataset sharing NO mutable state with ``dataset``.
+
+    ``dataclasses.replace`` copies the unchanged fields *by reference*, which aliases
+    ``metadata`` / ``feature_metadata`` / ``feature_names`` between input and output, so
+    a downstream in-place mutation of one would corrupt the other. That breaks the
+    keep-the-original-and-compare contract the batch-correction workflow relies on, so
+    the carried fields are copied defensively.
+    """
+    return replace(
+        dataset,
+        abundances=abundances,
+        scale=scale,
+        metadata=dataset.metadata.copy(),
+        feature_metadata=dataset.feature_metadata.copy(),
+        feature_names=dataset.feature_names.copy(),
+    )
 
 
 def _require_linear(dataset: Dataset, operation: str) -> None:
@@ -129,7 +154,7 @@ def normalize(dataset: Dataset, method: NormalizationMethod) -> Dataset:
             f"normalize(method={method!r}) changed the matrix shape "
             f"{dataset.abundances.shape} -> {normalized.shape}; expected it preserved."
         )
-    return replace(dataset, abundances=normalized, scale=_OUTPUT_SCALE[method])
+    return _independent(dataset, normalized, _OUTPUT_SCALE[method])
 
 
 def log2_transform(dataset: Dataset) -> Dataset:
@@ -147,7 +172,29 @@ def log2_transform(dataset: Dataset) -> Dataset:
             "log2_transform requires non-negative abundances (log2(x+1) is undefined "
             "below -1); the Dataset has negative values."
         )
-    return replace(dataset, abundances=np.log2(dataset.abundances + 1.0), scale="log2")
+    return _independent(dataset, np.log2(dataset.abundances + 1.0), "log2")
+
+
+def median_center(dataset: Dataset) -> Dataset:
+    """Subtract each sample's median — the log-domain analogue of median normalization.
+
+    On a **log** scale, the per-sample size-factor correction is *subtractive* (median
+    centering), not the *divisive* correction :func:`normalize` with ``"median"`` does
+    on linear data. Use this when a study's data already arrives log-scale (``log2`` /
+    ``log10`` / ``ln`` / ``glog2``) and you want per-sample median alignment without
+    returning to linear. The output keeps the input scale.
+
+    Refuses ``"linear"`` (use ``normalize(method="median")`` there) and ``"ratio"``.
+    """
+    if dataset.scale not in LOG_SCALES:
+        raise ValueError(
+            f"median_center requires a log scale {sorted(LOG_SCALES)} (it is the "
+            f"log-domain median normalization) but the Dataset is on scale "
+            f"{dataset.scale!r}. For linear data use normalize(method='median')."
+        )
+    _require_finite(dataset.abundances, "median_center")
+    centered = dataset.abundances - np.median(dataset.abundances, axis=1, keepdims=True)
+    return _independent(dataset, centered, dataset.scale)
 
 
 def _normalize_abundances(

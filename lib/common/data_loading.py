@@ -62,16 +62,29 @@ import pandas as pd
 # log-ish scale) instead of trusting a convention:
 #   * "linear" — raw intensity (proteomics default); ``0`` = not detected.
 #   * "log2"   — ``log2(x + 1)`` of a linear matrix.
-#   * "glog2"  — VSN / arsinh variance-stabilized (log2-comparable).
+#   * "log10"  — base-10 log of a linear matrix.
+#   * "ln"     — natural log of a linear matrix.
+#   * "glog2"  — VSN / arsinh variance-stabilized (log2-comparable; arsinh is ~natural
+#                log asymptotically, so "log2-comparable" is a pronoms approximation).
 #   * "zscore" — per-sample robust (MAD) z-score in log space; centred at 0.
-Scale = Literal["linear", "log2", "glog2", "zscore"]
+#   * "ratio"  — relative / size-normalized linear-family values (e.g. SILAC/TMT
+#                ratios); multiplicative, NOT a log scale.
+# Add a member here (and to LOG_SCALES if it is log-ish) rather than mislabelling data —
+# the guards make scale-dependent decisions, so an honest tag is load-bearing.
+Scale = Literal["linear", "log2", "log10", "ln", "glog2", "zscore", "ratio"]
+
+# The subset of scales on which ComBat (Gaussian-ish per feature) may run and on which a
+# log-domain median *centering* is meaningful. Shared so the normalize and batch-correct
+# templates agree on one taxonomy instead of each hardcoding a set.
+LOG_SCALES: frozenset[Scale] = frozenset({"log2", "log10", "ln", "glog2", "zscore"})
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "wide-data-loader", "version": "0.2"},
+    "template": {"name": "wide-data-loader", "version": "0.3"},
     "kind": "module",
     "provides": [
         "Dataset",
         "Scale",
+        "LOG_SCALES",
         "ReplicateCollapse",
         "load_wide_data",
         "load_precursor_data",
@@ -81,8 +94,8 @@ __script_meta__: dict[str, object] = {
     "description": (
         "Verified loader for wide feature x sample omics matrices + a sample-metadata "
         "table: orientation/pairing checks, optional technical-replicate collapse, "
-        "zero-preserving, fail-loud, scale-tagged. Study-agnostic (column names are "
-        "arguments)."
+        "precursor charge-state collapse, zero-preserving, fail-loud, scale-tagged. "
+        "Study-agnostic (column names are arguments)."
     ),
 }
 

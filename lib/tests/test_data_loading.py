@@ -158,6 +158,17 @@ def test_scale_is_recorded_when_given(protein_case: tuple[Path, Path]) -> None:
     assert float(ds.abundances.max()) == 302.0
 
 
+def test_scale_accepts_extended_log_scales(protein_case: tuple[Path, Path]) -> None:
+    """The Scale taxonomy covers log10/ln/ratio, so such files get an honest tag."""
+    data_file, meta_file = protein_case
+    scales: tuple[dl.Scale, ...] = ("log10", "ln", "ratio")
+    for sc in scales:
+        ds = dl.load_wide_data(
+            data_file, meta_file, join_key="Replicate", strip_suffix=".raw", scale=sc
+        )
+        assert ds.scale == sc
+
+
 def test_precursor_scale_is_recorded(tmp_path: Path) -> None:
     data = pd.DataFrame(
         {

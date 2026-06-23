@@ -2,8 +2,9 @@
 
 Two layers:
   * unit — synthetic fixtures with a planted additive batch effect (ComBat must remove
-    it), the zero-variance-in-batch passthrough, the scale/finite/batch-size guards, the
-    sample_mask passthrough, and the confounding assessment (perfect vs partial);
+    it), the near-constant-feature passthrough (and that it doesn't poison the rest),
+    the independent-Dataset contract, the scale/finite/batch-size/NaN guards, the
+    sample_mask passthrough, and the confounding assessment (perfect / strong / none);
   * smoke — real 5xFAD data (git-ignored): Cohort batch vs Treatment, correction reduces
     between-cohort separation. Skips cleanly when absent.
 """
@@ -86,15 +87,45 @@ def test_combat_preserves_shape_scale_and_metadata() -> None:
     pd.testing.assert_frame_equal(out.metadata, ds.metadata)
 
 
-def test_zero_variance_in_a_batch_feature_passes_through() -> None:
-    """A feature constant within one batch can't be standardized -> passed unchanged."""
+def test_globally_constant_feature_passes_through_and_does_not_poison() -> None:
+    """A globally-constant feature can't be standardized; it is passed through (warned)
+    and must NOT NaN the other features (ComBat's pooled EB step otherwise would)."""
     ds, _ = _two_batch_with_shift(shift=3.0)
     ab = ds.abundances.copy()
-    ab[:5, 0] = 7.0  # feature 0 is constant within batch A (zero variance there)
+    ab[:, 0] = 7.0  # feature 0 constant across ALL samples -> pooled variance 0
     ds = _ds(ab, batch=list(ds.metadata["batch"]))
-    out = bc.combat_correct(ds, "batch")
-    np.testing.assert_array_equal(out.abundances[:, 0], ab[:, 0])  # untouched
+    with pytest.warns(bc.BatchPassthroughWarning, match="1 feature"):
+        out = bc.combat_correct(ds, "batch")
+    np.testing.assert_array_equal(out.abundances[:, 0], ab[:, 0])  # passed through
+    assert np.isfinite(out.abundances).all()  # the rest were not poisoned
     assert not np.allclose(out.abundances[:, 1], ab[:, 1])  # other features corrected
+
+
+def test_feature_constant_within_one_batch_is_corrected() -> None:
+    """Constant within one batch but variable overall -> nonzero pooled variance, so it
+    IS corrected. The old per-batch-variance filter wrongly excluded these."""
+    ds, _ = _two_batch_with_shift(shift=3.0)
+    ab = ds.abundances.copy()
+    ab[:5, 0] = 7.0  # constant within batch A only; varies across the full matrix
+    ds = _ds(ab, batch=list(ds.metadata["batch"]))
+    with warnings.catch_warnings():
+        warnings.simplefilter(
+            "ignore"
+        )  # pycombat emits a benign per-batch divide warning
+        out = bc.combat_correct(ds, "batch")
+    assert not np.allclose(
+        out.abundances[:, 0], ab[:, 0]
+    )  # corrected, not passed through
+    assert np.isfinite(out.abundances).all()
+
+
+def test_combat_returns_independent_dataset() -> None:
+    """Output must be independent: mutating its metadata must not touch the input."""
+    ds, _ = _two_batch_with_shift(shift=2.0)
+    out = bc.combat_correct(ds, "batch")
+    assert out.metadata is not ds.metadata
+    out.metadata["injected"] = 1
+    assert "injected" not in ds.metadata.columns
 
 
 # --------------------------------------------------------------------------- #
@@ -142,6 +173,16 @@ def test_refuses_linear_scale() -> None:
     )
     with pytest.raises(ValueError, match="requires a log-ish scale"):
         bc.combat_correct(ds, "batch")
+
+
+def test_combat_accepts_extended_log_scales() -> None:
+    """log10 / ln / glog2 are valid ComBat inputs via the shared LOG_SCALES taxonomy."""
+    scales: tuple[dl.Scale, ...] = ("log10", "ln", "glog2")
+    for sc in scales:
+        base, _ = _two_batch_with_shift(shift=2.0)
+        ds = _ds(base.abundances, batch=list(base.metadata["batch"]), scale=sc)
+        out = bc.combat_correct(ds, "batch")
+        assert out.scale == sc
 
 
 def test_refuses_non_finite() -> None:
@@ -192,7 +233,7 @@ def test_assess_flags_perfect_confounding_and_warns() -> None:
     assert int(reports[0].crosstab.to_numpy().sum()) == 4
 
 
-def test_assess_partial_confounding_does_not_warn() -> None:
+def test_assess_independent_does_not_warn() -> None:
     ds = _ds(
         np.zeros((4, 5)),
         batch=["1", "1", "2", "2"],
@@ -203,6 +244,38 @@ def test_assess_partial_confounding_does_not_warn() -> None:
         reports = bc.assess_batch_confounding(ds, "batch", ["treatment"])
     assert not reports[0].perfectly_confounded
     assert reports[0].cramers_v == pytest.approx(0.0)
+
+
+def test_assess_strong_but_not_perfect_confounding_warns() -> None:
+    """Graded warning: near-perfect (not perfect) confounding above threshold warns."""
+    batch = ["1"] * 10 + ["2"] * 10
+    # batch1: all A; batch2: one A, nine B -> [[10,0],[1,9]], strong but not perfect.
+    treat = ["A"] * 10 + ["A"] + ["B"] * 9
+    ds = _ds(np.zeros((20, 5)), batch=batch, meta_cols={"treatment": treat})
+    with pytest.warns(bc.BatchConfoundingWarning, match="STRONGLY"):
+        reports = bc.assess_batch_confounding(ds, "batch", ["treatment"])
+    assert not reports[0].perfectly_confounded
+    assert reports[0].cramers_v >= 0.5
+
+
+def test_assess_raises_on_nan_covariate() -> None:
+    """The safety check must fail loud on a missing covariate, not silently drop it."""
+    meta = pd.DataFrame(
+        {
+            "sample": ["s0", "s1", "s2", "s3"],
+            "batch": ["1", "1", "2", "2"],
+            "treatment": ["Lec", "Lec", "ISO", None],
+        }
+    ).set_index("sample")
+    ds = dl.Dataset(
+        abundances=np.zeros((4, 5)),
+        feature_names=np.array([f"F{j}" for j in range(5)], dtype=str),
+        feature_metadata=pd.DataFrame({"protein": [f"F{j}" for j in range(5)]}),
+        metadata=meta,
+        scale="log2",
+    )
+    with pytest.raises(ValueError, match="missing value"):
+        bc.assess_batch_confounding(ds, "batch", ["treatment"])
 
 
 def test_assess_reports_one_per_covariate() -> None:
@@ -282,7 +355,10 @@ def test_smoke_combat_reduces_cohort_separation() -> None:
     cohort = ds.metadata["Cohort"].to_numpy().astype(str)
     a, b = ds.abundances[cohort == "1"], ds.abundances[cohort == "2"]
     pre_gap = float(np.abs(a.mean(axis=0) - b.mean(axis=0)).mean())
-    out = bc.combat_correct(ds, "Cohort")
+    with warnings.catch_warnings():
+        # the experimental subset has a globally-constant feature (passthrough expected)
+        warnings.simplefilter("ignore", bc.BatchPassthroughWarning)
+        out = bc.combat_correct(ds, "Cohort")
     assert out.abundances.shape == ds.abundances.shape
     assert out.scale == "log2"
     assert np.isfinite(out.abundances).all()

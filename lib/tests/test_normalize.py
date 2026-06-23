@@ -119,6 +119,29 @@ def test_median_then_log2_chains_to_log2_scale() -> None:
     assert out.scale == "log2"
 
 
+def test_median_center_planted_truth() -> None:
+    """Log-domain median normalization: subtract each sample's median; scale kept."""
+    ds = _ds([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], scale="log2")
+    out = norm.median_center(ds)
+    np.testing.assert_allclose(out.abundances, [[-1.0, 0.0, 1.0], [-1.0, 0.0, 1.0]])
+    assert out.scale == "log2"
+
+
+def test_median_center_refuses_linear() -> None:
+    ds = _ds([[1.0, 2.0, 3.0]])  # linear
+    with pytest.raises(ValueError, match="requires a log scale"):
+        norm.median_center(ds)
+
+
+def test_normalize_returns_independent_dataset() -> None:
+    """Output must be independent: mutating its metadata must not touch the input."""
+    ds = _ds([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    out = norm.normalize(ds, "median")
+    assert out.metadata is not ds.metadata
+    out.metadata["injected"] = 1
+    assert "injected" not in ds.metadata.columns
+
+
 # --------------------------------------------------------------------------- #
 # Unit — the scale guards (double-log trap) and fail-loud edges
 # --------------------------------------------------------------------------- #
