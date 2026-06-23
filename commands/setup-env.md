@@ -118,6 +118,10 @@ Then add the baseline with uv (this resolves, installs into `./.venv`, and write
 ./.uv/bin/uv add --dev ruff mypy pytest hypothesis
 # Recommended scientific baseline (tune per study):
 ./.uv/bin/uv add numpy pandas scipy scikit-learn matplotlib statsmodels
+# Normalization the lib/ templates seed from (pronoms: median / MAD / VSN normalizers).
+# The normalize template is version-sensitive (MADNormalizer's scaling default and the
+# VSN engine API), so pin it; only add when the study normalizes (omics intensities):
+./.uv/bin/uv add 'pronoms==0.4.0'
 ```
 
 The **dev tooling is not optional**: `ruff` + `mypy` power the promotion hook and `pytest` + `hypothesis` power the code-reviewer's test check. Without them in `./.venv`, the promotion gate degrades to a no-op. The scientific baseline is a sensible default — add/remove packages as the study needs (`uv add` / `uv remove`), and the lockfile updates.
