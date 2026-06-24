@@ -38,16 +38,18 @@ jobs:
       - name: Type-check guards (mypy --strict)
         run: mypy hooks/
 
-  # Job 2 — the lib/ template scripts: strict lint + types + the test suite.
-  # Linux on the floor (3.11) and the dev version (3.12). Numerics are largely
-  # platform-stable, so the cross-OS axis lives in Job 1; here the axis is Python
-  # version. Slow smoke tests (real testdata, git-ignored) are deselected.
+  # Job 2 — the lib/ template scripts: strict lint + types + the test suite, on
+  # Linux at the pinned env the suite is developed against (Python 3.12). The
+  # pinned set is 3.12-era — scipy 1.18 requires >=3.12, so 3.11 cannot install it
+  # — and the 3.11 floor for the engine's own (pure-Python) code is already covered
+  # by the hooks job, which runs on 3.11. Slow smoke tests (real testdata,
+  # git-ignored) are deselected.
   lib:
     name: lib templates — py${{ matrix.python }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12"]
+        python: ["3.12"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
