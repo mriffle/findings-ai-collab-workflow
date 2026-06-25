@@ -29,9 +29,10 @@ The agent locates the metadata file (asking the scientist where it is), then:
 - opens an interaction to validate that understanding with the scientist;
 - checks value validity (types, ranges, allowed sets, uniqueness where expected);
 - infers relationships that *should* hold if its understanding is correct, and **tests them as hypotheses** (principle from doc 05) — including confound detection: is the variable of interest aliased with batch, run order, or another factor?
-- generates thorough descriptive plots and tables of the metadata (per doc 06).
+- generates thorough descriptive plots and tables of the metadata — the distribution of every variable, pairwise cross-tabulations (variable of interest against covariates and batch), and a cohort summary table — to characterize the cohort and **expose class imbalance, covariate skew, and confounding** (per doc 06; metrics in doc 05.3);
+- records each **material imbalance, skew, or confound as a caveat finding** (`kind: caveat`, doc 03.1) — the durable memory of the gotchas that constrain downstream claims, consulted in Stage 4 and carried into the report.
 
-**Output — `state/METADATA.md`.** A verified, human- and agent-readable description containing: every column with its inferred meaning and validated type/domain; the experimental design it encodes; detected relationships and confounds; the join key to the data matrix; and a data-version stamp. This file is the canonical reference for what the experiment is. It is *generated from* verified understanding, never hand-asserted, and carries the data-version it describes so it cannot silently drift.
+**Output — `state/METADATA.md`.** A verified, human- and agent-readable description containing: every column with its inferred meaning and validated type/domain; the experimental design it encodes; detected relationships, imbalances, and confounds (with the caveat findings recorded for the material ones); the join key to the data matrix; and a data-version stamp. This file is the canonical reference for what the experiment is. It is *generated from* verified understanding, never hand-asserted, and carries the data-version it describes so it cannot silently drift.
 
 ## 2.2 Stage 2 — Understand the data
 
@@ -57,6 +58,8 @@ This stage ends at the **integrity gate**, the workflow's hardest precondition (
 - the loaded data is verified against the source (counts reconcile, spot reconciliation, dtypes, ranges, identifier integrity, missing-value semantics, orientation);
 - sample↔metadata pairing is complete and exact (every sample matched once, no orphans/duplicates, counts reconcile on both sides);
 - the scientist signs off.
+
+Metadata **caveat findings** recorded in Stage 1 (doc 03.1) have their `integrity_signoff` set at this gate, which certifies the sample↔metadata pairing they rest on.
 
 **No Stage 4 analysis may begin until the integrity gate passes**, not by trusting the agent to remember. *(Implementation divergence: as built, this ordering is carried by the `stage4-explore` command precondition + orchestrator behavior, and the finding-write side is hook-enforced via `guard_findings.py`. It is **not** a standalone analysis-blocking hook — a single tool-use event can't cleanly separate exploratory analysis from legitimate Stage 3 loader/QC work. See `conventions/enforcement-map.md`.)*
 
@@ -89,7 +92,7 @@ All state files are canonical references that any fresh agent reads to rehydrate
 
 | Point | Type | Condition / decision |
 |---|---|---|
-| End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding |
+| End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding (incl. surfaced imbalances/confounds) |
 | Sample↔metadata pairing | Human checkpoint | Scientist confirms join resolution (esp. fuzzy matches) |
 | Integrity gate (end Stage 3) | Command precondition + hook (finding writes) + human sign-off | Loaders verified; no analysis before pass |
 | Finding promotion | Gate (validation) + human | Independent validation cleared; scientist accepts |

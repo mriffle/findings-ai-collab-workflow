@@ -29,6 +29,7 @@ Stage 6  Reporting                     → reports/
 During exploration, **every substantive insight is captured as a finding the moment it emerges** — automatically, with a brief non-disruptive notice ("recorded as finding 0042"). Dispatch the **findings-manager** to create/update findings and the manifest; never hand-edit `findings/manifest.md`.
 
 - **What counts:** a tangible, specific, evidence-bearing observation about the data or its biology — if it has an effect, a statistic, or a concrete claim someone might later cite, record it.
+- **Caveat findings are first-class.** Class imbalances, covariate skews, and confounds found while characterizing the cohort (Stage 1) are recorded as caveat findings (`kind: caveat`) — the workflow's durable memory of the gotchas that bias interpretation. They are consulted in Stage 4 (a confounded covariate enters the model; an imbalance dictates balanced metrics/stratified folds) and rendered as limitations in Stage 6, attached to the discoveries they qualify via `relates_to`. (Schema: the plugin's `conventions/findings.md` §2.6.)
 - **Bias toward capturing too much.** Capture is cheap and low-bar (`candidate`); rigor is applied at promotion. Clutter is cheaper than lost insight.
 - **Promotion to `validated` is never silent** and requires independent validation + the scientist's acceptance.
 
@@ -55,7 +56,7 @@ The schema, status machine, edge ontology, phase semantics, and the `validated` 
 | File | Holds |
 |---|---|
 | `state/PROJECT.md` | Domain, design, scientific goals (Stage 0). |
-| `state/METADATA.md` | Verified column meanings, design, confounds, join key; data-version stamped (Stage 1). |
+| `state/METADATA.md` | Verified column meanings, design, confounds/imbalances, join key; data-version stamped (Stage 1). |
 | `state/DATA_DESCRIPTION.md` | Orientation, shape, transform/normalization + the recorded `scale`, missingness semantics, the confirmed preprocessing decisions (normalization method; batch axis + any confound), issues; data-version stamped (Stage 2). |
 | `state/color_registry.json` | Category→color map; universal defaults seeded, extended per project once metadata is understood. |
 

@@ -25,6 +25,10 @@ Render the **legend as its own image** (`figures/<name>.legend.svg` + `figures/<
 
 Figures default to publication quality: legible font sizes **at print scale**, no chartjunk, clear axis labels **with units**, appropriate aspect ratios, consistent typography. The `lib/` figure templates encode these defaults (a shared matplotlib style, imported by the project's figure scripts) so each figure starts from them rather than re-specifying them.
 
+## Descriptive & cohort figures
+
+The Stage 1 metadata characterization (the distribution of every variable, pairwise crosstabs, the cohort "Table 1") produces **first-class figures**, subject to every rule here — dual export, Okabe–Ito via the registry, the ≤8-category guard, render review. They are both publication deliverables and the lens that exposes class imbalance and confounding; the consequential ones are recorded as caveat findings (`conventions/statistics.md`; `conventions/findings.md` §2.6). Color the categorical design variables (sex, group, batch) through `state/color_registry.json` so a given level keeps its color from the very first cohort plot through every downstream figure.
+
 ## Color — palette and the registry
 
 - **Palette: Okabe–Ito** (color-blind-friendly) as the standard categorical palette. Figures should remain interpretable for color-vision-deficient viewers and, where feasible, in grayscale.

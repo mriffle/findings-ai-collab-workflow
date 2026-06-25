@@ -40,7 +40,7 @@ Methods are driven by the scripts and the methods recorded in findings. Results 
 Reporting is where an LLM most easily overstates, so:
 
 - **Claim-source checking.** A writer may assert only what traces back to a finding or a vetted research finding. **Every sentence in Results and Discussion maps to a finding id**, or it is flagged.
-- **Caveats and status propagate.** An `exploratory` finding must **never** be written up with the confidence of a `validated` one — that quietly re-hides the multiplicity the whole system worked to expose. Status and caveats from the source findings must survive into the prose.
+- **Caveats and status propagate.** An `exploratory` finding must **never** be written up with the confidence of a `validated` one — that quietly re-hides the multiplicity the whole system worked to expose. Status and caveats from the source findings must survive into the prose. **Caveat findings** (`kind: caveat`, conventions/findings.md §2.6) — the cohort's class imbalances, skews, and confounds — are rendered into the report's Discussion (its Limitations) and attached to each discovery they qualify via its `relates_to` edge; a confounded or imbalanced result must carry its caveat wherever it is stated.
 - **No invented references.** References come only from the (fact-checked) findings and the environment; the reviewer re-checks any that appear.
 
 ## Enforcement
@@ -48,6 +48,6 @@ Reporting is where an LLM most easily overstates, so:
 | Rule | Enforced by |
 |---|---|
 | Every Results/Discussion claim maps to a finding id | **Report-reviewer** |
-| Status + caveats propagate (exploratory ≠ validated confidence) | **Report-reviewer** |
+| Status + caveats propagate (exploratory ≠ validated confidence); `kind: caveat` findings rendered as Limitations | **Report-reviewer** |
 | No invented references; all re-checked | **Report-reviewer** (+ research-reviewer's prior fact-check) |
 | Figures are the findings' existing artifacts | **Report-reviewer** |

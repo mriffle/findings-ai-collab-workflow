@@ -7,6 +7,7 @@ id: <NNNN>                              # (required) int, assigned in order by t
 title: "<human label>"                  # (required)
 status: candidate                       # (required) candidate | under_exploration | validated | invalidated | superseded | closed
 phase: exploratory                      # (required) exploratory | confirmatory
+kind: discovery                         # (optional) discovery (default) | caveat — caveat = a dataset/design caveat (class imbalance, confound, cohort skew) that constrains downstream claims; see conventions/findings.md §2.6
 created: <YYYY-MM-DD>                    # (required)
 updated: <YYYY-MM-DD>                    # (required)
 

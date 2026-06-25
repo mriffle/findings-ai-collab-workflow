@@ -26,6 +26,7 @@ All findings carry this YAML frontmatter. `R` = required, `C` = conditional, `O`
 | `title` | R | string | Human label. |
 | `status` | R | enum | One of the six states in §3. |
 | `phase` | R | enum | `exploratory` or `confirmatory` (§5). |
+| `kind` | O | enum | `discovery` (default) or `caveat` — a dataset/design caveat vs an analysis result (§2.6). |
 | `created` | R | date | `YYYY-MM-DD`, first recorded. |
 | `updated` | R | date | `YYYY-MM-DD`, last modified. |
 | `summary` | R | string | One–two sentence claim. |
@@ -121,6 +122,18 @@ references:
 
 Software/tool citations (with versions) are drawn for free from the locked environment (doc 05) and recorded the same way (`type: software`).
 
+### 2.6 `kind` — discovery vs caveat
+
+Most findings are **discoveries**: an analysis result about the data or its biology (`kind: discovery`, the default — omit it and it is assumed). A second, equally first-class kind records a **caveat**: a structural property of the dataset or experimental design that constrains what downstream results can claim — a class imbalance, a confound, batch structure, or a cohort skew (e.g. "treatment is 80% male vs 30% control; sex is aliased with the contrast"). Set `kind: caveat` on these. They are how the workflow *remembers* the gotchas that bias interpretation instead of letting them evaporate into prose.
+
+Caveat findings use the **same schema and lifecycle** as discoveries, with three characteristic shapes:
+
+- **Recorded early, certified at the gate.** Metadata caveats surface in Stage 1 (`stage1-metadata`), before the integrity gate, so they are written `candidate` with `integrity_signoff: false`. Their `integrity_signoff` is set `true` at the integrity gate (Stage 3) — the gate certifies the sample↔metadata pairing the caveat rests on (doc 05; `commands/stage3-loaders.md`).
+- **Descriptive evidence.** A caveat's `evidence` is typically descriptive — group sizes, a contingency table, a confounding statistic (bias-corrected Cramér's V) — and carries no hypothesis test, which §2.3 already permits. `phase` is normally `exploratory` (a caveat describes the cohort as it is; it makes no held-out claim).
+- **Attached to what it qualifies.** When a later discovery is affected by a caveat, the discovery links to it with a `relates_to` edge (§6). That edge is how the caveat travels: the analysis stage consults open caveats (a confounded covariate enters the model; an imbalance dictates balanced metrics), and the report renders them as the discovery's limitations rather than burying them.
+
+**What earns a caveat finding** (the trigger): a metadata observation becomes a finding when it would **change how a downstream result is analyzed or interpreted** — a severe group imbalance, a real confound, a notable covariate skew. A clean, balanced distribution does not need one; the full descriptive characterization lives in `state/METADATA.md` and the QC report (`conventions/statistics.md`). Record the consequential ones, not every histogram.
+
 ## 3. Status — the lifecycle state machine
 
 `status` is a position in a state machine with evidentiary bars on transitions, **not** a free-text label.
@@ -214,7 +227,7 @@ Findings reference one another through a **controlled vocabulary** of directed e
 | `contradicts` | A's evidence opposes B's. | Triggers reconciliation; the weaker may move to `invalidated`. |
 | `supersedes` | A replaces B. | B moves to `superseded`. |
 | `closes` | A resolves an open question raised by B. | — |
-| `relates_to` | Generic association. | Use sparingly; prefer a specific type. |
+| `relates_to` | Generic association — including a discovery's link to a **caveat finding** (§2.6) that qualifies it. | Prefer a specific type elsewhere; the discovery→caveat link is an endorsed use. |
 
 ```yaml
 relationships:
@@ -234,7 +247,7 @@ Edges are **directed** and recorded in the **source** finding's frontmatter. The
 
 Findings are recorded **automatically** during exploration, governed by:
 
-- **What counts** — a tangible, specific, evidence-bearing observation about the data or its biology, not every remark. **Heuristic:** if it has an effect, a statistic, or a concrete claim someone might later cite, record it.
+- **What counts** — a tangible, specific, evidence-bearing observation about the data or its biology, not every remark. **Heuristic:** if it has an effect, a statistic, or a concrete claim someone might later cite, record it. This includes **caveat findings** (§2.6): a class imbalance, covariate skew, or confound found while characterizing the metadata (Stage 1) is exactly such an observation when it would change a downstream analysis or its interpretation — record it the moment the metadata is understood, not only once analysis is underway.
 - **Candidate vs promoted** — capture is cheap and low-bar (`candidate`); rigor is applied at promotion. **Bias toward capturing too much** — clutter is cheaper than lost insight, and the findings-manager can merge/close duplicates.
 - **Silent vs confirmed** — default to recording with a **brief, non-disruptive notice** to the scientist ("recorded as finding 0042"), so exploration flow is not broken while the scientist stays aware. **Promotion to `validated` is never silent.**
 

@@ -8,6 +8,16 @@
 - **Always apply and name a multiple-testing correction.** Default **Benjamini–Hochberg (BH/FDR)** for omics-scale testing; name the method and the family it was applied over. Report q-values / adjusted p-values.
 - **Report all tests run**, not only the significant ones. This feeds the exploration log (doc 03.6) and keeps the false-discovery burden visible — silently dropping the tests that didn't pan out is how multiplicity gets hidden.
 
+## Descriptive characterization (the cohort)
+
+Before any modelling, the metadata is characterized in full (Stage 1) — to produce figures and tables the scientist can publish *and* to expose the biases that constrain every downstream claim. Done thoroughly this means:
+
+- **Every variable's distribution** — sample counts per categorical level; summaries/histograms for continuous variables (age, BMI, run order).
+- **Pairwise structure that matters** — cross-tabulate the variable of interest against each covariate and against batch/run-order (sex × group, age × sex, group × batch). A publication-ready **cohort table ("Table 1")** breaks the design factors down by the primary grouping.
+- **Imbalance and confounding, quantified** — group-size ratios for imbalance; **bias-corrected Cramér's V** (categorical↔categorical) or the appropriate association measure (continuous) for confounding between the contrast and each covariate/batch.
+
+**Record the material gotchas as caveat findings** (`kind: caveat`, conventions/findings.md §2.6): a finding is warranted when an imbalance, skew, or confound would change how a downstream result is analyzed or interpreted. The thresholds are **judgment, not hard rules** — as rough orientation, treat a group-size ratio beyond ~3:1 (or any arm under ~10 samples), or a contrast↔covariate Cramér's V above ~0.3, as worth a careful look and likely a caveat. A recorded confound or imbalance has teeth downstream: a confounded covariate should **enter the model as a covariate** (or the comparison be stratified) rather than be silently ignored, and a class imbalance dictates **balanced metrics and stratified folds** in any classifier (see ML below). Carry the caveat into the affected finding's `caveats` via a `relates_to` edge.
+
 ## Test choice
 
 - **Canonical over esoteric.** Prefer widely used, explainable tests; a reviewer and a reader should recognize the method.
@@ -44,3 +54,4 @@
 | Perfect/strong batch↔covariate confounding surfaced + signed off before correcting | **Stats-reviewer** + orchestrator behavior + human sign-off |
 | All tests run are reported (→ exploration log) | **Stats-reviewer** + orchestrator behavior |
 | Small-n / confounded → exploratory | **Stats-reviewer** + findings-manager (phase) |
+| Cohort characterized; material imbalance/confound recorded as a caveat finding; confounded contrast modelled (covariate/stratify) not ignored | **Stats-reviewer** + findings-manager + human sign-off (Stage 1/3) |

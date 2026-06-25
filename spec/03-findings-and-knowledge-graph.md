@@ -23,6 +23,7 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 | `summary` | string | yes | One–two sentence claim |
 | `verdict` | string | yes | Current bottom line in plain terms |
 | `phase` | enum | yes | `exploratory` or `confirmatory` (3.6) |
+| `kind` | enum | no | `discovery` (default) or `caveat` — a dataset/design caveat (imbalance, confound, cohort skew) vs an analysis result (conventions/findings.md §2.6) |
 | `entities` | list[id] | yes if applicable | Normalized entity references (3.4): UniProt/HGNC/Reactome/MONDO/etc. |
 | `relationships` | list[edge] | no | Typed links to other findings (3.3) |
 | `provenance` | object | yes | `data_version` (hash), `script` (path+commit), `params`, `environment` (lock ref) |
@@ -31,6 +32,8 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 | `references` | list[ref] | conditional | Required for any background/interpretive claim (doc 04 invariant) |
 | `validation` | object | no | Which validation senses cleared, by whom/what, concordance result |
 | `integrity_signoff` | bool | yes | Data passed the integrity gate (doc 05) |
+
+**Most findings are discoveries** (analysis results). A `kind: caveat` finding instead records a structural property of the dataset or design — a class imbalance, confound, or cohort skew — that constrains what downstream results can claim. Caveat findings use the same schema and lifecycle; they surface in Stage 1, carry descriptive evidence, and have `integrity_signoff` set at the integrity gate (3.9; conventions/findings.md §2.6).
 
 ### Finding body (sections)
 
@@ -119,6 +122,6 @@ A dedicated subagent owns the findings graph (full contract in doc 04). Responsi
 
 Findings are recorded automatically, but "automatic" needs a policy (fix before implementation):
 
-- **What counts:** a tangible, specific, evidence-bearing observation about the data or its biology — not every remark. Heuristic: if it has an effect, a statistic, or a concrete claim that someone might later cite, record it.
+- **What counts:** a tangible, specific, evidence-bearing observation about the data or its biology — not every remark. Heuristic: if it has an effect, a statistic, or a concrete claim that someone might later cite, record it. This includes **caveat findings**: a class imbalance, covariate skew, or confound found while characterizing the metadata (Stage 1) is exactly such an observation when it would change how a downstream result is analyzed or interpreted — record it as `kind: caveat` (its `integrity_signoff` is set at the integrity gate, which certifies the pairing it rests on).
 - **Candidate vs promoted:** capture is cheap and low-bar (candidate); rigor is applied at promotion. Bias toward capturing too much rather than too little — clutter is cheaper than lost insight, and the manager can merge/close duplicates.
 - **Silent vs confirmed:** default to recording with a brief, non-disruptive notice to the scientist ("recorded as finding 0042"), so the exploration flow is not broken, while keeping the scientist aware. Promotion to `validated` is never silent.

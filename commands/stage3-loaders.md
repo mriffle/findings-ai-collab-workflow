@@ -42,7 +42,7 @@ Where feasible, **derive critical quantities two independent ways and reconcile*
 
 Produce descriptive QC so collaborators can trust the data: abundance boxplots across samples, PCA, missingness maps, correlation structure (figures dual-exported with legends, colored via the registry). Save a QC report under `reports/`.
 
-QC plots (boxplots, PCA) are normally read on **normalized, log-scale** data, so this is the first point the analysis normalization is applied: seed from the `lib/` `normalize` template, use the method confirmed in Stage 2 (median by default), and let the `scale` tag travel with the `Dataset`. **Color PCA/QC by the batch axis** to make batch structure visible, and run `assess_batch_confounding` (the `batch-correct-combat` template) against the covariates of interest — surface any batch↔biology confound to the scientist as part of QC sign-off. Do **not** batch-correct here; correction (batch-label-only, both-ways reporting) is a Stage 4 analysis decision.
+QC plots (boxplots, PCA) are normally read on **normalized, log-scale** data, so this is the first point the analysis normalization is applied: seed from the `lib/` `normalize` template, use the method confirmed in Stage 2 (median by default), and let the `scale` tag travel with the `Dataset`. **Color PCA/QC by the batch axis** to make batch structure visible, and run `assess_batch_confounding` (the `batch-correct-combat` template) against the covariates of interest — surface any batch↔biology confound to the scientist as part of QC sign-off; if a confound or severe imbalance surfaced here (or in the Stage 1 characterization) is not already captured as a caveat finding, have the findings-manager record it (`kind: caveat`) now. Do **not** batch-correct here; correction (batch-label-only, both-ways reporting) is a Stage 4 analysis decision.
 
 ## The integrity gate — pass criteria
 
@@ -51,7 +51,7 @@ The gate passes only when **all** hold:
 1. Loader tests pass (unit, property, planted-truth, edge cases).
 2. The loaded data is verified against the source (every item in obligation B).
 3. Sample↔metadata pairing is complete and exact.
-4. **The scientist signs off.** Present the verification results and QC; get explicit sign-off.
+4. **The scientist signs off.** Present the verification results and QC — including any confounds or imbalances surfaced (now recorded as caveat findings); get explicit sign-off.
 
 ## On pass
 
@@ -60,6 +60,8 @@ Update `state/workflow.json` `integrity_gate`:
 { "passed": true, "signed_off_by": "<scientist>", "date": "<YYYY-MM-DD>", "data_version": "<stamp>", "qc_report": "reports/<qc-report>.md" }
 ```
 Set `current_stage: 4`, bump `updated`. Record the certified `data_version` — if the dataset later changes, this gate is invalidated and must be re-run.
+
+**Settle the metadata caveats.** The caveat findings recorded in Stage 1 (`kind: caveat`) rest on the sample↔metadata pairing this gate just certified — dispatch the findings-manager to set their `integrity_signoff: true` for this `data_version`, so the cohort's imbalances and confounds carry into Stage 4 analysis and Stage 6 reporting as trustworthy, attachable caveats.
 
 Then tell the scientist: **the integrity gate has passed; Stage 4 exploration is now unlocked** (`stage4-explore`). Findings recorded from here may set `integrity_signoff: true` for this `data_version`.
 

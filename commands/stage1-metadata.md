@@ -16,9 +16,10 @@ The goal is a *verified* understanding of the experiment's metadata — generate
 3. **Infer the meaning of each column** from names, values, and domains.
 4. **Validate that understanding with the scientist** — this is a **human checkpoint** (doc 02.8). Present your inferred column meanings and design interpretation; get confirmation or correction before writing the file.
 5. **Check value validity** — types, ranges, allowed sets, uniqueness where expected. Fail loud on anything inconsistent.
-6. **Treat your inferences as hypotheses and test them in code** (doc 05): infer relationships that *should* hold if your understanding is correct, then test them. Crucially, do **confound detection** — is the variable of interest aliased with batch, run order, or another factor? A confounded design changes what every downstream finding can claim.
-7. **Generate thorough descriptive plots and tables** of the metadata (per the visualization conventions — dual export, Okabe–Ito via the color registry).
-8. **Extend the color registry.** Now that the design is understood, add project-specific categorical dimensions (treatment arms, cell lines, timepoints) to `state/color_registry.json` with `scope: project`, so every figure colors them consistently from the start.
+6. **Treat your inferences as hypotheses and test them in code** (doc 05): infer relationships that *should* hold if your understanding is correct, then test them — including whether the variable of interest is independent of batch, run order, and the key covariates (confounding; quantified and, where material, recorded in step 8). Assumptions are hypotheses, not assertions.
+7. **Characterize the cohort — thorough descriptive plots and tables.** Generate, per the visualization conventions (dual export, Okabe–Ito via the color registry): the **distribution of every metadata variable** (sample counts per categorical level; summaries/histograms for continuous variables like age); **pairwise cross-tabulations** of the variables that matter — the variable of interest against each covariate and against batch/run-order (e.g. sex × group, age × sex, group × batch); and a publication-ready **cohort summary table ("Table 1")** broken down by the primary grouping. These are deliverables in their own right (papers, talks) *and* the lens for the next step. See `conventions/statistics.md` (descriptive characterization) for what to compute.
+8. **Hunt for imbalance, bias, and confounding — and record the material ones as findings.** The point of the characterization is not just figures: it is to surface **class imbalance** (a grouping dominated by one level, severely unequal arm sizes), **covariate skew** (age/sex/etc. distributed unevenly across the contrast), and **confounding** (the variable of interest aliased with batch, run order, sex, or another factor — quantify with bias-corrected Cramér's V). A confounded or imbalanced design changes what every downstream finding can claim. **For each material gotcha, dispatch the findings-manager to record a caveat finding** (`kind: caveat`, `status: candidate`, `phase: exploratory`, `integrity_signoff: false`) capturing the evidence — the crosstab, the arm sizes, the confounding statistic — and the interpretive risk. The threshold is judgment, not a rule (suggestive cutoffs in `conventions/statistics.md`): record what would change a downstream analysis or its interpretation, not every histogram. These candidates have their `integrity_signoff` set at the integrity gate (Stage 3), which certifies the pairing they rest on.
+9. **Extend the color registry.** Now that the design is understood, add project-specific categorical dimensions (treatment arms, cell lines, timepoints) to `state/color_registry.json` with `scope: project`, so every figure colors them consistently from the start.
 
 ## Output — `state/METADATA.md`
 
@@ -26,7 +27,7 @@ A verified, human- and agent-readable description containing:
 
 - every column with its inferred meaning and validated type/domain;
 - the experimental design it encodes;
-- detected relationships and **confounds**;
+- detected relationships, **class imbalances, covariate skews, and confounds** — each material one with a pointer to the caveat finding (`kind: caveat`) recorded for it;
 - the **join key** to the data matrix (how samples in metadata map to columns/rows in the data);
 - a **data-version stamp** (so the file cannot silently drift from the data it describes).
 

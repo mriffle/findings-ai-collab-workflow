@@ -33,6 +33,7 @@
 | Canonical tests; moderated models for DE | 05.3 | **Stats-reviewer** | seed from `lib/` moderated-model template (*pending phase E*; until then, stats-reviewer only) |
 | All tests run are reported (→ exploration log) | 05.3, 03.6 | **Stats-reviewer** + orchestrator behavior | exploration log appended in Stage 4 |
 | Small-n / confounded → exploratory | 05.3, 03.6 | **Stats-reviewer** + findings-manager | `phase` field |
+| Cohort characterized; material imbalance/skew/confound recorded as a caveat finding | 02.1, 05.3 | **Human checkpoint** (Stage 1) + **Stats-reviewer** + **Report-reviewer** + findings-manager | Stage 1 characterizes the metadata and records `kind: caveat` findings; the scientist confirms at the Stage 1 checkpoint; the stats-reviewer checks a confounded contrast is modelled (covariate/stratify) not ignored; the report-reviewer verifies caveats propagate into the report. No clean hook — "did you *notice* the imbalance?" isn't decidable from a tool event |
 | Every reference exists and supports its claim | 04.5 | **Research-reviewer** | fact-checks each reference before it enters the corpus |
 | Figure rendered, reviewed, dual-exported, legend present | 06 | **Figure-reviewer** + the `figure-io` template | `figure-io`'s `save_figure` dual-exports the figure (`<base>.{svg,png}`) and a companion legend image (`<base>.legend.{svg,png}`) kept out of the plot (shipped); the figure-reviewer reviews the PNG render and confirms the figure + legend image. Mechanical only for a project script that *uses* `save_figure` (honest note 4) |
 | Okabe–Ito; category colors from the registry; consistency | 06.5 | **Figure-reviewer** + the `okabe-ito-colors` template | `okabe-ito-colors` reads/extends `state/color_registry.json` so a `(category, value)` keeps one Okabe–Ito color across figures (shipped); the figure-reviewer verifies a script routes its colors through it |
@@ -44,7 +45,7 @@
 
 | Point | Spec |
 |---|---|
-| Confirm metadata understanding (end Stage 1) | 02.8 |
+| Confirm metadata understanding — incl. surfaced imbalances/confounds (end Stage 1) | 02.8 |
 | Confirm sample↔metadata pairing (esp. fuzzy matches) | 02.8 |
 | Integrity-gate sign-off (end Stage 3) | 02.8 |
 | Accept a finding's promotion to `validated` | 02.8 |

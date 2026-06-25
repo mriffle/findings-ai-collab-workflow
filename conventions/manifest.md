@@ -30,13 +30,14 @@ engine_version: 0.1.0      # plugin version that last wrote it
 
 Derived index of the findings graph — regenerable from the finding files (the files are the source of truth). One row per finding.
 
-| ID | Slug | Title | Status | Phase | Entities | Relationships | Updated | Data version |
-|----|------|-------|--------|-------|----------|---------------|---------|--------------|
-| 42 | drug-a-upregulates-tp53 | Drug A upregulates TP53 | validated | exploratory | uniprot:P04637, hgnc:HGNC:11998 | supports:12, refines:7 | 2026-06-22 | sha256:9f86d08… |
-| 43 | tp53-targets-enriched | p53 targets enriched in responders | under_exploration | exploratory | reactome:R-HSA-69541 | supports:42 | 2026-06-22 | sha256:9f86d08… |
+| ID | Slug | Title | Status | Phase | Kind | Entities | Relationships | Updated | Data version |
+|----|------|-------|--------|-------|------|----------|---------------|---------|--------------|
+| 42 | drug-a-upregulates-tp53 | Drug A upregulates TP53 | validated | exploratory | discovery | uniprot:P04637, hgnc:HGNC:11998 | supports:12, refines:7 | 2026-06-22 | sha256:9f86d08… |
+| 43 | tp53-targets-enriched | p53 targets enriched in responders | under_exploration | exploratory | discovery | reactome:R-HSA-69541 | supports:42 | 2026-06-22 | sha256:9f86d08… |
+| 7  | sex-confounded-with-group | Sex confounded with treatment group | candidate | exploratory | caveat | — | — | 2026-06-22 | sha256:9f86d08… |
 ```
 
-### Columns (the doc 03.7 field set, plus `Slug` for file resolution)
+### Columns (the doc 03.7 field set, plus `Slug` for file resolution and `Kind` for caveat queries)
 
 | Column | From the finding | Purpose |
 |---|---|---|
@@ -45,6 +46,7 @@ Derived index of the findings graph — regenerable from the finding files (the 
 | `Title` | `title` | Human label in listings. |
 | `Status` | `status` | Filter/queries; consistency checks. |
 | `Phase` | `phase` | Multiplicity-honest filtering (exploratory vs confirmatory). |
+| `Kind` | `kind` | Separate dataset/design **caveats** from discoveries — lets reporting pull the Limitations set and queries exclude caveats (`conventions/findings.md` §2.6). Defaults to `discovery`; shown explicitly. |
 | `Entities` | `entities` | Knowledge-graph queries. Compact `db:id` list, comma-separated (labels live in the file). |
 | `Relationships` | `relationships` | Graph edges. Compact `type:target` list, comma-separated. |
 | `Updated` | `updated` | Recency. |
