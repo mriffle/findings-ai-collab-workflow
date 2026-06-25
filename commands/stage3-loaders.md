@@ -35,12 +35,15 @@ Build loaders (in `scripts/`, seeding from the `lib/` loader template where one 
 - Missing-value encoding made explicit.
 - Transformation/normalization state confirmed, and the loader **records the matching `scale`** on its `Dataset` (`linear`/`log2`/`glog2`/`zscore`, per Stage 2) — this is what lets the normalization/batch templates refuse scale-incorrect steps.
 - **Sample↔metadata pairing complete and exact** — every sample matched once, no orphans/duplicates, counts reconcile on both sides. (Fuzzy matches are a **human checkpoint**: have the scientist confirm the join resolution.)
+- **Experimental/control classification carried and verified** — control samples (pools, references, standards, blanks) are real samples and pair like any other; carry the Stage-1 experimental-vs-control label onto the loaded samples and verify the per-class counts reconcile, so the **experimental subset** the analysis will run on is well-defined and certified at this gate (not re-decided ad hoc downstream).
 
 Where feasible, **derive critical quantities two independent ways and reconcile** — especially the data read itself, here at the data boundary, before any analysis.
 
 ## QC report
 
 Produce descriptive QC so collaborators can trust the data: abundance boxplots across samples, PCA, missingness maps, correlation structure (figures dual-exported with legends, colored via the registry). Save a QC report under `reports/`.
+
+**Render control samples separately** from the experimental samples (their own panels or visibly highlighted), never silently pooled into the experimental distributions — pools track technical reproducibility (CV) and run-order drift, references/bridges anchor cross-batch comparison, while biological QC contrasts use the experimental subset. (The detailed QC-plot treatment of controls is governed by `conventions/visualization.md`.)
 
 QC plots (boxplots, PCA) are normally read on **normalized, log-scale** data, so this is the first point the analysis normalization is applied: seed from the `lib/` `normalize` template, use the method confirmed in Stage 2 (median by default), and let the `scale` tag travel with the `Dataset`. **Color PCA/QC by the batch axis** to make batch structure visible, and run `assess_batch_confounding` (the `batch-correct-combat` template) against the covariates of interest — surface any batch↔biology confound to the scientist as part of QC sign-off; if a confound or severe imbalance surfaced here (or in the Stage 1 characterization) is not already captured as a caveat finding, have the findings-manager record it (`kind: caveat`) now. Do **not** batch-correct here; correction (batch-label-only, both-ways reporting) is a Stage 4 analysis decision.
 
@@ -51,7 +54,7 @@ The gate passes only when **all** hold:
 1. Loader tests pass (unit, property, planted-truth, edge cases).
 2. The loaded data is verified against the source (every item in obligation B).
 3. Sample↔metadata pairing is complete and exact.
-4. **The scientist signs off.** Present the verification results and QC — including any confounds or imbalances surfaced (now recorded as caveat findings); get explicit sign-off.
+4. **The scientist signs off.** Present the verification results and QC — including the experimental/control classification (the analysis subset) and any confounds or imbalances surfaced (now recorded as caveat findings); get explicit sign-off.
 
 ## On pass
 

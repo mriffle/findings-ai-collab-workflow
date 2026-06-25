@@ -65,7 +65,7 @@ Every finding pins enough to re-run to the same numbers (principle 2).
 provenance:
   data_version: "sha256:9f86d08…"          # hash / version stamp of the pinned dataset
   script: { path: "scripts/promoted/de_treatment.py", commit: "abc1234" }
-  params: { contrast: "drug_A_vs_control", fdr: 0.05, min_obs: 3 }
+  params: { sample_set: "experimental", contrast: "drug_A_vs_control", fdr: 0.05, min_obs: 3 }
   environment: "env/uv.lock@abc1234"        # reference to the locked environment
   seeded_from: { template: "de-moderated", version: "0.3" }  # the lib/ template this script was adapted from (lineage); null if written from scratch
   seed: 12345                               # required where anything stochastic ran
@@ -74,6 +74,7 @@ provenance:
 - `script.path` **must be under `scripts/promoted/`** before the finding can be `validated` — a finding may link only to a promoted (reviewed, tested) script (doc 05.1). A `candidate` may temporarily reference a scratch script, but promotion to `validated` requires a promoted path + commit.
 - `data_version` is the hash/stamp the staleness machinery compares against (§7, doc 03.8).
 - `seeded_from` records **template lineage** — which `lib/` template (and its version) this project-local script was adapted from. It is provenance/attribution, **not** a runtime dependency: the finding is regenerable from the promoted script itself. Lineage lets the findings-manager flag derived scripts for re-review when a `lib/` template is later corrected. `null` for a script written from scratch. The fields map to the source template's `__script_meta__` `template:` block — `seeded_from.template` = its `name`, `seeded_from.version` = its `version`.
+- `params` records the **analyzed sample set** for any biological contrast. Control samples (pools/references/standards/blanks) are excluded from the experimental subset that analysis runs on (`conventions/statistics.md`), so record `sample_set` (e.g. `"experimental"`) with the experimental-n and the count of controls excluded — making the exclusion explicit and the filter reproducible.
 
 ### 2.3 `evidence` — the numbers
 

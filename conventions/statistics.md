@@ -18,6 +18,12 @@ Before any modelling, the metadata is characterized in full (Stage 1) — to pro
 
 **Record the material gotchas as caveat findings** (`kind: caveat`, conventions/findings.md §2.6): a finding is warranted when an imbalance, skew, or confound would change how a downstream result is analyzed or interpreted. The thresholds are **judgment, not hard rules** — as rough orientation, treat a group-size ratio beyond ~3:1 (or any arm under ~10 samples), or a contrast↔covariate Cramér's V above ~0.3, as worth a careful look and likely a caveat. A recorded confound or imbalance has teeth downstream: a confounded covariate should **enter the model as a covariate** (or the comparison be stratified) rather than be silently ignored, and a class imbalance dictates **balanced metrics and stratified folds** in any classifier (see ML below). Carry the caveat into the affected finding's `caveats` via a `relates_to` edge.
 
+## Sample set — analysis is on the experimental samples
+
+- **Biological/differential analysis runs on the experimental subset only.** Control samples — pooled QC, reference/bridge channels, standards, blanks — are identified during metadata understanding (Stage 1) and certified at the integrity gate (Stage 3); they are **excluded** from every biological contrast. Including them silently distorts effect sizes, variance, and the null. The binary `experimental` vs `control` split, and the column or rule that derives it, are documented in `state/METADATA.md`; the analysis applies that documented rule rather than re-deciding the subset per script.
+- **The exclusion is explicit and recorded, never silent.** Record the analyzed sample set in the finding's `provenance.params` — e.g. `sample_set: "experimental"` with the experimental-n and the count of controls excluded — so a reader can see exactly which samples produced the numbers and reproduce the filter.
+- **Controls are not discarded — they carry the technical-QC role.** Pools quantify technical reproducibility (CV) and run-order drift; references/bridges anchor cross-batch comparison. They are viewed *separately* in QC (`conventions/visualization.md`), never pooled into the experimental distributions.
+
 ## Test choice
 
 - **Canonical over esoteric.** Prefer widely used, explainable tests; a reviewer and a reader should recognize the method.
@@ -55,3 +61,4 @@ Before any modelling, the metadata is characterized in full (Stage 1) — to pro
 | All tests run are reported (→ exploration log) | **Stats-reviewer** + orchestrator behavior |
 | Small-n / confounded → exploratory | **Stats-reviewer** + findings-manager (phase) |
 | Cohort characterized; material imbalance/confound recorded as a caveat finding; confounded contrast modelled (covariate/stratify) not ignored | **Stats-reviewer** + findings-manager + human sign-off (Stage 1/3) |
+| Analysis runs on the experimental subset; control samples excluded and the exclusion recorded in provenance | **Stats-reviewer** + human sign-off (Stage 1/3) |

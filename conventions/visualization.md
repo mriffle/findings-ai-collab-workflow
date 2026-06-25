@@ -29,6 +29,8 @@ Figures default to publication quality: legible font sizes **at print scale**, n
 
 The Stage 1 metadata characterization (the distribution of every variable, pairwise crosstabs, the cohort "Table 1") produces **first-class figures**, subject to every rule here — dual export, Okabe–Ito via the registry, the ≤8-category guard, render review. They are both publication deliverables and the lens that exposes class imbalance and confounding; the consequential ones are recorded as caveat findings (`conventions/statistics.md`; `conventions/findings.md` §2.6). Color the categorical design variables (sex, group, batch) through `state/color_registry.json` so a given level keeps its color from the very first cohort plot through every downstream figure.
 
+**Control samples are rendered separately from experimental samples** in QC and descriptive figures — their own panels or visibly distinct, never silently merged into the experimental distributions (a pool's tight cluster or a blank's empty profile would otherwise distort the very spread the plot is meant to show). The experimental/control split is the binary one settled in Stage 1 (`conventions/statistics.md`); because pools and references read differently (technical reproducibility/drift vs cross-batch anchoring), a QC figure may further distinguish the control subtypes. (The QC-plot machinery is phase-E work; this is the standing rule those plots must honor.)
+
 ## Color — palette and the registry
 
 - **Palette: Okabe–Ito** (color-blind-friendly) as the standard categorical palette. Figures should remain interpretable for color-vision-deficient viewers and, where feasible, in grayscale.
@@ -58,4 +60,5 @@ Every figure records — and the finding that uses it pins — the producing **s
 | Dual export (SVG + 300 DPI PNG) + separate legend image present | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
 | Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `okabe-ito-colors` reads/extends `state/color_registry.json`) |
 | ≤8 categorical colors; explicit strategy beyond | **Figure-reviewer** (+ `okabe-ito-colors` raises `CategoricalPaletteExceededError` past 8) |
+| Control samples rendered separately from experimental in QC/descriptive figures | **Figure-reviewer** |
 | Figure provenance pinned; staleness tracked | findings-manager (staleness) + finding `provenance` |

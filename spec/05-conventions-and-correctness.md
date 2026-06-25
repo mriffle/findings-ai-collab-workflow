@@ -23,6 +23,7 @@ Conventions are an **enforcement spec**: a convention is only real if something 
 - **No bare p-values.** Always report an effect size and a confidence interval alongside a corrected p-value.
 - **Always apply and name a multiple-testing correction** (BH/FDR for omics).
 - **Report all tests run,** not only the significant ones (feeds the exploration log, doc 03.6).
+- **Analysis runs on the experimental samples only.** Control samples (pooled QC, reference/bridge, standards, blanks) — identified in Stage 1 (doc 02.1) and certified at the integrity gate — are excluded from every biological contrast; the exclusion is explicit and recorded in the finding's `provenance.params` (the analyzed sample set). Controls are retained for their technical-QC role (reproducibility, drift, cross-batch) and viewed separately in QC (doc 06).
 - **Canonical over esoteric.** Prefer widely used, explainable tests. For differential abundance prefer a moderated linear model (limma / MSstats) over naive per-feature t-tests.
 - **No data leakage.** Every preprocessing step that learns from data — normalization, imputation, feature selection, scaling — happens **inside** each cross-validation fold, never on the full dataset first.
 - **Match cross-validation to the generalization target.** Define the unit of generalization (new samples? new patients? new batches?) and structure folds accordingly (group/subject-wise folds when samples cluster within a patient).

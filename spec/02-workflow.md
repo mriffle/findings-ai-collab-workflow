@@ -26,13 +26,14 @@ The agent locates the metadata file (asking the scientist where it is), then:
 
 - examines structure, columns, value domains;
 - infers the meaning of each column from names, values, and domains;
-- opens an interaction to validate that understanding with the scientist;
+- **identifies control samples** (pooled QC, reference/bridge channels, standards, blanks) from an explicit sample-role column or, failing that, naming-convention / no-group inference, and classifies every sample **experimental vs control** — controls are excluded from downstream biological analysis (doc 05.3) and viewed separately in QC (doc 06);
+- opens an interaction to validate that understanding with the scientist — **including the experimental/control split and the rule deriving it**;
 - checks value validity (types, ranges, allowed sets, uniqueness where expected);
 - infers relationships that *should* hold if its understanding is correct, and **tests them as hypotheses** (principle from doc 05) — including confound detection: is the variable of interest aliased with batch, run order, or another factor?
 - generates thorough descriptive plots and tables of the metadata — the distribution of every variable, pairwise cross-tabulations (variable of interest against covariates and batch), and a cohort summary table — to characterize the cohort and **expose class imbalance, covariate skew, and confounding** (per doc 06; metrics in doc 05.3);
 - records each **material imbalance, skew, or confound as a caveat finding** (`kind: caveat`, doc 03.1) — the durable memory of the gotchas that constrain downstream claims, consulted in Stage 4 and carried into the report.
 
-**Output — `state/METADATA.md`.** A verified, human- and agent-readable description containing: every column with its inferred meaning and validated type/domain; the experimental design it encodes; detected relationships, imbalances, and confounds (with the caveat findings recorded for the material ones); the join key to the data matrix; and a data-version stamp. This file is the canonical reference for what the experiment is. It is *generated from* verified understanding, never hand-asserted, and carries the data-version it describes so it cannot silently drift.
+**Output — `state/METADATA.md`.** A verified, human- and agent-readable description containing: every column with its inferred meaning and validated type/domain; the experimental design it encodes; the **experimental/control sample classification and the rule deriving it** (the experimental subset is the analysis set); detected relationships, imbalances, and confounds (with the caveat findings recorded for the material ones); the join key to the data matrix; and a data-version stamp. This file is the canonical reference for what the experiment is. It is *generated from* verified understanding, never hand-asserted, and carries the data-version it describes so it cannot silently drift.
 
 ## 2.2 Stage 2 — Understand the data
 
@@ -57,6 +58,7 @@ This stage ends at the **integrity gate**, the workflow's hardest precondition (
 - loader tests pass (unit, property, planted-truth, edge cases);
 - the loaded data is verified against the source (counts reconcile, spot reconciliation, dtypes, ranges, identifier integrity, missing-value semantics, orientation);
 - sample↔metadata pairing is complete and exact (every sample matched once, no orphans/duplicates, counts reconcile on both sides);
+- the experimental/control classification (Stage 1) is carried onto the loaded samples and certified, so the experimental subset analysis runs on is well-defined (doc 05.3);
 - the scientist signs off.
 
 Metadata **caveat findings** recorded in Stage 1 (doc 03.1) have their `integrity_signoff` set at this gate, which certifies the sample↔metadata pairing they rest on.
@@ -93,6 +95,7 @@ All state files are canonical references that any fresh agent reads to rehydrate
 | Point | Type | Condition / decision |
 |---|---|---|
 | End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding (incl. surfaced imbalances/confounds) |
+| End of Stage 1 | Human checkpoint | Scientist confirms the experimental/control sample split + the rule deriving it |
 | Sample↔metadata pairing | Human checkpoint | Scientist confirms join resolution (esp. fuzzy matches) |
 | Integrity gate (end Stage 3) | Command precondition + hook (finding writes) + human sign-off | Loaders verified; no analysis before pass |
 | Finding promotion | Gate (validation) + human | Independent validation cleared; scientist accepts |
