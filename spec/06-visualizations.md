@@ -7,7 +7,7 @@ Figures are evidence. They carry findings into talks and reports, and a wrong or
 - Every generated figure is **reviewed as a rendered PNG**, not merely as the code that produced it. Code can be correct and the render still wrong (clipped labels, misleading axis, wrong color mapping, overplotting). The figure reviewer (doc 04) inspects the actual render. This mirrors the correctness charter's rule: verify the artifact, not just the script.
 - Figure generation and review are a **generator/reviewer subagent pair** (doc 04).
 - A figure is not accepted until its render passes review.
-- **Control samples are rendered separately from experimental samples** in QC and descriptive figures (their own panels or visibly distinct), never silently pooled into the experimental distributions — a pool's tight cluster or a blank's empty profile would otherwise distort the very spread the plot exists to show. The experimental/control split is the one settled in Stage 1 (doc 02.1, doc 05.3).
+- **Control samples are rendered separately from experimental samples** in QC and descriptive figures (their own panels or visibly distinct), never silently pooled into the experimental distributions — a pool's tight cluster or a blank's empty profile would otherwise distort the very spread the plot exists to show. The experimental/control split is the one settled in Stage 1 (doc 02.1, doc 05.3). *(One deliberate, documented exception in the implementation: the `sample-correlation` heatmap shows controls together with experimentals, labeled by a Sample Type stripe, because the cross-class clustering is the deliverable — see `conventions/visualization.md`.)*
 
 ## 6.2 Output formats
 
