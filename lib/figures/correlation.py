@@ -586,9 +586,13 @@ def _resolve_annotations(
 
 def _display_labels(dataset: Dataset, sample_label_column: str | None) -> np.ndarray:
     """Per-sample axis tick labels: ``sample_label_column`` if given, else the index."""
+    # Explicit annotation so the return type is np.ndarray, not Any: a stub-less env
+    # (no pandas-stubs, as in a user's setup-env project + CI) types .to_numpy() as Any.
     if sample_label_column is None:
-        return dataset.metadata.index.to_numpy().astype(str)
-    return dataset.metadata[sample_label_column].to_numpy().astype(str)
+        labels: np.ndarray = dataset.metadata.index.to_numpy().astype(str)
+    else:
+        labels = dataset.metadata[sample_label_column].to_numpy().astype(str)
+    return labels
 
 
 # --------------------------------------------------------------------------- #
