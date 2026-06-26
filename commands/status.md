@@ -35,7 +35,7 @@ Findings Workflow — status
   Findings: 0
 ```
 
-Show the environment line near the pipeline: the verified interpreter version and where it lives (project `.venv`, or system), or — if no usable Python ≥ 3.11 — flag it and point to `setup-env` (this is the Stage 3 precondition).
+Show the environment line near the pipeline: the verified interpreter version and where it lives (project `.venv`, or system), or — if no usable Python ≥ 3.11 — flag it and point to `setup-env` (this is the Stage 1 precondition — the metadata examination is the first stage that runs code).
 
 When the gate has passed, show it as passed with the signer/date/data_version, mark Stage 4+ available, and print the findings breakdown:
 

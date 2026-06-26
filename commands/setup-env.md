@@ -5,7 +5,7 @@ description: Ensure this project has a usable, project-local Python environment 
 
 # Set up the project Python environment
 
-The workflow runs all analysis, loaders, and figures in **Python** (`conventions/coding.md`). This command makes sure this project has a usable interpreter and a locked, project-local environment **before** any Python is executed (Stage 3 onward). It is **idempotent** — safe to re-run; it never overwrites a working setup.
+The workflow runs all analysis, loaders, and figures in **Python** (`conventions/coding.md`). This command makes sure this project has a usable interpreter and a locked, project-local environment **before** any Python is executed (Stage 1 onward). It is **idempotent** — safe to re-run; it never overwrites a working setup.
 
 **The floor is Python ≥ 3.11** (`conventions/coding.md`). Anything older is treated as "not suitable."
 
@@ -43,7 +43,7 @@ Tell the scientist, in plain terms, before doing anything:
 
 Wait for an explicit answer.
 
-**If the scientist declines:** do **not** install anything. Record the decline (Step 6, `mode: "system"`, `declined: true`), and tell them: *"No problem — install Python ≥ 3.11 yourself (e.g. python.org, your OS package manager, pyenv, or conda), then re-run `setup-env`. Stage 3 stays blocked until a usable interpreter is available."* Stop here.
+**If the scientist declines:** do **not** install anything. Record the decline (Step 6, `mode: "system"`, `declined: true`), and tell them: *"No problem — install Python ≥ 3.11 yourself (e.g. python.org, your OS package manager, pyenv, or conda), then re-run `setup-env`. Stage 1 stays blocked until a usable interpreter is available."* Stop here.
 
 **If the scientist approves:** continue to Step 3.
 
@@ -163,7 +163,7 @@ Update the `environment` block in `state/workflow.json` (schema: `conventions/wo
 - `configured`: `true` only once a usable env (≥ `python_min`) has actually been verified; `false` if the scientist declined and no suitable Python is present yet.
 - `declined`: `true` if the scientist declined the project-local install.
 
-This block is **advisory state**; the Stage 3 gate still *live-verifies* a working interpreter (it never trusts a stale flag).
+This block is **advisory state**; the stage gates still *live-verify* a working interpreter (the Stage 1 hard gate, re-verified at the Stage 3 integrity gate) — they never trust a stale flag.
 
 ## Step 7 — Report
 
@@ -173,4 +173,4 @@ Print a created-vs-kept summary and how to use the environment in this project:
 - **Change dependencies:** `UV_PYTHON_INSTALL_DIR="$PWD/.uv/python" ./.uv/bin/uv add|remove <pkg>` (re-locks automatically).
 - **The committed reproducibility artifacts** are `pyproject.toml`, `uv.lock`, and `.python-version`; `.uv/` and `.venv/` are git-ignored and rebuilt with `./.uv/bin/uv sync`.
 
-End by pointing to the next workflow step (e.g. *"Environment ready. Continue the workflow; Python execution unlocks at Stage 3 — run `stage3-loaders` when you reach it."*).
+End by pointing to the next workflow step (e.g. *"Environment ready. Continue the workflow; Python execution begins at Stage 1 — run `stage1-metadata` when you reach it."*).

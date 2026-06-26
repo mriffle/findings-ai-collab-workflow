@@ -25,6 +25,6 @@ Stating goals up front improves relevance but **invites motivated reasoning**. R
 ## Then
 
 - Update `state/workflow.json`: set `science_done: true`, `current_stage: 1`, bump `updated`.
-- Tell the scientist the next step: **Stage 1 — Understand the metadata** (`stage1-metadata`). You'll need to know where the metadata file is.
+- Tell the scientist the next step: **Stage 1 — Understand the metadata** (`stage1-metadata`). You'll need to know where the metadata file is. Stage 1 is the first stage that runs code (validity checks, cohort characterization, confounding statistics), so it needs a working Python ≥ 3.11 — if the project environment isn't set up yet, run `setup-env` before (or at the start of) Stage 1.
 
 Do not proceed to examine data. Understanding precedes analysis.

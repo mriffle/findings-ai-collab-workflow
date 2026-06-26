@@ -61,7 +61,7 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 ## Offer to set up the Python environment (optional)
 
-After scaffolding, briefly check whether this project has a usable Python (≥ 3.11) and offer `setup-env`: *"This workflow runs analysis in Python ≥ 3.11. I can set up a project-local environment now (or later) with `setup-env` — it detects an existing Python and, only if needed, asks before installing one **into this project**."* Do not run any installer here and do not block on this — `setup-env` owns the detection, the consent prompt, and the install. Python isn't executed until Stage 3, so this can wait.
+After scaffolding, briefly check whether this project has a usable Python (≥ 3.11) and offer `setup-env`: *"This workflow runs analysis in Python ≥ 3.11. I can set up a project-local environment now (or later) with `setup-env` — it detects an existing Python and, only if needed, asks before installing one **into this project**."* Do not run any installer here and do not block on this — `setup-env` owns the detection, the consent prompt, and the install. Python execution begins at **Stage 1** (the metadata examination runs validity checks, the cohort characterization, and confounding statistics in code), so the environment should be in place before Stage 1 — it can be set up now or any time before then.
 
 ## After scaffolding
 

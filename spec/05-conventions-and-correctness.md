@@ -11,7 +11,7 @@ Conventions are an **enforcement spec**: a convention is only real if something 
 ## 5.2 Coding conventions
 
 - **Python only.**
-- **Python ≥ 3.11, in a project-local environment.** The floor is 3.11. The interpreter and virtualenv live **inside the project** with **zero global footprint** — setup never modifies the user's `PATH`, shell profile, or system Python. The `setup-env` command detects an existing suitable interpreter and, only when none is found, **transparently asks consent** before downloading `uv` + a standalone Python *into the project* (project-local install dir, no PATH changes). Declining is allowed; the scientist then supplies Python ≥ 3.11 and analysis stays blocked until one exists. This precondition is **live-verified at Stage 3** (the first stage that executes Python), not assumed.
+- **Python ≥ 3.11, in a project-local environment.** The floor is 3.11. The interpreter and virtualenv live **inside the project** with **zero global footprint** — setup never modifies the user's `PATH`, shell profile, or system Python. The `setup-env` command detects an existing suitable interpreter and, only when none is found, **transparently asks consent** before downloading `uv` + a standalone Python *into the project* (project-local install dir, no PATH changes). Declining is allowed; the scientist then supplies Python ≥ 3.11 and the workflow stays blocked until one exists. This precondition is **live-verified at Stage 1** (the first stage that executes Python — metadata validity checks, cohort characterization, and confounding statistics all run in code) and **re-verified at the Stage 3 integrity gate**, not assumed.
 - **Locked environments.** Pinned versions in a lockfile; the environment is recorded alongside any finding, so computational reproduction is meaningful.
 - **Seeds set and recorded** everywhere stochastic (numpy, sklearn, etc.).
 - **Non-interactive, parameterized scripts.** Scripts run end-to-end from config, not hard-coded paths. Notebooks, if used for exploration, are disposable; the canonical path is always a script (out-of-order cell execution is a reproducibility landmine).
@@ -73,7 +73,7 @@ Where feasible, derive key numbers two independent ways and reconcile. Because l
 
 | Rule | Enforced by |
 |---|---|
-| Usable Python ≥ 3.11 project env before analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
+| Usable Python ≥ 3.11 project env before any code | **Command precondition** (`stage1-metadata` live-verifies; `stage3-loaders` re-verifies) + `setup-env` |
 | No analysis before integrity gate passes | **Command precondition** + orchestrator behavior (hook gates finding writes) + human sign-off |
 | Script not promoted until lint + types pass | **Hook**; tests verified by **code-reviewer** |
 | Raw data read-only; outputs regenerable | **Hook** (block writes to `data/`) |

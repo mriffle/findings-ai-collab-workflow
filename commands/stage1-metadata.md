@@ -5,7 +5,9 @@ description: "Stage 1 — Understand the metadata. Infer and validate the meanin
 
 # Stage 1 — Understand the metadata
 
-**Precondition:** `state/workflow.json` shows `science_done: true`. If not, run `stage0-science` first and say so.
+**Precondition — prior stage:** `state/workflow.json` shows `science_done: true`. If not, run `stage0-science` first and say so.
+
+**Precondition — Python environment (hard gate).** This is the **first stage that executes Python**: the type/range/uniqueness validity checks (step 6), the cross-column invariant tests (step 7), the cohort characterization — distributions, crosstabs, the Table 1 (step 8), and the bias-corrected Cramér's V confounding statistics (step 9) all run in code, not by eye — that is what makes this understanding *verified* rather than hand-asserted. (Stage 0 was a pure interview; execution begins here.) So a usable interpreter must exist before any metadata examination. **Live-verify** a working Python ≥ 3.11 (do not trust `state/workflow.json` `environment.configured` — check the interpreter): prefer the project venv (`./.venv/bin/python` on Unix, `.\.venv\Scripts\python.exe` on Windows), else a project-local/`PATH` `uv`, else a system `python3`/`python`/`py -3`, and confirm it reports ≥ 3.11. If none is usable, **stop and run `setup-env`** (which detects, transparently asks consent, and installs Python ≥ 3.11 *into the project* if approved). If the scientist previously declined the project-local install, tell them to install Python ≥ 3.11 themselves and re-run. Do not start metadata examination without a verified interpreter.
 
 The goal is a *verified* understanding of the experiment's metadata — generated from evidence, never hand-asserted.
 

@@ -5,8 +5,8 @@
 ## Language & environment
 
 - **Python only.** All analysis, loaders, and figure code are Python.
-- **Python ≥ 3.11.** This is the floor the workflow targets and the Stage 3 gate enforces; older interpreters are "not suitable." Pin the exact version in `.python-version`.
-- **Project-local environment, zero global footprint.** The interpreter and virtualenv live **inside the project** (`./.venv`; a project-local `uv` under `./.uv` when bootstrapped), never in a shared/user location, and setup must not modify the user's `PATH` or shell profile. The `setup-env` command establishes this: it detects an existing suitable Python and, only if none is found, **transparently asks consent** before downloading `uv` + a standalone Python *into the project* (flags: `UV_UNMANAGED_INSTALL`, `UV_PYTHON_INSTALL_DIR`). If the scientist declines, they provide Python ≥ 3.11 themselves; Stage 3 stays blocked until a usable interpreter exists. `.uv/` and `.venv/` are git-ignored (regenerable); `pyproject.toml`, `uv.lock`, and `.python-version` are committed.
+- **Python ≥ 3.11.** This is the floor the workflow targets and the Stage 1 gate enforces (re-verified at the Stage 3 integrity gate); older interpreters are "not suitable." Pin the exact version in `.python-version`.
+- **Project-local environment, zero global footprint.** The interpreter and virtualenv live **inside the project** (`./.venv`; a project-local `uv` under `./.uv` when bootstrapped), never in a shared/user location, and setup must not modify the user's `PATH` or shell profile. The `setup-env` command establishes this: it detects an existing suitable Python and, only if none is found, **transparently asks consent** before downloading `uv` + a standalone Python *into the project* (flags: `UV_UNMANAGED_INSTALL`, `UV_PYTHON_INSTALL_DIR`). If the scientist declines, they provide Python ≥ 3.11 themselves; Stage 1 stays blocked until a usable interpreter exists. `.uv/` and `.venv/` are git-ignored (regenerable); `pyproject.toml`, `uv.lock`, and `.python-version` are committed.
 - **Tooling is invoked from `./.venv`.** The quality tools the gates depend on — `ruff`, `mypy` (promotion hook) and `pytest`, `hypothesis` (code-reviewer) — are installed into the project env, not globally. Hooks and reviewers resolve them from `./.venv/bin` (`.venv\Scripts` on Windows) before `PATH`. If they aren't in the env the promotion gate degrades to a no-op, so `setup-env` installs them as dev dependencies.
 - **Locked environments.** Pin exact versions in a lockfile committed to the project. Recommended: **`uv`** (`uv.lock`); `pip-tools` (`requirements.txt` with hashes) or a conda lock are acceptable. The environment is **recorded alongside every finding** (`provenance.environment`) so computational reproduction is meaningful, and software/tool citations (with versions) are drawn from it for free.
 - **Seeds set and recorded** everywhere stochastic — `numpy`, `random`, `scikit-learn` (`random_state=`), any framework RNG. The seed is recorded in the finding (`provenance.seed`). A result that can't be reproduced because the seed wasn't pinned is a defect.
@@ -32,7 +32,7 @@ Code that has not passed tests, **strict** type-checking, and **strict** lint is
 
 | Rule | Enforced by |
 |---|---|
-| Usable Python ≥ 3.11 project env before any analysis | **Command precondition** (`stage3-loaders` live-verifies) + `setup-env` |
+| Usable Python ≥ 3.11 project env before any code | **Command precondition** (`stage1-metadata` live-verifies; `stage3-loaders` re-verifies) + `setup-env` |
 | Raw data read-only; outputs regenerable | **Hook** (`guard_readonly_data.py`) |
 | Script not promoted until **strict** lint + types pass | **Hook** (`guard_promotion.py`: `ruff check` strict rule set + `mypy` strict, via the project config) |
 | Script not promoted until **tests** pass | **Code-reviewer** agent (tests aren't run in-hook) |

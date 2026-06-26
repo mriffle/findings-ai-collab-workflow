@@ -22,6 +22,8 @@ Guard: stating goals first improves relevance but invites motivated reasoning. T
 
 ## 2.1 Stage 1 — Understand the metadata
 
+**Environment precondition.** Stage 1 is the **first stage that executes Python** — the validity checks, the cross-column hypothesis tests, the cohort characterization (distributions, crosstabs, the Table 1), and the confounding statistics below all run in code, which is what makes the understanding *verified* rather than asserted (Stage 0 is a pure interview). So a usable Python ≥ 3.11 must exist before it runs. The `setup-env` command establishes a **project-local** environment — detecting an existing Python or, only with the scientist's explicit consent, installing one *into the project* (zero global footprint). It is **live-verified as a Stage 1 precondition**, and **re-verified at the Stage 3 integrity gate** (doc 05.2).
+
 The agent locates the metadata file (asking the scientist where it is), then:
 
 - examines structure, columns, value domains;
@@ -51,7 +53,7 @@ For the sample-by-feature matrix the agent:
 
 The agent builds robust, tested loaders that load both the data and the metadata and **correctly pair every sample with its metadata description**. It then verifies the loaded data against the source and produces descriptive QC: abundance boxplots across samples, PCA, missingness maps, correlation structure.
 
-**Environment precondition.** Stage 3 is the first stage that executes Python, so a usable interpreter must exist before it runs. The floor is **Python ≥ 3.11**; the `setup-env` command establishes a **project-local** environment — detecting an existing Python or, only with the scientist's explicit consent, installing one *into the project* (zero global footprint). It is **live-verified as a Stage 3 precondition** (doc 05.2).
+**Environment precondition (re-verify).** The Python environment gate lives at Stage 1 (§2.1), where execution begins. Because the integrity gate must not trust an inherited or stale interpreter, the working Python ≥ 3.11 is **re-verified here** before any loader work — floor **Python ≥ 3.11**, established by `setup-env` (doc 05.2).
 
 This stage ends at the **integrity gate**, the workflow's hardest precondition (full requirements in doc 05). The gate passes only when:
 
