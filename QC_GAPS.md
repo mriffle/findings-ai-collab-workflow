@@ -42,16 +42,16 @@ These are not optional — they are what makes a template a sound seed (`lib/AUT
 | Plot | Tier | Status | Template |
 |---|---|---|---|
 | Identification depth (IDs per run) | 1 | **Shipped** (2026-06-29) | `lib/figures/id-depth` |
+| Data completeness / missingness | 1 | **Shipped** (2026-06-29) | `lib/figures/missingness` |
 | RLE — relative log expression | 1 | Not started | — |
-| Data completeness / missingness | 1 | Not started | — |
 | p-value histogram | 1 | Not started | — (with the DE template) |
 | MA plot (Bland–Altman) | 2 | Not started | — |
 | Dynamic range / rank-abundance | 2 | Not started | — |
 | Variance components (PVCA-style) | 2 | Not started | — |
 | Top-features results heatmap | 2 | Not started | — (Stage 4, after DE) |
 
-Recommended order: **RLE → missingness → p-value histogram** (the rest of Tier 1), then
-Tier 2 as the analysis templates land.
+Recommended order: **RLE → p-value histogram** (the rest of Tier 1), then Tier 2 as the
+analysis templates land.
 
 ---
 
@@ -89,7 +89,15 @@ for completeness — see the manifest and `commands/stage3-loaders.md`.
 - **Wiring.** Stage 3 QC report (`commands/stage3-loaders.md`, `conventions/{visualization,
   statistics}.md`).
 
-### Data completeness / missingness diagnostics
+### Data completeness / missingness — **SHIPPED** (`lib/figures/missingness`)
+Built as a two-panel figure (per recommended scope below): a **completeness curve**
+(features retained vs required detection fraction, overlaid per sample class) + an **MNAR
+diagnostic** (per-feature detection rate vs mean log2 abundance, hexbin + binned-median
+trend + Pearson r). Per-sample missingness was deliberately left to `id-depth`; the
+features×samples missingness *map* stays write-from-scratch (the design notes below were
+the build spec). Refuses non-linear scale; wired into the Stage 3 QC report and the
+Stage-2 imputation decision. Original design notes retained for reference:
+
 - **What.** A small family of views: **(a)** missingness fraction per sample and per
   feature; **(b)** a feature-detection/completeness curve — e.g. "# features detected in
   ≥ k samples" or the distribution of per-feature detection rate; **(c)**
