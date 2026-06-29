@@ -12,13 +12,29 @@ questions a scientist actually asks of this data —
 
 It is **engine-dev planning, not user-facing** — it never ships into a project. It is the
 analysis-side companion to [`QC_GAPS.md`](QC_GAPS.md) (which tracks the QC/descriptive
-plots). The source oracle being mined is `johnson-5xFAD-lecanemab-mice-AD/src/`.
+plots). Two source-oracle repos are mined — see **Oracle source repos** just below.
 
 **How to use it.** Same loop as `QC_GAPS.md`: pick a method, **confirm the design with the
 user** (a real-data preview before coding is the established pattern — see `id-depth`'s
 history), build it to the `lib/` bar following **[`lib/AUTHORING.md`](lib/AUTHORING.md)**,
 route every statistic through **[`conventions/statistics.md`](conventions/statistics.md)**,
 and update the *Status* table below + `CLAUDE.md`'s *Next* section when one ships.
+
+**Oracle source repos (absolute paths — every oracle reference below resolves to a file in
+one of these).**
+
+- **`/home/mriffle/vscode/johnson-5xFAD-lecanemab-mice-AD/`** — the primary oracle (also the
+  QC oracle named in `QC_GAPS.md` / `lib/AUTHORING.md`). For this doc:
+  `src/feature_finding_ols.py` (per-feature OLS **and** the limma-style empirical-Bayes
+  moderation, §A.1 / §A.2) and `src/volcano_plotting.py` (the volcano, §C).
+- **`/home/mriffle/vscode/manuscript-trex-phase2a/te-phase2a-pelt/`** — the **multivariate**
+  oracle (introduced 2026-06-29; *not* mentioned in `lib/AUTHORING.md`, so it lives only here):
+  `src/feature_finding_boruta.py` + `src/boruta_plotting.py` +
+  `scripts/run_feature_finding_boruta.py` (Boruta, §B.3), and `src/classification.py` (the
+  **unscanned** elastic-net / leakage-safe-classifier candidate, §B.1).
+
+As elsewhere in the engine, `src/` is generalize-able seed code; `scripts/` is
+project-specific (never template material) — read it only for the call-site wiring.
 
 ---
 
