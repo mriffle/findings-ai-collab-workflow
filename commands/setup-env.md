@@ -116,7 +116,9 @@ Then add the baseline with uv (this resolves, installs into `./.venv`, and write
 ```bash
 # Quality tooling the gates depend on (dev deps):
 ./.uv/bin/uv add --dev ruff mypy pytest hypothesis
-# Recommended scientific baseline (tune per study):
+# Recommended scientific baseline (tune per study; scikit-learn is load-bearing — it
+# powers the KNN missing-value imputer (lib/common/missing-values) and the leakage-safe
+# ML templates, not just an optional extra):
 ./.uv/bin/uv add numpy pandas scipy scikit-learn matplotlib statsmodels
 # Normalization the lib/ templates seed from (pronoms: median / MAD / VSN normalizers).
 # The normalize template is version-sensitive (MADNormalizer's scaling default and the
