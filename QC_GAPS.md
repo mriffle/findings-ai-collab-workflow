@@ -46,7 +46,7 @@ These are not optional — they are what makes a template a sound seed (`lib/AUT
 | RLE — relative log expression | 1 | Not started | — |
 | p-value histogram | 1 | Not started | — (with the DE template) |
 | MA plot (Bland–Altman) | 2 | Not started | — |
-| Dynamic range / rank-abundance | 2 | Not started | — |
+| Dynamic range / rank-abundance | 2 | **Shipped** (2026-06-29) | `lib/figures/dynamic-range` |
 | Variance components (PVCA-style) | 2 | Not started | — |
 | Top-features results heatmap | 2 | Not started | — (Stage 4, after DE) |
 
@@ -152,7 +152,14 @@ Stage-2 imputation decision. Original design notes retained for reference:
 - **Reuse.** `figure_io`, per-sample faceting. Some purpose-overlap with RLE — build RLE
   first; add MA if intensity-dependent bias turns out to matter.
 
-### Dynamic range / rank-abundance
+### Dynamic range / rank-abundance — **SHIPPED** (`lib/figures/dynamic-range`)
+Built as a whole-cohort median + IQR band (default) with optional leader-labelled
+`highlight_features` (and registry-colored `highlight_groups`), plus a per-class
+`class_by` overlay. The **annotation lifecycle** the design discussion settled — QC plain,
+annotated downstream with domain targets / DE hits via the same `highlight_features` param —
+is wired into Stage 3 (plain) + Stage 4 (re-render). Refuses non-linear scale. Original
+design notes retained for reference:
+
 - **What.** Log abundance vs descending rank — one line per sample, or a median line with a
   cohort band. Optionally annotate known high-abundance / contaminant features.
 - **Why.** The standard proteomics depth/coverage plot: how many orders of magnitude are
