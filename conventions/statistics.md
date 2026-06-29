@@ -1,6 +1,6 @@
 # Convention — Statistics
 
-*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts implement these defaults so agents inherit them by seeding from a template rather than writing fresh statistics code: the normalization (scale-tag guard) and batch-correction (log-scale / batch-label-only / confounding) templates ship and carry their guards. The **moderated differential-abundance, leakage-safe classifier, and regression templates are still phase-E work** — for those the stats-reviewer is the sole active enforcer until they ship.*
+*Spec source: doc 05.3. These rules are checked by the **stats-reviewer** agent against every analysis (statistical correctness is judgment-heavy and not cleanly hook-enforceable). The vetted `lib/` template scripts implement these defaults so agents inherit them by seeding from a template rather than writing fresh statistics code: the normalization (scale-tag guard), batch-correction (log-scale / batch-label-only / confounding), missing-value, and **differential-abundance** (`lib/analysis/differential-abundance` — the univariate `ols`/`moderated`/`welch`/`mannwhitney` family, effect+CI+BH-q, batch-as-covariate, non-log warn, NaN raise) templates ship and carry their guards, with the **volcano** + **p-value-histogram** result figures alongside. The **leakage-safe classifier and regression templates are still phase-E work** — for those the stats-reviewer is the sole active enforcer until they ship.*
 
 ## Reporting
 
@@ -27,7 +27,7 @@ Before any modelling, the metadata is characterized in full (Stage 1) — to pro
 ## Test choice
 
 - **Canonical over esoteric.** Prefer widely used, explainable tests; a reviewer and a reader should recognize the method.
-- **Moderated models for differential abundance.** Prefer a **moderated linear model (limma / MSstats-style)** over naive per-feature t-tests — borrowing variance across features is both more powerful and more honest at omics scale. Nonparametric tests (Mann–Whitney) where distributional assumptions fail.
+- **Moderated models for differential abundance.** Prefer a **moderated linear model (limma / MSstats-style)** over naive per-feature t-tests — borrowing variance across features is both more powerful and more honest at omics scale. Nonparametric tests (Mann–Whitney) where distributional assumptions fail. The `lib/analysis/differential-abundance` template implements all four as one swappable family (`method=ols|moderated|welch|mannwhitney`, **moderated the default**) over a study-agnostic `contrast=` + `covariates=[…]` API, emitting the per-feature **effect (log2FC) + CI + p + BH-q** table this convention requires (the source oracle reported only effect + p; the CI is added here). Seed downstream visuals from `lib/figures/volcano` (effect vs −log10 q, hit counts) and `lib/figures/pvalue-hist` (the calibration diagnostic — a healthy run is uniform + a spike at 0; a U-shape/hump signals unmodeled structure or confounding).
 
 ## Normalization & batch correction
 

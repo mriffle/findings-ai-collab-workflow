@@ -44,14 +44,14 @@ These are not optional — they are what makes a template a sound seed (`lib/AUT
 | Identification depth (IDs per run) | 1 | **Shipped** (2026-06-29) | `lib/figures/id-depth` |
 | Data completeness / missingness | 1 | **Shipped** (2026-06-29) | `lib/figures/missingness` |
 | RLE — relative log expression | 1 | Not started | — |
-| p-value histogram | 1 | Not started | — (with the DE template) |
+| p-value histogram | 1 | **Shipped** (2026-06-29) | `lib/figures/pvalue-hist` (with the DE template) |
 | MA plot (Bland–Altman) | 2 | Not started | — |
 | Dynamic range / rank-abundance | 2 | **Shipped** (2026-06-29) | `lib/figures/dynamic-range` |
 | Variance components (PVCA-style) | 2 | Not started | — |
 | Top-features results heatmap | 2 | Not started | — (Stage 4, after DE) |
 
-Recommended order: **RLE → p-value histogram** (the rest of Tier 1), then Tier 2 as the
-analysis templates land.
+Recommended order: **RLE** (the rest of Tier 1 — the p-value histogram shipped with the DE
+template), then Tier 2 as the analysis templates land.
 
 ---
 
@@ -118,7 +118,13 @@ Stage-2 imputation decision. Original design notes retained for reference:
 - **Wiring.** Stage 3 QC report **and** an explicit feed into the Stage-2 imputation choice
   (`commands/stage2-data.md` "Preprocessing decisions to confirm").
 
-### p-value histogram
+### p-value histogram — ✅ Shipped (`lib/figures/pvalue-hist`, v0.1, 2026-06-29)
+Shipped with the differential-abundance template (see `FEATURE_FINDING.md`). `plot_pvalue_histogram`
+takes a `{label: p-array}` mapping (or a single array) or reads a `DifferentialAbundanceResult`
+via `pvalue_histogram_from_result`; the uniform null is drawn at density 1.0, Storey's π0 is
+shown per distribution, and values outside `[0,1]` are refused (the *passed q by mistake* slip).
+The original design notes are kept below for reference.
+
 - **What.** Histogram of the per-feature p-values from a differential-abundance contrast.
   A well-calibrated test → roughly **uniform on [0,1] with a spike near 0** (the true
   positives). Diagnostic shapes: a **U-shape / left-and-right hump** = anti-conservative or

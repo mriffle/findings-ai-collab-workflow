@@ -95,23 +95,40 @@ active enforcer (none of this is cleanly hook-checkable):
 
 ## Status
 
-| Method | Family | Source oracle | Status | Template (planned) |
+| Method | Family | Source oracle | Status | Template |
 |---|---|---|---|---|
-| Linear model / OLS (+ covariates) | univariate | `feature_finding_ols.py` → `fit_ols_per_feature` | Not started | `lib/analysis/differential-abundance` |
-| limma-moderated (empirical Bayes) | univariate | `feature_finding_ols.py` → `moderate_variances` | Not started | (same template; moderated default) |
-| Welch / Student t-test | univariate | — (none) | Not started | (same family; `method=` param) |
-| Mann–Whitney U | univariate | — (none) | Not started | (same family; `method=` param) |
+| Linear model / OLS (+ covariates) | univariate | `feature_finding_ols.py` → `fit_ols_per_feature` | ✅ **Shipped** (v0.1, 2026-06-29) | `lib/analysis/differential-abundance` (`method="ols"`) |
+| limma-moderated (empirical Bayes) | univariate | `feature_finding_ols.py` → `moderate_variances` | ✅ **Shipped** (v0.1) | same template; `method="moderated"` (default) |
+| Welch / Student t-test | univariate | — (none) | ✅ **Shipped** (v0.1) | same family; `method="welch"` |
+| Mann–Whitney U | univariate | — (none) | ✅ **Shipped** (v0.1) | same family; `method="mannwhitney"` (HL shift + rank CI) |
+| Volcano plot | output viz | `volcano_plotting.py` | ✅ **Shipped** (v0.1) | `lib/figures/volcano` |
+| p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic regression | multivariate | — (not yet scanned) | Not started | TBD (mode of classifier #3?) |
 | Elastic-net linear regression | multivariate | — (not yet scanned) | Not started | TBD (mode of regression #4?) |
 | Boruta | multivariate | `te-phase2a-pelt/src/feature_finding_boruta.py` | Not started | TBD (`lib/analysis/boruta`) |
-| Volcano plot | output viz | `volcano_plotting.py` | Not started | `lib/figures/volcano` |
-| p-value histogram | output viz | — (fresh design) | Not started | `lib/figures/pvalue-hist` |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | Not started | `lib/figures/boruta-importance` |
 
-**Recommended starting order:** the univariate **linear-model template (OLS + moderated)** —
-the spec's core — shipped with its **volcano** + **p-value-histogram** companions; then the
-**t-test / Mann–Whitney** variants as parameters of the *same* family; then the
-**multivariate** selection methods (elastic-net, then Boruta).
+**✅ Univariate layer shipped (v0.1, 2026-06-29).** The whole univariate family — `ols` /
+`moderated` / `welch` / `mannwhitney` as one swappable `method=` over the settled `contrast=`
++ `covariates=[…]` API (§A.0b) — plus the **volcano** and **p-value-histogram** companions,
+all to the `lib/` strict bar (ruff strict + `mypy --strict`, planted-truth + real-5xFAD smoke
+reproducing the source oracle's OLS/moderated numbers exactly; 90 new tests). The **CI gap was
+closed** (the oracle reported effect + p only; the template adds effect-scale CIs for every
+method — §A.1/A.3/A.4). Validated on the real 5xFAD disease contrast: the top hits are the
+canonical AD proteins (APP, midkine, APOE, clusterin, complement C1q), the p-value histogram is
+textbook-healthy (uniform + spike-at-0, π0≈0.73). Wired into `lib/manifest.md`,
+`conventions/{statistics,visualization}.md`, and `commands/stage4-explore.md`.
+
+**Known follow-up — volcano label placement.** The volcano's optional `annotate_top=`
+labels are drawn with a fixed offset and **no collision avoidance**, so a tight cluster of
+co-significant hits overprints (e.g. APP/A4 at the q-ceiling render as `A45xFADA4`). The
+scoped plan — candidate approaches, the in-repo prior art (`dynamic_range._place_labels`),
+and **exactly how to regenerate the failing volcanoes + the stress cases to compare** — is
+in [`VOLCANO_LABELS.md`](VOLCANO_LABELS.md). Start there next time we touch the volcano.
+
+**Next (in priority order):** the **multivariate** selection methods — elastic-net (scan
+`te-phase2a-pelt/src/classification.py` for the leakage-safe harness, §B.1) then **Boruta**
+(§B.3) — which also resolve open decisions #6 (placement) and #8 (selection-evidence shape).
 
 ---
 
@@ -342,11 +359,18 @@ examples.
    adaptation of the seed, as the source's per-study interaction builders already are). Full
    contract — reference levels, categorical/continuous typing, multi-level handling, return
    shape — is in **§A.0b**.
-2. **Univariate family shape.** One template with `method=` (`ols` / `moderated` / `welch` /
-   `mannwhitney`) sharing the table + plots, vs separate templates. *Leaning one family* —
-   matches "downstream is similar."
-3. **Confidence intervals.** Must be added (source lacks them). Confirm effect-scale
-   (log2FC) + CI columns in the results table for every `method=`.
+2. **Univariate family shape — ✅ SETTLED + SHIPPED (2026-06-29): one family.** One template,
+   one `differential_abundance(...)` entry, swappable `method=` (`ols`/`moderated`/`welch`/
+   `mannwhitney`) sharing the `effect+CI+p+BH-q` table, the volcano, and the p-value histogram.
+   `welch`/`mannwhitney` reject `covariates=` (they cannot adjust) and a continuous contrast
+   (two-group only); a `k>2` factor becomes `k-1` pairwise terms for those two and `k-1`
+   treatment-contrast coefficients for `ols`/`moderated`. The full table also exposes the
+   covariate terms (*report all tests run*); `contrast_table` is the contrast-only deliverable.
+3. **Confidence intervals — ✅ SETTLED + SHIPPED (2026-06-29).** Added for every method: `ols`
+   `coef ± t·se`; `moderated` the same at the inflated (`d0+df`) df (norm in the `d0→∞` limit);
+   `welch` mean-diff ± `t·se` at the Welch–Satterthwaite df; `mannwhitney` the distribution-free
+   Hodges–Lehmann rank CI on the pairwise differences. `effect_label` stays honest about scale
+   (log2 fold change on log2/glog2; warns + a "difference" label off-log) and the estimator.
 4. **Missing values — ✅ SETTLED (2026-06-29): an upstream Stage-2 collaborative decision; the
    test consumes the resolved matrix.** The handling menu is **impute (mean / median / KNN) /
    drop (by per-feature missingness threshold) / set-to-0 / a combination** (the typical
@@ -366,8 +390,13 @@ examples.
    "no template — by decision" call. Wired into Stage 2 (`commands/stage2-data.md`). Left-
    censored imputers (MinProb/QRILC) for strong-MNAR data deferred to v0.2 (project-local for
    now).
-5. **Both-ways robustness.** Corrected-vs-uncorrected run: orchestration (the Stage-4 command
-   runs the template twice) vs a built-in template feature.
+5. **Both-ways robustness — ✅ SETTLED (2026-06-29): orchestration, not a template feature.**
+   The template runs **once per call** and stays agnostic to batch handling — batch is just a
+   nuisance `covariates=` entry for the uncorrected run (the variance-deflation-safe path for
+   testing). The Stage-4 command runs it twice (uncorrected-with-batch-covariate vs on the
+   ComBat-corrected matrix) and overlays the two p-value histograms (`pvalue-hist` takes the
+   `{label: p}` mapping). Keeping it orchestration keeps the template a clean single test and
+   lets the scientist see both calibrations side by side. Wired into `commands/stage4-explore.md`.
 6. **Multivariate placement.** Elastic-net selection as a *mode* of the classifier (#3) /
    regression (#4) templates, vs standalone selection templates reusing their CV harness.
 7. **Boruta engine.** The oracle uses **`BorutaPy` + a private-method subclass**; BorutaPy is

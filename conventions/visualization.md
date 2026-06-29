@@ -1,6 +1,6 @@
 # Convention — Visualization
 
-*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**, now backed by the shipped `lib/figures/` machinery — `figure-io` (dual export + separate legend + publication style) and `okabe-ito-colors` (the color registry + the >8-category raising guard) — which carries these defaults mechanically for any project figure script that routes through it. The QC/descriptive plot templates built on it have shipped and are wired into the Stage 3 QC report (`id-depth`, `missingness`, `dynamic-range`, `abundance-boxplot`, `cv-plot`, `sample-correlation`, `pca-plot` — see *QC & exploration figures*); the analysis plot templates (volcano, etc.) remain phase-E work.*
+*Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**, now backed by the shipped `lib/figures/` machinery — `figure-io` (dual export + separate legend + publication style) and `okabe-ito-colors` (the color registry + the >8-category raising guard) — which carries these defaults mechanically for any project figure script that routes through it. The QC/descriptive plot templates built on it have shipped and are wired into the Stage 3 QC report (`id-depth`, `missingness`, `dynamic-range`, `abundance-boxplot`, `cv-plot`, `sample-correlation`, `pca-plot` — see *QC & exploration figures*), as have the first **analysis-result** plot templates — the **`volcano`** and **`pvalue-hist`** companions of the differential-abundance template (see *Analysis-result figures*). The classifier/regression result plots remain phase-E work.*
 
 ## Accuracy & review
 
@@ -47,6 +47,13 @@ The Stage 3 QC report (and the Stage 4 exploration seeds carried from it) is bui
 
 In Stage 3 these are descriptive sanity checks (no findings); in Stage 4, PCA and sample-correlation recur as exploration seeds (e.g. PCA colored by the variable of interest). The figure-reviewer confirms the scale matches the plot and that controls are handled per the rules above.
 
+## Analysis-result figures
+
+The **differential-abundance** template (`lib/analysis/differential-abundance`) ships with two result figures on the same foundation (registry colors + dual-export + separate legend). These are **Stage-4** figures — they visualize a test result, not raw-data QC — so they run on whatever the test ran on (normalized log data):
+
+- **`volcano`** — per-feature **effect (log2 fold change)** on x vs **−log10(BH q)** on y, three-way significance coloring (NS / up / down) with the **hit counts in the legend**; the `q` underflow is floored so an extreme point still plots. Up/down are two registry colors (a `Significance` category) and **NS is the gray background** (no palette slot); an optional `effect_threshold` adds the fold-change gate. Read it off a `DifferentialAbundanceResult` via `volcano_from_result` (pick the contrast term for a `k>2` factor).
+- **`pvalue-hist`** — the calibration diagnostic on the **raw** p-values (not q): uniform body + a spike at 0 is healthy; a U-shape / hump near 1 signals unmodeled structure or confounding; a hill toward 1 is conservative. Overlay the both-ways (corrected/uncorrected) or method pair, colored from the Okabe-Ito palette; Storey's π0 is shown per distribution. Its overlay labels are figure-local (methods, batch-handling, real-vs-null), so colors are **not persisted to the registry by default** (`persist_colors=False`) — unlike the QC plots' fixed vocabularies — which keeps independent figures from accumulating palette-tail colors or polluting the registry with non-biological labels. It **refuses** values outside `[0, 1]` (the *passed q by mistake* slip).
+
 ## Color — palette and the registry
 
 - **Palette: Okabe–Ito** (color-blind-friendly) as the standard categorical palette. Figures should remain interpretable for color-vision-deficient viewers and, where feasible, in grayscale.
@@ -78,4 +85,5 @@ Every figure records — and the finding that uses it pins — the producing **s
 | ≤8 categorical colors; explicit strategy beyond | **Figure-reviewer** (+ `okabe-ito-colors` raises `CategoricalPaletteExceededError` past 8) |
 | Control samples rendered separately from experimental in QC/descriptive figures (exceptions: the `sample-correlation` heatmap, the `id-depth` bar chart, the `missingness` completeness curve, and the `dynamic-range` per-class overlay, which label them — a stripe / bar / curve color) | **Figure-reviewer** |
 | QC plot scale correct (id-depth/missingness/dynamic-range/CV linear; PCA/correlation log) | **Figure-reviewer** (+ `id-depth`/`missingness`/`dynamic-range`/`cv-plot` refuse non-linear; `pca-plot`/`sample-correlation` warn on non-log) |
+| Analysis-result figures consistent with the test (volcano effect/q + hit counts; p-value histogram on raw p, not q) | **Figure-reviewer** (+ `volcano`/`pvalue-hist` route colors through the registry; `pvalue-hist` refuses values outside [0,1]) |
 | Figure provenance pinned; staleness tracked | findings-manager (staleness) + finding `provenance` |
