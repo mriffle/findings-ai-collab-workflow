@@ -24,6 +24,12 @@ keep one color across every volcano. The main figure carries **no** baked-in leg
 legend (with the hit counts) is rendered as its **own** figure and saved beside the plot
 as ``<base>.legend.{svg,png}`` via :func:`figures.figure_io.save_figure`.
 
+Top-hit labels (``annotate_top``): the most-significant hits are labelled
+collision-free by :mod:`textalloc` (a dependency this template adds) — each label is
+repelled off the others and the data, leader-lined back to its point, and kept inside
+the axes, so a dense cluster of co-significant features stays readable rather than
+overprinting.
+
 Significance: a feature is a hit when ``q <= fdr`` (and, when ``effect_threshold`` is
 given, ``|effect| >= effect_threshold`` — the classic fold-change gate, drawn as
 vertical guides). A ``q`` that underflowed to 0 (a t-statistic so extreme the survival
@@ -38,6 +44,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import textalloc as ta
 from analysis.differential_abundance import DifferentialAbundanceResult
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -47,7 +54,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "volcano", "version": "0.1"},
+    "template": {"name": "volcano", "version": "0.2"},
     "kind": "module",
     "provides": [
         "VolcanoCounts",
@@ -68,8 +75,10 @@ __script_meta__: dict[str, object] = {
         "(NS / up / down) with hit counts in a separate legend. Decoupled array core "
         "plus a bridge that reads a DifferentialAbundanceResult contrast term. Up/down "
         "colors from the project registry (NS gray background, no slot); q underflow "
-        "floored to finfo.tiny; optional fold-change gate. Dual-export plus a separate "
-        "legend image. Study-agnostic; fail-loud."
+        "floored to finfo.tiny; optional fold-change gate. Optional annotate_top "
+        "labels the most-significant hits collision-free via textalloc (labels "
+        "repelled off each other and the point cloud, leader lines, clamped inside the "
+        "axes). Dual-export plus a separate legend image. Study-agnostic; fail-loud."
     ),
 }
 
@@ -79,6 +88,21 @@ DEFAULT_SIGNIFICANCE_CATEGORY = "Significance"
 _UP_KEY = "up"
 _DOWN_KEY = "down"
 _NS_KEY = "NS"
+
+# textalloc tuning for annotate_top label placement. Settled against the dense-cluster
+# / crowded / long-accession stress cases on real data: small font; gray leader lines;
+# a candidate count high enough to resolve a near-coincident ortholog pair (e.g. the two
+# APP labels at the q-ceiling) without crossing leaders. They are intentionally
+# conservative — adapt them in the project copy if a study labels far more hits.
+_LABEL_FONTSIZE = 8
+_LEADER_COLOR = "0.45"
+_LEADER_WIDTH = 0.6
+_LABEL_CANDIDATES = 900
+_LABEL_MARGIN = 0.012
+_LABEL_MIN_DISTANCE = 0.018
+_LABEL_MAX_DISTANCE = 0.28
+# Nudge the top label bound down a hair so a box can't ride the top spine / suptitle.
+_LABEL_TOP_PAD_FRAC = 0.02
 
 
 @dataclass(frozen=True)
@@ -165,6 +189,9 @@ def plot_volcano(
         Optional ``(n_features,)`` names, required only when ``annotate_top > 0``.
     annotate_top:
         Label this many top hits (smallest q) with their name (default ``0`` = none).
+        Labels are placed collision-free by :mod:`textalloc` — repelled off one another
+        and the point cloud, leader-lined back to their point, and clamped inside the
+        axes — so even a tight cluster of co-significant hits stays legible.
     category:
         Color-registry namespace for the up/down colors. Default ``"Significance"``.
     title:
@@ -418,20 +445,47 @@ def _annotate_top(
     names: np.ndarray,
     annotate_top: int,
 ) -> None:
-    """Label the ``annotate_top`` most-significant hits with their feature name."""
+    """Label the ``annotate_top`` most-significant hits, collision-free.
+
+    The hits with the smallest q (among the significant features) are labelled and laid
+    out by :mod:`textalloc`, which repels each label off the others *and* off the full
+    plotted point cloud, draws a thin leader line from every label back to its point,
+    and clamps each label inside the axes. So a dense cluster of co-significant features
+    — e.g. an ortholog pair sitting on top of each other at the q underflow ceiling —
+    stays legible instead of overprinting into a mash, and the dot each label belongs to
+    is unambiguous. Does nothing when no feature is significant.
+    """
     hit_idx = np.flatnonzero(sig)
     if hit_idx.size == 0:
         return
-    order = hit_idx[np.argsort(q[hit_idx], kind="stable")]
-    for i in order[:annotate_top]:
-        ax.annotate(
-            str(names[i]),
-            (eff[i], neg_log_q[i]),
-            textcoords="offset points",
-            xytext=(4, 2),
-            fontsize=7,
-            color="black",
-        )
+    order = hit_idx[np.argsort(q[hit_idx], kind="stable")][:annotate_top]
+    texts = [str(names[i]) for i in order]
+    # The full plotted cloud (every testable feature) is the static set labels avoid;
+    # neg_log_q is NaN exactly where q is NaN, which the scatter already skips.
+    finite = np.isfinite(eff) & np.isfinite(neg_log_q)
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    ta.allocate(
+        ax,
+        eff[order],
+        neg_log_q[order],
+        texts,
+        x_scatter=eff[finite],
+        y_scatter=neg_log_q[finite],
+        textsize=_LABEL_FONTSIZE,
+        draw_lines=True,
+        linecolor=_LEADER_COLOR,
+        linewidth=_LEADER_WIDTH,
+        textcolor="black",
+        margin=_LABEL_MARGIN,
+        min_distance=_LABEL_MIN_DISTANCE,
+        max_distance=_LABEL_MAX_DISTANCE,
+        nbr_candidates=_LABEL_CANDIDATES,
+        avoid_label_lines_overlap=True,
+        avoid_crossing_label_lines=True,
+        xlims=(x0, x1),
+        ylims=(y0, y1 - _LABEL_TOP_PAD_FRAC * (y1 - y0)),
+    )
 
 
 def _legend_figure(

@@ -25,6 +25,10 @@ statsmodels==0.14.6
 pronoms==0.4.0
 pycombat==0.20
 
+# Collision-free point labels the volcano template seeds from (textalloc.allocate);
+# ships py.typed, so it type-checks under mypy --strict with no stub/override needed.
+textalloc==1.2.3
+
 # Quality + test toolchain (the promotion-gate lint/types + the code-reviewer's test bar)
 ruff==0.15.18
 mypy==2.1.0

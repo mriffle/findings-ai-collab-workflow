@@ -119,12 +119,17 @@ canonical AD proteins (APP, midkine, APOE, clusterin, complement C1q), the p-val
 textbook-healthy (uniform + spike-at-0, π0≈0.73). Wired into `lib/manifest.md`,
 `conventions/{statistics,visualization}.md`, and `commands/stage4-explore.md`.
 
-**Known follow-up — volcano label placement.** The volcano's optional `annotate_top=`
-labels are drawn with a fixed offset and **no collision avoidance**, so a tight cluster of
-co-significant hits overprints (e.g. APP/A4 at the q-ceiling render as `A45xFADA4`). The
-scoped plan — candidate approaches, the in-repo prior art (`dynamic_range._place_labels`),
-and **exactly how to regenerate the failing volcanoes + the stress cases to compare** — is
-in [`VOLCANO_LABELS.md`](VOLCANO_LABELS.md). Start there next time we touch the volcano.
+**Volcano label placement — ✅ DONE (volcano v0.2).** The `annotate_top=` labels were
+drawn with a fixed offset and **no collision avoidance**, so a tight cluster of
+co-significant hits overprinted (APP/A4 at the q-ceiling rendered as `A45xFADA4`). Fixed by
+placing labels **collision-free via `textalloc`** (repelled off each other and the point
+cloud, leader lines back to each point, clamped inside the axes). Chosen after a parallel
+bake-off of four approaches (adjustText, textalloc, a `dynamic_range` port, and a
+from-scratch repel) rendered against the A–F stress cases on real data; **textalloc** won
+as the trusted library that *also* ships `py.typed` (passes `mypy --strict` with no
+override) and is fast. New shipping dep (`textalloc==1.2.3`) added to `setup-env` +
+`requirements-dev.txt`; a planted-dense-cluster no-overlap invariant added to the tests.
+See [`VOLCANO_LABELS.md`](VOLCANO_LABELS.md) (the bake-off record).
 
 **Next (in priority order):** the **multivariate** selection methods — elastic-net (scan
 `te-phase2a-pelt/src/classification.py` for the leakage-safe harness, §B.1) then **Boruta**

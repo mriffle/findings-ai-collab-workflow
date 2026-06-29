@@ -1,12 +1,23 @@
-# Volcano label placement — future-work plan
+# Volcano label placement — ✅ RESOLVED (volcano v0.2)
 
-**What this is.** A scoped plan for a **future session** to improve point-label placement in
-the volcano template (`lib/figures/volcano.py`). Today the optional `annotate_top=` labels
-are drawn with a fixed pixel offset and **no collision avoidance**, so when several top hits
-sit close together the labels overprint each other and become unreadable. This doc records
-the problem, the in-repo prior art to mine, the candidate approaches, and — most importantly
-— **exactly how to regenerate the failing volcano plots and the conditions to compare** so we
-can iterate on solutions against real data. It is engine-dev planning, not user-facing.
+> **Status: shipped.** `annotate_top=` now places labels **collision-free via `textalloc`**
+> (`lib/figures/volcano.py` `_annotate_top`, v0.2): labels repelled off each other and the
+> full point cloud, one leader line per point, clamped inside the axes. Chosen after a
+> parallel bake-off of all four candidate approaches below (adjustText, **textalloc**, a
+> `dynamic_range` port, and a from-scratch repel) rendered against the A–F stress cases on
+> real 5xFAD data. **textalloc** won: it is a trusted library that *also* ships `py.typed`
+> (passes `mypy --strict` with no override, unlike adjustText) and is fast (<1s/fig). New
+> shipping dep `textalloc==1.2.3` (added to `commands/setup-env.md` + `requirements-dev.txt`);
+> a planted-dense-cluster **no-overlap bbox invariant** added to `lib/tests/test_volcano.py`;
+> `lib/manifest.md` bumped to v0.2. The plan below is kept as the bake-off record / rationale.
+
+**What this is.** A scoped plan (now executed) to improve point-label placement in
+the volcano template (`lib/figures/volcano.py`). The optional `annotate_top=` labels
+were drawn with a fixed pixel offset and **no collision avoidance**, so when several top hits
+sat close together the labels overprinted each other and became unreadable. This doc records
+the problem, the in-repo prior art mined, the candidate approaches, and **exactly how the
+failing volcano plots + the conditions were regenerated** to iterate against real data.
+It is engine-dev planning, not user-facing.
 
 Companion to [`FEATURE_FINDING.md`](FEATURE_FINDING.md) (which tracks the differential-
 abundance family the volcano belongs to) and [`QC_GAPS.md`](QC_GAPS.md). Follow

@@ -29,6 +29,7 @@ from figures import colors as col
 from figures import volcano as vol
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.transforms import Bbox
 
 _PALETTE = [
     "#E69F00",
@@ -152,6 +153,39 @@ def test_annotate_top_labels_present(registry: Path) -> None:
     assert "BIG" in texts
     assert "MID" not in texts  # only top-1 annotated
     plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_annotate_top_no_label_overlap(registry: Path) -> None:
+    """The dense-cluster invariant: top-hit labels never overprint.
+
+    Plants the failure mode the textalloc placement was adopted to fix — a tight cluster
+    of co-significant hits at the q-ceiling with near-identical effects (the APP/A4
+    ortholog case that mashed under the old fixed +4,+2 offset). Renders, measures every
+    label's bounding box in display space, and asserts no two boxes overlap.
+    """
+    rng = np.random.default_rng(0)
+    # 8 hits packed at effect ~3, q ~1e-12 (top-right corner) + 2 on the left.
+    effect = np.concatenate([rng.normal(3.0, 0.25, 8), rng.normal(-3.0, 0.25, 2)])
+    q = np.concatenate([np.full(8, 1e-12), np.full(2, 1e-3)])
+    names = np.array([f"GENE{i}" for i in range(effect.size)])
+    plot = vol.plot_volcano(
+        effect, q, labels=names, annotate_top=effect.size, registry_path=registry
+    )
+    fig = plot.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()  # type: ignore[attr-defined]
+    boxes = [t.get_window_extent(renderer) for t in fig.axes[0].texts]
+    assert len(boxes) == effect.size  # every requested hit was labelled
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            inter = Bbox.intersection(boxes[i], boxes[j])
+            # 1px tolerance absorbs anti-aliasing / rounding; a real overlap is many px.
+            overlapping = (
+                inter is not None and inter.width > 1.0 and inter.height > 1.0
+            )
+            assert not overlapping, f"label boxes {i} and {j} overlap"
+    plt.close(fig)
     plt.close(plot.legend_figure)
 
 
