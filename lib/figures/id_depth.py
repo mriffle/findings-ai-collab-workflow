@@ -500,7 +500,7 @@ def _resolve_color_by(dataset: Dataset, color_by: str | None) -> np.ndarray | No
             f"color_by {color_by!r} has {n_bad} missing value(s); a missing label "
             f"cannot be colored. Resolve or relabel them first."
         )
-    return series.to_numpy().astype(str)
+    return np.asarray(series.to_numpy(), dtype=str)
 
 
 # --------------------------------------------------------------------------- #

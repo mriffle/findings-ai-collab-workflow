@@ -238,7 +238,7 @@ def _detection_mask(
 
 def _sample_ids(dataset: Dataset, n_samples: int) -> np.ndarray:
     """The row-aligned sample ids (fail loud if metadata is not row-aligned)."""
-    ids = dataset.metadata.index.to_numpy().astype(str)
+    ids = np.asarray(dataset.metadata.index.to_numpy(), dtype=str)
     if ids.shape[0] != n_samples:
         raise ValueError(
             f"metadata has {ids.shape[0]} rows but {n_samples} abundance samples; it "
@@ -451,7 +451,7 @@ def _resolve_color_by(dataset: Dataset, color_by: str | None) -> np.ndarray | No
             f"color_by {color_by!r} has {n_bad} missing value(s); a missing label "
             f"cannot be colored. Resolve or relabel them first."
         )
-    return series.to_numpy().astype(str)
+    return np.asarray(series.to_numpy(), dtype=str)
 
 
 def _ordered_unique(values: np.ndarray) -> list[str]:
