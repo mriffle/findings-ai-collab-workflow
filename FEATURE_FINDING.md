@@ -61,9 +61,20 @@ discussion that started this doc:
   **Boruta** (all-relevant selection — the user is a fan and *has example runs with
   visualizations he finds informative to share*; see B.3).
 
-Scope for now (the user's call): **feature finding / feature selection only.** Full
-predictive modelling (calibration, ROC, held-out performance as the deliverable) is roadmap
-items #3/#4 — this doc covers those models' *selection* use, and keeps the line explicit.
+Scope for now (the user's call): **feature finding / feature selection**, plus — as of
+2026-07-01 — **classification as a first-class question** for the elastic-net case (§B.1).
+The methods now divide by the *question asked*, not by the algorithm:
+
+- *Which features differ between conditions?* → **univariate DE** (shipped, §A).
+- *Which features are all jointly relevant?* → **Boruta** (all-relevant, §B.3).
+- *Can the proteome predict the class, and how well?* → **elastic-net logistic
+  classification** (§B.1) — a minimal-optimal predictor whose coefficients are reported as a
+  caveated interpretation, **not** an all-relevant selection.
+
+This reframing (the user's call — elastic net tuned for prediction gives the *minimal-optimal*
+set, so selling it as "the feature finder" both overstates it and duplicates Boruta) pulls
+**roadmap #3 (leakage-safe classifier)** forward as the home for elastic-net logistic. Full
+predictive modelling on the *continuous* side (regression, §B.2) remains roadmap #4.
 
 ---
 
@@ -103,7 +114,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | Mann–Whitney U | univariate | — (none) | ✅ **Shipped** (v0.1) | same family; `method="mannwhitney"` (HL shift + rank CI) |
 | Volcano plot | output viz | `volcano_plotting.py` | ✅ **Shipped** (v0.1) | `lib/figures/volcano` |
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
-| Elastic-net logistic regression | multivariate | — (not yet scanned) | Not started | TBD (mode of classifier #3?) |
+| Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
 | Elastic-net linear regression | multivariate | — (not yet scanned) | Not started | TBD (mode of regression #4?) |
 | Boruta | multivariate | `te-phase2a-pelt/src/feature_finding_boruta.py` | Not started | TBD (`lib/analysis/boruta`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | Not started | `lib/figures/boruta-importance` |
@@ -131,9 +142,12 @@ override) and is fast. New shipping dep (`textalloc==1.2.3`) added to `setup-env
 `requirements-dev.txt`; a planted-dense-cluster no-overlap invariant added to the tests.
 See [`VOLCANO_LABELS.md`](VOLCANO_LABELS.md) (the bake-off record).
 
-**Next (in priority order):** the **multivariate** selection methods — elastic-net (scan
-`te-phase2a-pelt/src/classification.py` for the leakage-safe harness, §B.1) then **Boruta**
-(§B.3) — which also resolve open decisions #6 (placement) and #8 (selection-evidence shape).
+**Next:** **Boruta** (§B.3) — the all-relevant complement to the now-shipped classifier.
+Elastic-net logistic **classification shipped** (v0.1, 2026-07-06): `lib/analysis/classification`
++ `lib/figures/classification`, strict-clean + 21 tests (planted-truth + real-5xFAD smoke),
+validated on the 5xFAD genotype contrast (nested-CV AUC ≈ 0.92, beats the null, top coefficients
+are the canonical AD proteins). Open decisions #6 (placement — the classifier #3) and #8
+(evidence shape, now wired into `conventions/findings.md` §2.3) are settled.
 
 ---
 
@@ -256,17 +270,92 @@ performance estimate, the in-fold-preprocessing rule binds any *downstream perfo
 on the selected set — not Boruta's selection run itself, which legitimately sees the whole
 experimental matrix (the driver even runs it on the ComBat-corrected matrix).
 
-### B.1 Elastic-net logistic regression (categorical outcome) — *candidate oracle to scan*
-*(`te-phase2a-pelt/src/classification.py` is imported by the Boruta driver and almost
-certainly holds the user's leakage-safe classifier / selection code — scan it when we reach B.1.)*
-- L1/L2-penalized logistic regression; the **non-zero coefficients are the selected
-  features**. `sklearn` `LogisticRegression(penalty="elasticnet", solver="saga")` inside a
-  `Pipeline`, `(C, l1_ratio)` tuned by nested / group-aware CV.
-- Report: **selection frequency** across resamples (stability selection), signed
-  coefficients, CV performance **vs the label-shuffle null**. Imbalance → balanced metrics +
-  stratified folds (link the caveat).
-- **Overlaps roadmap #3 (leakage-safe classifier).** Open Decision #6: a *mode* of the
-  classifier template, or a standalone selection template reusing its CV harness?
+### B.1 Elastic-net logistic regression — reframed as **classification** (roadmap #3 pulled forward) — ✅ SHIPPED (v0.1, 2026-07-06)
+
+**✅ Shipped (v0.1, 2026-07-06).** `lib/analysis/classification` (`classify(...)`) + the four
+result figures `lib/figures/classification`, strict-clean (ruff + `mypy --strict`) with 21 tests
+(planted-truth: a separable signal is recovered at AUC 1.0 with exactly the planted features
+selected; pure-noise does **not** beat the null; the outcome/binarize API, fail-loud guards,
+grouping, and the figures; a real-5xFAD smoke). **Validated on the 5xFAD genotype contrast:**
+nested-CV AUC ≈ 0.92, clears the shuffle null (empirical p at the floor), and the top
+coefficients are the canonical AD proteins (APP, midkine, APOE, clusterin, complement C1q).
+Wired into `lib/manifest.md`, `conventions/{statistics,visualization,findings}.md`, and
+`commands/stage4-explore.md`; no new shipping dep (scikit-learn is already in the `setup-env`
+baseline). Two source-scan findings are baked in: the modern sklearn API (`penalty=` is
+deprecated → select elastic net by `l1_ratio` alone) and the leakage/null gaps the source
+harness lacked (it tuned on all data, had no group-awareness and no null, and silently
+`NaN→0`). The design notes below record what was built.
+
+**The reframing (the key decision, the user's call).** Elastic net tuned for prediction yields
+the **minimal-optimal** feature set — the smallest sufficient predictive basis — *not* the
+all-relevant set. With correlated proteomics features (whole pathways move together) L1
+arbitrarily keeps one of a cluster and zeros its neighbors, so the selected set is unstable and
+is not "the important features." Selling it as "the feature finder" both overstates it and
+duplicates **Boruta** (the all-relevant method, §B.3). So we frame it honestly as a
+**classification** method — *can the proteome predict the class, and how well?* — with feature
+coefficients reported as a **caveated interpretation** of the classifier, not as an all-relevant
+selection. This makes it **roadmap #3 (leakage-safe classifier)** pulled forward, with
+elastic-net logistic regression as the default estimator (settles open decision #6).
+
+**The deliverable (settled).** Both the coefficients *and* their cross-fold stability are
+essential (user, 2026-07-01), reported as three coupled pieces:
+
+- **Performance vs a label-shuffle null — the gate.** Leakage-safe **nested CV** (tune
+  `(C, l1_ratio)` in inner folds, estimate on outer folds), **group/subject-aware** folds
+  (optional `groups=` metadata column matched to the generalization unit), **in-fold**
+  StandardScaler, `class_weight="balanced"`. Report **balanced accuracy / ROC-AUC ± fold SD**
+  against a **mandatory label-shuffle null** distribution + empirical p. **This gates the rest:**
+  the coefficient report is only emitted/trusted when real performance beats the null — otherwise
+  the coefficients are noise dressed as findings.
+- **All-data coefficients — the point estimate.** Tune on all data, refit on all data, report
+  **standardized** signed coefficients (magnitude comparable across features = importance; sign
+  = direction). This is the model one would actually interpret.
+- **Cross-fold stability — the trust annotation. Dedicated fixed-hyperparameter loop (design
+  (b)).** Tune once, then resample (repeated stratified [group] K-fold / subsampling) at the
+  *fixed* tuned `(C, l1_ratio)` so all coefficients sit at one regularization and are comparable
+  (decouples stability from the hyperparameter search). Per feature report **selection
+  frequency** (fraction of resamples non-zero), **sign consistency** (fraction of selecting
+  resamples agreeing on sign), and the **coefficient distribution** (median + IQR).
+
+**Interpretation caveat baked into the finding.** Correlated features → L1 flips between
+redundant proteins across resamples, so a genuinely important feature can show a *low* selection
+frequency simply because its correlated neighbor was picked instead — **low frequency ≠
+unimportant**. The elastic net's L2 component (`l1_ratio < 1`, grouping effect) softens but does
+not erase this; **Boruta is the complement** that confirms both correlated features. State this
+in the finding so a low frequency isn't over-read.
+
+**Evidence shape (settles #8).** A classification finding carries run-level **{balanced-acc /
+AUC ± SD, shuffle-null distribution + empirical p}** + a per-feature table **{all-data signed
+standardized coef, selection frequency, sign consistency, coef median/IQR}** — **no per-feature
+q**. The findings schema + stats-reviewer must accept this "classification / selection" evidence
+kind alongside the significance kind (§8).
+
+**Figures (two, on the figure foundation).**
+- **ROC ± SD vs null** — re-base the source `classification_plotting.plot_roc_curve` onto
+  `figure-io` (dual-export + separate legend); overlay the shuffle-null band; **drop seaborn**.
+- **Coefficient / importance plot** — top features by `|all-data standardized coef|`, **colored
+  by selection frequency** (continuous → viridis, no categorical budget), so magnitude +
+  stability read in one view (mirrors the Boruta importance plot). Save via `figure-io`.
+
+**What the source oracle (`src/classification.py`) gives — and its gaps (scanned 2026-07-01).**
+The pipeline scaffold (in-fold `StandardScaler` + saga LR), the neighborhood-smoothed grid
+selection, and the ROC-±SD figure are the reusable bones. But it is a **performance harness, not
+a selection harness** (it never extracts coefficients), and as scanned it:
+- **Almost certainly isn't elastic net** — `_make_classifier_pipeline` never sets
+  `penalty="elasticnet"`, so `LogisticRegression` stays at the default `penalty="l2"` and
+  `l1_ratio` is silently ignored → ridge, *no sparsity*, and the `l1_ratio` grid is a no-op.
+  **Verify + fix** (this is also the poster child for why the `lib/` test bar exists).
+- **Tunes on the full data, then CVs on the same data** → optimistic bias (needs nested CV).
+- **Folds aren't group-aware**; **no label-shuffle null**.
+- **Silent `NaN → 0`** (we refuse — missingness is the Stage-2 decision), **seaborn** (we don't
+  ship it), **pickle cache** (`S301` / file-format-convention — leave caching to the project
+  script or JSON), study-specific label / mask helpers + hardcoded `random_state` / `n_jobs`
+  (strip → consume a `Dataset`, outcome via a `contrast`-style metadata API like §A.0b).
+
+**Next step before building:** a **real-data 5xFAD preview** (the established pre-code pattern) —
+elastic-net classification of a real contrast, showing the ROC-vs-null curve and the
+coefficient / selection-frequency readout — for the user to eyeball before it's built to the
+`lib/` bar.
 
 ### B.2 Elastic-net linear regression (continuous outcome) — *no source oracle*
 - Same machinery for a continuous target (`ElasticNetCV` / a `Pipeline`). Report selected
@@ -402,19 +491,25 @@ examples.
    ComBat-corrected matrix) and overlays the two p-value histograms (`pvalue-hist` takes the
    `{label: p}` mapping). Keeping it orchestration keeps the template a clean single test and
    lets the scientist see both calibrations side by side. Wired into `commands/stage4-explore.md`.
-6. **Multivariate placement.** Elastic-net selection as a *mode* of the classifier (#3) /
-   regression (#4) templates, vs standalone selection templates reusing their CV harness.
+6. **Multivariate placement — ✅ SETTLED for logistic (2026-07-01).** Elastic-net logistic is
+   **the classifier template (roadmap #3), pulled forward**, with elastic net as its default
+   estimator — *not* a standalone selector (it is framed as **classification**, §B.1). The
+   continuous analogue (elastic-net linear, §B.2) is the same call deferred to roadmap #4.
 7. **Boruta engine.** The oracle uses **`BorutaPy` + a private-method subclass**; BorutaPy is
    lightly maintained + untyped (mypy-strict friction, stub-free venv). Take it as-is (a),
    reimplement the shadow loop (b), or a maintained fork (c)? *Leaning (a).* Cache: the oracle
    pickles — re-decide vs our file-format convention. (See §B.3.)
-8. **Selection-method evidence shape.** Significance methods (§A) emit effect + CI + p + BH-q;
-   **selection methods (§B) emit a different shape** — Boruta: decision (Confirmed / Tentative
-   / Rejected) + importance + shadow-null; elastic-net: signed coefficient + selection
-   frequency. The "no bare p / effect + CI" rule is written for *significance* tests. **Decide
-   how the findings evidence schema + stats-reviewer accommodate a "selection" evidence kind**
-   so a Boruta / elastic-net finding is first-class, not force-fit into a p-value mold.
-   (Touches `conventions/findings.md` + `conventions/statistics.md`.)
+8. **Selection-method evidence shape — ✅ SETTLED for classification (2026-07-01); Boruta to
+   confirm reuse.** Significance methods (§A) emit effect + CI + p + BH-q; the **classification
+   / selection** kind emits a different shape. For elastic-net classification (§B.1): run-level
+   **{balanced-acc / AUC ± SD, shuffle-null distribution + empirical p}** + per-feature
+   **{all-data signed standardized coef, selection frequency, sign consistency, coef
+   median/IQR}** — **no per-feature q**. Boruta (§B.3) is expected to reuse this same
+   "classification / selection" evidence kind (its decision + importance + shadow-null slot into
+   the run-level + per-feature split). **✅ Wired (2026-07-06):** the classification / selection
+   evidence kind is now in `conventions/findings.md` §2.3 (run-level performance + null +
+   per-feature coef / stability, **no per-feature q**) and `conventions/statistics.md` (the
+   stats-reviewer accepts it on those terms); Boruta reuses the same kind.
 
 ---
 

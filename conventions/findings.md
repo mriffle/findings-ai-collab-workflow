@@ -95,6 +95,13 @@ evidence:
 
 `metric`, `value`, and (for any significance claim) `p_adjusted` + `correction` + a `ci` are expected. Descriptive findings without a hypothesis test may carry effect/estimate measurements without p-values.
 
+**Classification / selection evidence (a distinct shape).** A finding from a predictive-model template — `lib/analysis/classification` today, Boruta later — does **not** fit the effect + CI + corrected-p mold, and forcing it to would be dishonest. Its evidence is two coupled parts, both recorded:
+
+- **Run-level performance vs a null.** The cross-validated metric with its fold spread (balanced accuracy / ROC-AUC ± SD, plus average precision under imbalance) *and* the **label-shuffle null** it is tested against (the null distribution's summary + the **empirical p**). Record the generalization target (`"on unseen samples/individuals/batches"`) and the CV design. **Without the null the finding is `exploratory`** — the coefficients are not licensed; running it is what makes the finding eligible for `validated` (`conventions/statistics.md`).
+- **Per-feature selection evidence.** For each selected feature: the **signed standardized coefficient** (the all-data point estimate), its **selection frequency** and **sign consistency** across resamples, and the coefficient's resample spread. This is a *selection*, not a per-feature significance test — there is **no per-feature q**, and the *minimal-optimal* caveat (a low selection frequency ≠ unimportant; correlated features) is carried in the finding's `caveats`.
+
+The "no bare p / effect + CI" rule (§2.3) governs *significance* tests; this selection kind satisfies honesty differently — a performance claim earned against an explicit null, plus a per-feature **stability** read rather than a naked coefficient. The stats-reviewer accepts it on those terms.
+
 ### 2.4 `figures`
 
 ```yaml
