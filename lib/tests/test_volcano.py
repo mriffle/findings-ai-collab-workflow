@@ -181,9 +181,7 @@ def test_annotate_top_no_label_overlap(registry: Path) -> None:
         for j in range(i + 1, len(boxes)):
             inter = Bbox.intersection(boxes[i], boxes[j])
             # 1px tolerance absorbs anti-aliasing / rounding; a real overlap is many px.
-            overlapping = (
-                inter is not None and inter.width > 1.0 and inter.height > 1.0
-            )
+            overlapping = inter is not None and inter.width > 1.0 and inter.height > 1.0
             assert not overlapping, f"label boxes {i} and {j} overlap"
     plt.close(fig)
     plt.close(plot.legend_figure)

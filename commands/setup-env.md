@@ -130,6 +130,10 @@ Then add the baseline with uv (this resolves, installs into `./.venv`, and write
 # Collision-free point labels for the volcano template (textalloc.allocate); add only
 # when annotating top hits on a volcano. Ships py.typed, so it stays mypy --strict clean.
 ./.uv/bin/uv add 'textalloc==1.2.3'
+# Boruta all-relevant feature selection (lib/analysis/boruta seeds from BorutaPy); add
+# only when running Boruta. Pinned — the template intercepts a private method to keep the
+# per-iteration shadow threshold, so a version bump must be re-verified against its tests.
+./.uv/bin/uv add 'boruta==0.4.3'
 ```
 
 The **dev tooling is not optional**: `ruff` + `mypy` power the promotion hook and `pytest` + `hypothesis` power the code-reviewer's test check. Without them in `./.venv`, the promotion gate degrades to a no-op. The scientific baseline is a sensible default — add/remove packages as the study needs (`uv add` / `uv remove`), and the lockfile updates.

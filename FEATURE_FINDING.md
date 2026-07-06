@@ -116,8 +116,8 @@ active enforcer (none of this is cleanly hook-checkable):
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
 | Elastic-net linear regression | multivariate | — (not yet scanned) | Not started | TBD (mode of regression #4?) |
-| Boruta | multivariate | `te-phase2a-pelt/src/feature_finding_boruta.py` | Not started | TBD (`lib/analysis/boruta`) |
-| Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | Not started | `lib/figures/boruta-importance` |
+| Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
+| Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
 
 **✅ Univariate layer shipped (v0.1, 2026-06-29).** The whole univariate family — `ols` /
 `moderated` / `welch` / `mannwhitney` as one swappable `method=` over the settled `contrast=`
@@ -142,12 +142,28 @@ override) and is fast. New shipping dep (`textalloc==1.2.3`) added to `setup-env
 `requirements-dev.txt`; a planted-dense-cluster no-overlap invariant added to the tests.
 See [`VOLCANO_LABELS.md`](VOLCANO_LABELS.md) (the bake-off record).
 
-**Next:** **Boruta** (§B.3) — the all-relevant complement to the now-shipped classifier.
-Elastic-net logistic **classification shipped** (v0.1, 2026-07-06): `lib/analysis/classification`
-+ `lib/figures/classification`, strict-clean + 21 tests (planted-truth + real-5xFAD smoke),
-validated on the 5xFAD genotype contrast (nested-CV AUC ≈ 0.92, beats the null, top coefficients
-are the canonical AD proteins). Open decisions #6 (placement — the classifier #3) and #8
-(evidence shape, now wired into `conventions/findings.md` §2.3) are settled.
+**✅ Boruta shipped (v0.1, 2026-07-06).** The all-relevant complement to the classifier —
+`lib/analysis/boruta` (`boruta_select`) + `lib/figures/boruta_importance`, strict-clean
+(ruff + `mypy --strict`) + 34 tests (planted-truth classification & regression, task
+inference + the multiclass path, fail-loud guards, result invariants + determinism, and a
+real-5xFAD smoke). Engine settled as **BorutaPy 0.4.3** (open decision #7, option (a)) — it
+runs cleanly on the current numpy 2.4 / sklearn 1.9 stack, so the historical breakage is
+moot; the private-method shadow-history subclass is isolated fail-loud (`BorutaShadowHistoryError`
+if the interception stops aligning with `importance_history_`). Structurally simpler than
+the classifier: the shadow features are a **built-in null**, so no external null and no CV —
+one run on the whole experimental matrix. Validated on the 5xFAD binary genotype contrast:
+**18 Confirmed / 7 Tentative**, and the Confirmed set **contains** the classifier's validated
+top coefficients (APP/A4, APOE, C1q trio, clusterin, midkine) plus the correlated neighbours
+L1 had zeroed (APLP2, the full C1q trio, the testicans) — the all-relevant ⊇ minimal-optimal
+containment, on real data. New pinned shipping dep `boruta==0.4.3` (setup-env + requirements-dev).
+Wired into `lib/manifest.md`, `conventions/{statistics,visualization}.md`, and
+`commands/stage4-explore.md`. Open decisions #7 (engine) and #8 (Boruta reuses the selection
+evidence kind) are settled.
+
+**Next:** the leakage-safe **regression** template (roadmap #4) — elastic-net **linear**
+regression (§B.2, the continuous analogue of the shipped classifier) and the general
+regression case. Elastic-net logistic **classification** shipped 2026-07-06
+(`lib/analysis/classification`, nested-CV AUC ≈ 0.92 on the 5xFAD genotype contrast).
 
 ---
 
@@ -362,7 +378,23 @@ coefficient / selection-frequency readout — for the user to eyeball before it'
   features + stability + held-out R²/RMSE **vs a shuffle null**. **Overlaps roadmap #4
   (regression)** — same placement question as B.1.
 
-### B.3 Boruta — *source oracle exists* (`manuscript-trex-phase2a/te-phase2a-pelt/src/`)
+### B.3 Boruta — ✅ SHIPPED (v0.1, 2026-07-06) — *source oracle* (`manuscript-trex-phase2a/te-phase2a-pelt/src/`)
+
+**✅ Shipped.** `lib/analysis/boruta` (`boruta_select(dataset, target=, *, task=…)`) +
+`lib/figures/boruta_importance` (`plot_boruta_importance` / `save_boruta_importance`),
+strict-clean + 34 tests, validated on the real 5xFAD binary genotype contrast (18
+Confirmed / 7 Tentative; the Confirmed set ⊇ the classifier's validated top coefficients).
+Built on **BorutaPy 0.4.3** + the private-method shadow-history subclass (open decision #7,
+option (a)), isolated fail-loud. Task inferred from the target dtype (numeric → regression;
+categorical → **multiclass-native** classification) with a low-cardinality-numeric warning
++ a `task=` override; experimental subset in, **raises** on NaN, **warns** on non-log,
+drops constants, missing-target samples dropped. Runs **once on the whole experimental
+matrix** — the shadows are the built-in null, so no external null and no CV. Evidence is a
+**decision + importance + shadow-null** (no per-feature q — the settled selection kind, #8).
+**Ships no cache** (project-local — the file-format convention + `S301`; the oracle's pickle
+does not ship). No `generalization_target` field (Boruta makes a selection, not a
+performance claim). The design record below is what was built.
+
 The user's proven implementation, read in full: `feature_finding_boruta.py` (core),
 `boruta_plotting.py` (the informative viz), `scripts/run_feature_finding_boruta.py` (driver).
 
@@ -495,21 +527,28 @@ examples.
    **the classifier template (roadmap #3), pulled forward**, with elastic net as its default
    estimator — *not* a standalone selector (it is framed as **classification**, §B.1). The
    continuous analogue (elastic-net linear, §B.2) is the same call deferred to roadmap #4.
-7. **Boruta engine.** The oracle uses **`BorutaPy` + a private-method subclass**; BorutaPy is
-   lightly maintained + untyped (mypy-strict friction, stub-free venv). Take it as-is (a),
-   reimplement the shadow loop (b), or a maintained fork (c)? *Leaning (a).* Cache: the oracle
-   pickles — re-decide vs our file-format convention. (See §B.3.)
+7. **Boruta engine — ✅ SETTLED (2026-07-06): option (a), `BorutaPy 0.4.3` + the private-method
+   subclass.** The historical breakage worry is moot — 0.4.3 runs cleanly on the current
+   numpy 2.4 / sklearn 1.9 stack and still exposes the private `_add_shadows_get_imps` hook.
+   The only friction is it ships no `py.typed`; the strict mypy config's `ignore_missing_imports`
+   treats it as `Any`, so only the one **subclass-of-Any** needs a scoped `# type: ignore[misc]`
+   (the import needs none). The private-method reliance is isolated **fail-loud**
+   (`BorutaShadowHistoryError` if the captured shadow history stops aligning with
+   `importance_history_`), and the dep is **pinned** (`boruta==0.4.3`). **Cache — no pickle in
+   the template:** caching a minutes-slow result is a **project-local** concern (the file-format
+   convention reserves pickle for non-LLM consumers; a pickle of an arbitrary result is an
+   `S301` smell), so the oracle's `save/load_boruta_result` do **not** ship.
 8. **Selection-method evidence shape — ✅ SETTLED for classification (2026-07-01); Boruta to
    confirm reuse.** Significance methods (§A) emit effect + CI + p + BH-q; the **classification
    / selection** kind emits a different shape. For elastic-net classification (§B.1): run-level
    **{balanced-acc / AUC ± SD, shuffle-null distribution + empirical p}** + per-feature
    **{all-data signed standardized coef, selection frequency, sign consistency, coef
-   median/IQR}** — **no per-feature q**. Boruta (§B.3) is expected to reuse this same
-   "classification / selection" evidence kind (its decision + importance + shadow-null slot into
-   the run-level + per-feature split). **✅ Wired (2026-07-06):** the classification / selection
-   evidence kind is now in `conventions/findings.md` §2.3 (run-level performance + null +
-   per-feature coef / stability, **no per-feature q**) and `conventions/statistics.md` (the
-   stats-reviewer accepts it on those terms); Boruta reuses the same kind.
+   median/IQR}** — **no per-feature q**. **✅ CONFIRMED for Boruta (2026-07-06):** Boruta (§B.3)
+   reuses this same "classification / selection" evidence kind — its per-feature **decision
+   (Confirmed / Tentative / Rejected) + importance** and the run-level **shadow-null +
+   C/T/R counts** slot into the run-level + per-feature split, **no per-feature q**. The kind
+   is in `conventions/findings.md` §2.3 and accepted by the stats-reviewer
+   (`conventions/statistics.md`).
 
 ---
 

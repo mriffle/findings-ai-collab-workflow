@@ -140,8 +140,9 @@ def test_legend_has_n_and_pi0(registry: Path) -> None:
 
 def test_does_not_persist_colors_by_default(registry: Path) -> None:
     """Figure-local labels: the default must not write them to the registry."""
-    plot = ph.plot_pvalue_histogram({"ols": _p(50), "moderated": _p(50, 1)},
-                                    registry_path=registry)
+    plot = ph.plot_pvalue_histogram(
+        {"ols": _p(50), "moderated": _p(50, 1)}, registry_path=registry
+    )
     # Colors are still assigned from the palette head...
     assert plot.color_map == {"ols": _PALETTE[0], "moderated": _PALETTE[1]}
     # ...but nothing was written back.
@@ -152,8 +153,10 @@ def test_does_not_persist_colors_by_default(registry: Path) -> None:
 
 def test_persist_true_writes_to_registry(registry: Path) -> None:
     plot = ph.plot_pvalue_histogram(
-        {"real": _p(50)}, category="NullCheck",
-        persist_colors=True, registry_path=registry,
+        {"real": _p(50)},
+        category="NullCheck",
+        persist_colors=True,
+        registry_path=registry,
     )
     assert "NullCheck" in json.loads(registry.read_text())
     plt.close(plot.figure)

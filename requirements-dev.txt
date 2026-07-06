@@ -25,6 +25,12 @@ statsmodels==0.14.6
 pronoms==0.4.0
 pycombat==0.20
 
+# Boruta all-relevant selection the lib/analysis/boruta template seeds from (BorutaPy +
+# a private-method subclass for the shadow-threshold history). Ships no py.typed, but the
+# strict mypy config (ignore_missing_imports) treats it as Any; the one subclass-of-Any
+# needs a scoped # type: ignore[misc]. Pinned — the template intercepts a private method.
+boruta==0.4.3
+
 # Collision-free point labels the volcano template seeds from (textalloc.allocate);
 # ships py.typed, so it type-checks under mypy --strict with no stub/override needed.
 textalloc==1.2.3
