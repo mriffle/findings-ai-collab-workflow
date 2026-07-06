@@ -9,3 +9,4 @@ __pycache__/
 # Real study data copied in for LOCAL loader testing — never committed.
 # Large (precursor TSV ~100MB) and is real study data; see testdata/README.md.
 /testdata/5xFAD/
+/testdata/trex/

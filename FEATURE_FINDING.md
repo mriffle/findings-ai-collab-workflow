@@ -115,7 +115,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | Volcano plot | output viz | `volcano_plotting.py` | ✅ **Shipped** (v0.1) | `lib/figures/volcano` |
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
-| Elastic-net linear regression | multivariate | — (not yet scanned) | Not started | TBD (mode of regression #4?) |
+| Elastic-net linear regression | multivariate | `te-phase2a-pelt/src/regression.py` + `regression_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/regression` (`regress`) + `lib/figures/regression` |
 | Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
 
@@ -160,10 +160,20 @@ Wired into `lib/manifest.md`, `conventions/{statistics,visualization}.md`, and
 `commands/stage4-explore.md`. Open decisions #7 (engine) and #8 (Boruta reuses the selection
 evidence kind) are settled.
 
-**Next:** the leakage-safe **regression** template (roadmap #4) — elastic-net **linear**
-regression (§B.2, the continuous analogue of the shipped classifier) and the general
-regression case. Elastic-net logistic **classification** shipped 2026-07-06
-(`lib/analysis/classification`, nested-CV AUC ≈ 0.92 on the 5xFAD genotype contrast).
+**✅ Regression shipped (v0.1, 2026-07-06).** The leakage-safe **regression** template
+(roadmap #4) — elastic-net **linear** regression (§B.2, the continuous analogue of the
+classifier) — `lib/analysis/regression` (`regress`) + the four figures
+`lib/figures/regression`, built to the **same shape** as the classifier (the user's steer:
+nested CV [R²/RMSE/MAE], in-fold scaling, group-aware-when-repeats, all-data coefficients +
+stability loop, opt-in **target**-shuffle null). Oracles `regression.py` +
+`regression_plotting.py` gave the ElasticNet bones + scatter/heatmap; the oracle's
+leakage/null/stability/grouping gaps, `NaN→0`, seaborn, pickle cache, and dose-specific
+clipping were all fixed/stripped. New leakage-safe **`feature_list=`** prior-restriction
+param (the user's steer). Preview-first + real-data smoke on **trex time-since-exposure**
+(dose is null even in the manuscript, R²=−0.018; time is the strong signal — manuscript
+R²=0.90, honest nested-CV R²=0.77, clears the null p=0.005). 22 tests; no new shipping dep.
+**With this the whole analysis layer (univariate DE + classification + Boruta + regression)
+ships.**
 
 ---
 
@@ -373,10 +383,46 @@ elastic-net classification of a real contrast, showing the ROC-vs-null curve and
 coefficient / selection-frequency readout — for the user to eyeball before it's built to the
 `lib/` bar.
 
-### B.2 Elastic-net linear regression (continuous outcome) — *no source oracle*
-- Same machinery for a continuous target (`ElasticNetCV` / a `Pipeline`). Report selected
-  features + stability + held-out R²/RMSE **vs a shuffle null**. **Overlaps roadmap #4
-  (regression)** — same placement question as B.1.
+### B.2 Elastic-net linear regression (continuous outcome) — ✅ SHIPPED (v0.1, 2026-07-06) — *source oracle* (`te-phase2a-pelt/src/regression.py` + `regression_plotting.py`)
+
+**✅ Shipped.** `lib/analysis/regression` (`regress(dataset, outcome=, *, groups=,
+generalization_target=, feature_list=, run_null=, …)`) + the four result figures
+`lib/figures/regression` (predicted-vs-observed / target-shuffle-null / coefficient-
+selection-frequency / alpha×l1 heatmap), strict-clean (ruff + `mypy --strict`) + 22 tests
+(planted-truth linear recovery, pure-noise-vs-null, continuous API, `feature_list`, guards,
+grouping, four figures, a real-trex smoke). **Built as the continuous-outcome twin of the
+classifier (§B.1), the same shape** (the user's steer — stay consistent with how the
+classifier does CV and reports features/coefficients): nested CV (in-fold `StandardScaler`,
+**R²/RMSE/MAE**), all-data standardized coefficients, a fixed-hyperparameter stability loop
+(selection frequency + sign consistency), and an **opt-in target-shuffle null** (the
+exploratory↔validated gate). Numeric `outcome=` used directly (a categorical outcome
+**raises** → use `classify`; non-finite-outcome rows dropped); group-aware CV only when
+`groups` repeats (group-level target permutation); `generalization_target` recorded.
+
+**What the oracle gave — and its gaps (the same the classifier fixed).** `regression.py`'s
+`tune_regression_hyperparameters` (von-Neumann-smoothed grid) + `evaluate_regression`
+(repeated K-fold, in-fold scaler) + `regression_plotting.py`'s scatter + grid heatmap are
+the reusable bones. But it **tunes on all data then CVs on the same data** (optimistic
+leakage → nested CV), has **no group-awareness, no shuffle null, no coefficient
+extraction/stability**, silently `NaN→0` (we **raise**), uses **seaborn** (re-implemented on
+matplotlib), a **pickle cache** (`S301` / file-format convention — dropped, project-local),
+and study-specific `pred_floor/pred_ceiling` clipping (stripped). All fixed/stripped, exactly
+as the classifier did.
+
+**New `feature_list=` (the user's steer, 2026-07-06).** Optional prior-knowledge feature
+restriction — leakage-safe (**must be outcome-independent**), matched/unmatched counts
+recorded in provenance; mirrored into the flow (`commands/stage4-explore.md`) and
+`conventions/statistics.md`, and kept in mind for the classifier. See memory
+`feature-list-restriction-ml-templates`.
+
+**Preview-first eyeball-gate finding.** Trex **dose** is genuinely **null** even in the
+published manuscript (R²=−0.018, MAE 27 cGy) — the preview reproduced it, and a curated
+feature list couldn't sharpen an absent signal. Pivoted to **time-since-exposure** (the
+manuscript's strong signal, R²=0.90): honest nested-CV R²=0.77 on the 144-sample irradiated
+subset, clears the target-shuffle null (p=0.005). New git-ignored `testdata/trex/` (5xFAD has
+no continuous outcome). Preview record in `testdata/trex/_regression_preview/`. **No new
+shipping dep** (scikit-learn already baselined). Evidence reuses the classification/selection
+kind (§8; R²/RMSE/MAE vs the target-shuffle null + the per-feature stability read).
 
 ### B.3 Boruta — ✅ SHIPPED (v0.1, 2026-07-06) — *source oracle* (`manuscript-trex-phase2a/te-phase2a-pelt/src/`)
 

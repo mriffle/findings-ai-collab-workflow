@@ -20,6 +20,20 @@ study data and never enters a user's project.
 
   Abundances are **linear** intensity; `0` = not detected (preserved, never NaN-substituted).
 
+- `trex/` — proteomics data from the TEI-REX Phase-2a Pelt radiation study, copied from
+  `/home/mriffle/vscode/manuscript-trex-phase2a/te-phase2a-pelt`. **Git-ignored.** This is the
+  **regression** template's oracle dataset: it carries a genuine *continuous* outcome
+  (radiation `Dose_cGy`, 0–100 across graded levels) that 5xFAD lacks. Re-copy from the source
+  project if missing (see `_regression_preview/` for the staging step).
+
+  | File | Shape | Notes |
+  |------|-------|-------|
+  | `data/proteins_unnormalized_wide.tsv` | 10,568 proteins × 936 sample cols | rows=features, cols=samples; col 1 = `protein` (UniProt `sp\|ACC\|GENE_MOUSE`). Already **log2** (0 = not detected). |
+  | `metadata/metadata_trex.tsv` | 936 samples × vars | derived from the study's `unblinded-augmented-metadata_wide.tsv`; adds `replicate_key` (source `replicate` with `-`→`.`) so it joins the R-mangled data headers. Target `Dose_cGy`; ComBat batch `Plate`. |
+
+  Abundances are **log2** (not linear like 5xFAD); the experimental dose-labeled subset is the
+  492 samples with a numeric `Dose_cGy` (412 T&E "Skin Punch" + 80 UW reference).
+
 ## Why git-ignored, and what ships
 
 For now the loader template is exercised **locally** against this real data (per the project
