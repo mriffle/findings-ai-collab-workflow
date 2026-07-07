@@ -134,6 +134,10 @@ Then add the baseline with uv (this resolves, installs into `./.venv`, and write
 # only when running Boruta. Pinned — the template intercepts a private method to keep the
 # per-iteration shadow threshold, so a version bump must be re-verified against its tests.
 ./.uv/bin/uv add 'boruta==0.4.3'
+# Gradient-boosted-tree classifier (lib/analysis/classification-xgboost seeds from
+# XGBClassifier); add only when running the non-linear XGBoost classification. Ships
+# py.typed, so it stays mypy --strict clean. Pin for reproducible tree builds.
+./.uv/bin/uv add 'xgboost==3.3.0'
 ```
 
 The **dev tooling is not optional**: `ruff` + `mypy` power the promotion hook and `pytest` + `hypothesis` power the code-reviewer's test check. Without them in `./.venv`, the promotion gate degrades to a no-op. The scientific baseline is a sensible default — add/remove packages as the study needs (`uv add` / `uv remove`), and the lockfile updates.

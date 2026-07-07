@@ -35,6 +35,11 @@ boruta==0.4.3
 # ships py.typed, so it type-checks under mypy --strict with no stub/override needed.
 textalloc==1.2.3
 
+# Gradient-boosted-tree classifier the lib/analysis/classification-xgboost template
+# seeds from (XGBClassifier). Ships py.typed, so it type-checks under mypy --strict with
+# no stub/override needed. Pinned for reproducible tree builds across the test suite.
+xgboost==3.3.0
+
 # Quality + test toolchain (the promotion-gate lint/types + the code-reviewer's test bar)
 ruff==0.15.18
 mypy==2.1.0

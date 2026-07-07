@@ -115,6 +115,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | Volcano plot | output viz | `volcano_plotting.py` | ✅ **Shipped** (v0.1) | `lib/figures/volcano` |
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
+| **XGBoost** (gradient-boosted-tree) **classification** | multivariate / classification | `te-phase2a-pelt/src/classification_xgboost.py` + `classification_xgboost_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification-xgboost` (`classify_xgboost`) + `lib/figures/classification_xgboost` |
 | Elastic-net linear regression | multivariate | `te-phase2a-pelt/src/regression.py` + `regression_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/regression` (`regress`) + `lib/figures/regression` |
 | Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
@@ -311,6 +312,35 @@ baseline). Two source-scan findings are baked in: the modern sklearn API (`penal
 deprecated → select elastic net by `l1_ratio` alone) and the leakage/null gaps the source
 harness lacked (it tuned on all data, had no group-awareness and no null, and silently
 `NaN→0`). The design notes below record what was built.
+
+**➕ Non-linear sibling — XGBoost classification — ✅ SHIPPED (v0.1, 2026-07-06).** A **parallel
+template** `lib/analysis/classification-xgboost` (`classify_xgboost`) + `lib/figures/classification_xgboost`,
+built as a **self-contained sibling** of the elastic-net classifier (the `regression`-precedent
+pattern — own `XGBClassificationResult`, own figure module, the label/CV/null/stability
+scaffolding duplicated so the seed stands alone) for when the class boundary is **non-linear or
+interaction-driven**. Same leakage-safe shape (nested CV tuning `max_depth × learning_rate`
+in-fold, opt-in label-shuffle null gating exploratory↔validated, fixed-hyperparameter stability
+loop). **Four deliberate divergences from the linear classifier**, all documented in-code: (1)
+**no standardization and no scale warning** — trees split on per-feature thresholds, so they are
+scale-invariant; (2) imbalance via **fold-local `scale_pos_weight = n_neg/n_pos`** (not
+`class_weight`); (3) **unsigned gain importances** (a magnitude, no direction → **no sign
+consistency**, and the importance figure has no zero line / starts at 0 — the one figure that
+genuinely diverges, closer to the Boruta importance plot); (4) a **2-D tuning grid** (other tree
+knobs held-constant scalars) to keep nested CV tractable *and* reuse the 2-D heatmap. Sourced from
+`te-phase2a-pelt/src/classification_xgboost.py` (+ its plotting) but **stripped** of the source's
+GPU detection / device resolution / file-lock / joblib scaffolding / **7-D corner plot** / pickle
+cache — none of which matched our established classifier design. **NaN still raises** (native NaN
+routing noted as a deliberate non-use for auditability). New pinned shipping dep `xgboost==3.3.0`
+(ships `py.typed`, so `mypy --strict` clean, no override). 23 tests (planted-truth invariants +
+determinism, guards incl. the **no-scale-warning** divergence, grouping, four figures, a real-5xFAD
+smoke). **Validated on the 5xFAD genotype contrast:** nested-CV AUC **0.904 ± 0.072**, observed
+0.898 vs shuffle-null mean 0.511 (**p = 0.0099**), and the top gain importances are the canonical
+AD proteins (APOE, APP/A4, complement C1q, GPC1) — matching the elastic-net classifier's validated
+hits, with the correlated APP neighbour APLP2 surfacing lower down. The 5xFAD preview lives in
+`testdata/5xFAD/_classification_xgboost_preview/`. Evidence reuses the classification/selection kind
+(§8), with the per-feature estimate an **unsigned importance** rather than a signed coefficient
+(`conventions/findings.md` amended). Wired into `lib/manifest.md`, `conventions/{statistics,
+visualization,findings}.md`, and `commands/stage4-explore.md` (offered *alongside* the linear model).
 
 **The reframing (the key decision, the user's call).** Elastic net tuned for prediction yields
 the **minimal-optimal** feature set — the smallest sufficient predictive basis — *not* the
