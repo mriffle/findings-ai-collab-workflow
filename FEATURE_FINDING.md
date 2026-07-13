@@ -471,6 +471,14 @@ matrix** — the shadows are the built-in null, so no external null and no CV. E
 does not ship). No `generalization_target` field (Boruta makes a selection, not a
 performance claim). The design record below is what was built.
 
+**Tuning guidance (encoded 2026-07-13).** The default run (`max_iter=100`, `alpha=0.05`,
+`perc=100`) is a starting point, not a fixed contract — the template docstring, `commands/stage4-explore.md`,
+and `conventions/statistics.md` all carry the same steer: **too few** Confirmed → raise
+`max_iter` (~`200`, so borderline Tentatives resolve) and/or lower `perc` toward `95`/`90`
+(a more lenient shadow floor — the threshold is `percentile(imp_sha, perc)`); **too many**
+for a tractable downstream analysis → lower `alpha` to `0.01` (a stricter accept/reject bar).
+Any non-default is a recorded choice (enters `provenance.params` + the cache fingerprint).
+
 The user's proven implementation, read in full: `feature_finding_boruta.py` (core),
 `boruta_plotting.py` (the informative viz), `scripts/run_feature_finding_boruta.py` (driver).
 
