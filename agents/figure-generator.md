@@ -20,6 +20,7 @@ You handle **one plot-family per dispatch** — a plot type plus its close varia
 - `state/color_registry.json` — the category→color map you must read (never invent colors).
 - `lib/` figure templates — seed from the relevant one (or reuse the project's existing figure script for this plot type); they encode the publication defaults, dual export, color-registry handling, and the >8-category guard. Import the project's shared figure module rather than duplicating it.
 - **Prepared inputs, when they exist** — if the data was materialized upstream (e.g. the Stage-3 QC prep-once step writes processing-state matrices to `results/qc_states/<state>/`), **`dataset-io.load_dataset` the state you need** rather than re-loading raw data and re-normalizing / re-running ComBat. Your script is then *load → subset → plot*.
+- **Result figures load a cached result — never recompute it** (`conventions/results-cache.md`). For a CPU-heavy analysis figure (classification / xgboost / regression / boruta), `result_io.load_cached_result(ResultClass, cache_root="results", analysis=…, fingerprint=…)` for the **named** result (or the analysis's **current** result if unspecified), then render. A title/color/label tweak must re-run only your figure script, not the nested-CV analysis. Record which result id you rendered.
 
 ## What you produce
 

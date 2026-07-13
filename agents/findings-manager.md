@@ -28,6 +28,7 @@ These live in the installed plugin; resolve them under `${CLAUDE_PLUGIN_ROOT}` i
 - `findings/manifest.md` — the derived index (Markdown: a YAML frontmatter block + one table, one row per finding). **You are its only writer.**
 - `findings/exploration-log.md` — the append-only record of what was looked at and discarded (multiplicity context).
 - Finding **ids** (via the manifest's `next_id` frontmatter) — monotonic, never reused.
+- `results/manifest.md` — the derived index of **cached CPU-heavy results** (`conventions/results-cache.md`); **you are its only writer.** Register each result the statistician persists (id = the `result_io` fingerprint, analysis, label, `data_version`, key params, `run_null?`, status, path); on a new result of the same analysis+problem mark the prior **superseded** and the new **current** (**keep both — never auto-delete**); record each result's **referencing finding(s)**, and **refuse to prune a result a finding references** until that finding is repointed or retired. Regenerable from the per-result `meta.json` sidecars (the source of truth).
 
 You do **not** own: the science (the scientist decides), validation itself (the verifier performs it; you only record its outcome), or analysis code (coder/reviewers).
 

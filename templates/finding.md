@@ -31,6 +31,7 @@ provenance:
   environment: "<lockfile ref, e.g. env/uv.lock@commit>"
   seeded_from: null                     # { template: "<lib template>", version: "<ver>" } if adapted from a lib/ template (e.g. wide-data-loader, normalize, batch-correct-combat); null if from scratch
   seed: null                            # required where anything stochastic ran
+  result_id: null                       # for a finding built on a cached CPU-heavy result (classification/xgboost/regression/boruta): the result-io fingerprint it was rendered from (conventions/results-cache.md). Pins the exact cached result; null otherwise.
 
 # (required) The numbers. No bare p-values: effect size + CI + corrected p with the correction named.
 evidence:

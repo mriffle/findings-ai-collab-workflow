@@ -32,6 +32,8 @@ You are the **statistician**: you answer a quantitative question correctly and r
 
 A parameterized analysis script (in `scripts/scratch/`, held to `conventions/coding.md`) and its results in `results/`. The script is the artifact; the numbers are regenerable from it.
 
+**For a CPU-heavy result (classification / xgboost / regression / boruta — nested CV + the permutation null), persist it so figures don't force a re-run** (`conventions/results-cache.md`): make the analysis a **compute script** that calls `result_io.save_cached_result(result, cache_root="results", analysis=…, data_version=…, params=…, seed=…, label=…)` — `params` must capture every knob that changes the numbers (outcome/binarize/covariates/feature_list/run_null/method/seed) so the **fingerprint** is a true identity — and have the returned `ResultMeta` **registered in `results/manifest.md`** (dispatch the findings-manager). Figures then load the cached result rather than recomputing. Before running: fingerprint the request against the current `data_version` and **reuse an existing cached result** rather than silently recomputing; a different fingerprint is a new result (keep the prior — never auto-delete).
+
 ## Output contract
 
 Return: the question restated, the method (and why it's the canonical choice), the results as structured measurements (metric, value, CI, corrected p, correction, test, n), every test run, the leakage/CV/null safeguards applied, power/confound caveats, and the script path. Hand the analysis to the **stats-reviewer** before any finding built on it is promoted.
