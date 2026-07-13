@@ -27,9 +27,31 @@ The plugin is the engine; your project is the data. The plugin never carries a s
 
 # 2. Install the plugin
 /plugin install findings-workflow@findings-workflow
+
+# 3. Apply the changes: run /reload-plugins, or restart Claude Code
 ```
 
+**Apply the changes after installing.** The install writes the plugin to disk, but a running session picks it up only after `/reload-plugins` — or a full restart. If the slash commands (`/findings-workflow:init`, etc.) don't appear after `/reload-plugins`, quit and relaunch Claude Code; a fresh session reliably registers them. Confirm by typing `/findings-workflow:` and checking that autocomplete lists the commands.
+
+**Scope matters.** A plugin installed at **local** scope is active only in the project directory it was installed for — if you install it while pointed at project A, its commands will *not* appear in project B (they'll read as "Unknown command" no matter how many times you reload). Launch Claude Code from the study directory you installed it for, or install at **user** scope to make it available everywhere.
+
 Then, in the working directory for your study, run the init command (see `commands/`) to scaffold the project structure and project-scoped instructions. Analysis runs on **Python ≥ 3.11**; the `setup-env` command establishes a **project-local** environment (detecting an existing Python, or — with your consent — installing one *into the project* via `uv`, with no changes to your system).
+
+### Updating
+
+To pull a newer version of the plugin:
+
+```text
+# 1. Refresh the marketplace catalog so Claude Code sees the latest version
+/plugin marketplace update findings-workflow
+
+# 2. Re-install to upgrade to the latest version
+/plugin install findings-workflow@findings-workflow
+
+# 3. Apply the changes: run /reload-plugins, or restart Claude Code
+```
+
+As with a fresh install, run `/reload-plugins` (or restart) so the updated commands take effect. The `marketplace update` step is required first — without it, the install may not see a newly published version because the local catalog is cached. You can also manage updates interactively via the `/plugin` menu (**Marketplaces** → select → **Update**).
 
 ## How it works (the staged workflow)
 

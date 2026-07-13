@@ -8,7 +8,8 @@ A first-class goal: a user sets this up with a single Claude Code command, insta
 
 - A **plugin** packages skills, agents, slash commands, hooks, and MCP/LSP servers into one installable unit.
 - A **marketplace** is a git repository (or local directory) containing a marketplace manifest. **This project's GitHub repo is its own marketplace** — no separate hosting needed.
-- A user installs in two steps: add the marketplace (`/plugin marketplace add owner/repo`), then install the plugin (`/plugin install <name>@<marketplace>`). Marketplaces can be added from `owner/repo` GitHub format or any git URL.
+- A user installs in three steps: add the marketplace (`/plugin marketplace add owner/repo`), install the plugin (`/plugin install <name>@<marketplace>`), then **apply the change** with `/reload-plugins` (or a full Claude Code restart, which reliably registers the commands if a reload doesn't surface them). Marketplaces can be added from `owner/repo` GitHub format or any git URL. **Scope caveat:** a locally-scoped install is active only in the project directory it was installed for (its commands read as "Unknown command" elsewhere); a user-scoped install is available everywhere.
+- **Updating** an installed plugin: refresh the catalog (`/plugin marketplace update <marketplace>` — required, since the local catalog is cached and may not otherwise see a newly published version), re-install (`/plugin install <name>@<marketplace>`), then apply the change (`/reload-plugins` or restart). The `/plugin` interactive menu (Marketplaces → select → Update) is the equivalent GUI path.
 
 ## 8.2 Component → plugin mapping
 
