@@ -11,6 +11,12 @@ description: >-
 
 Authoritative rules: `conventions/visualization.md`. A figure is a **regenerable artifact**, produced by a parameterized script — never a hand-made image.
 
+## Scope: one plot-family per dispatch
+
+You are dispatched for **one plot-family** — a single plot type and all its close variants (e.g. the whole CV family: the experimental overlay plus one figure per control type; or the PCA state-series in one coloring). Produce it from **one parameterized script** that emits the family's figures in a single run, seeding from the **one** relevant `lib/` template (not the whole `lib/figures/` set). This keeps your context bounded: you read one template, write one script, render, and hand off — you do **not** hold other families' templates, scripts, or renders. Return the compact text contract (below); the orchestrator does not retain your rendered images.
+
+**Load prepared inputs; don't re-derive them.** When the processing-state matrices were materialized upstream (the Stage-3 QC prep-once step writes `results/qc_states/<state>/` via `dataset-io.save_dataset`), **`load_dataset` the exact state(s) your family needs** on the scale it needs — do not re-load raw data and re-normalize or re-run ComBat inside your script. Your script becomes *load → subset (experimental / control type) → plot*.
+
 ## Read the color registry first
 
 Load `state/color_registry.json`. For every categorical dimension you plot, use the color the registry assigns that value — so a value keeps the **same color in every figure**. For a new categorical value not yet in the registry, assign the next unused color from `_palette.colors` (Okabe–Ito) and add it (with `scope: project`) so it stays consistent thereafter. Never pick ad-hoc colors.
@@ -46,4 +52,4 @@ The producing script (path + commit), the data version, and parameters are recor
 
 ## Handoff
 
-Render, then route the **PNG** to the **figure-reviewer**. The figure is accepted only after the render passes review.
+Render, then route the family's **PNG(s)** to a **fresh figure-reviewer** — the review happens in its own isolated context (it holds the image, returns a verdict, and is discarded), so the renders never accumulate in your context or the orchestrator's. The figure is accepted only after the render passes review; a FAIL comes back to you (the same family's generator) with the specific corrections.
