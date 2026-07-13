@@ -46,10 +46,17 @@ evidence:
     note: "<what this measures>"
 
 # Regenerable figure artifacts (dual export + separate legend image, per doc 06).
+# REQUIRED whenever a figure relevant to this finding exists: list every such figure here
+# AND embed it inline in the body (see ## Evidence). Each entry carries its OWN producing
+# script + input (per-figure provenance) so that figure is regenerable on its own.
 figures: []
   # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg",
   #     legend_png: "figures/<NNNN>-<name>.legend.png", legend_svg: "figures/<NNNN>-<name>.legend.svg",
-  #     caption: "<free-text caption>" }
+  #     caption: "<free-text caption>",
+  #     script: { path: "scripts/promoted/<figure_script>.py", commit: "<short-sha>" },
+  #     data_version: "<sha256:... or version stamp>",
+  #     result_id: null,          # the result-io fingerprint if rendered from a cached result (classification/xgboost/regression/boruta); null otherwise
+  #     params: {} }              # optional render params
 
 # Required for any background/interpretive claim. Each is fact-checked by the research-reviewer.
 references: []
@@ -75,6 +82,16 @@ integrity_signoff: false
 
 ## Evidence
 <The numbers behind the claim — effect sizes, intervals, corrected p-values — with inline figures/tables. Mirrors the `evidence` frontmatter in narrative form.>
+
+<Embed **every** figure relevant to this finding inline, right where it is discussed — the reader must never have to go find a figure that exists. For each, show the 300-DPI PNG, its caption, and a one-line pointer to the script + input that produced it. Every figure embedded here is also listed in the `figures` frontmatter (and vice-versa).>
+
+<!-- Example (delete if the finding has no figures):
+
+![<caption — what each axis/series/color encodes, units, n>](figures/<NNNN>-<name>.png)
+
+*Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`]. Legend: `figures/<NNNN>-<name>.legend.png`.*
+-->
+
 
 ## Methods / how to produce
 <Enough to regenerate: the promoted script invoked, its parameters, the data version, and the environment. Point at `provenance`. A reader (or a blinded verifier) could reproduce the numbers from this section + the pinned code.>

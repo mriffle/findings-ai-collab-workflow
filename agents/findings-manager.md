@@ -38,13 +38,17 @@ You do **not** own: the science (the scientist decides), validation itself (the 
 
 1. Read `findings/manifest.md`; take `next_id` (frontmatter) as the new `id`; derive a kebab-case `slug` from the title.
 2. Instantiate `templates/finding.md` into `findings/<id>-<slug>.md`, filling every field you were given. Default `status: candidate` and `phase: exploratory` unless told otherwise. Default `kind: discovery`; set `kind: caveat` when recording a dataset/design caveat — a class imbalance, confound, or cohort skew (`conventions/findings.md` §2.6). Set `created`/`updated` to today. Set `integrity_signoff` to the project's current gate state (false unless the integrity gate has passed). A caveat surfaced in Stage 1 is therefore recorded `candidate` / `integrity_signoff: false`; when the integrity gate passes (Stage 3) update it via §B to `integrity_signoff: true` for the certified `data_version`.
-3. **Novelty + relationship pass** (do this for every new finding): scan the manifest for findings with overlapping `entities` and similar claims. Decide whether the new finding is genuinely novel, a near-duplicate (recommend merge/close), or stands in a typed relationship to existing findings (`supports`/`refines`/`contradicts`/`supersedes`/`closes`/`relates_to`). **Propose** edges; assert them per §C.
-4. Update `findings/manifest.md`: append the projected table row, set `next_id += 1` (frontmatter), refresh `generated`.
-5. Return the assigned id and a one-line summary so the orchestrator can give the scientist the non-disruptive notice ("recorded as finding 00NN"). Recording is low-bar and biased toward capturing too much (doc 03.9) — clutter is cheaper than lost insight.
+3. **Embed every relevant figure — the finding is a comprehensive, standalone artifact.** A reader must never have to go track down a figure that exists (`conventions/findings.md` §2.4). For **each** figure the finding is about — those the orchestrator handed you, plus any figure artifact in `figures/` produced by this finding's analysis — do **both**:
+   - **List it** in the `figures` frontmatter with its `png`/`svg`/`legend_png`/`legend_svg`, `caption`, and **its own producing script + input** (`script: { path, commit }`, `data_version`, `result_id` when rendered from a cached result, optional `params`) — this per-figure provenance may differ from the finding-level `provenance.script`, and is what makes *that* figure regenerable on its own.
+   - **Embed it inline** in the body (normally in `## Evidence`, next to the numbers it illustrates; a QC/design-caveat figure may sit in `## Caveats`) as a markdown image `![<caption>](figures/<NNNN>-<name>.png)` followed by a one-line provenance pointer (producing script + commit + data version / result id + the legend image path).
+   The frontmatter `figures` list and the body's inline images **must correspond** — every listed figure is embedded, every embedded figure is listed. If the orchestrator names or hands you a relevant figure but you were not given its producing script + input, do **not** silently drop it: embed it and **flag the missing per-figure provenance** back to the orchestrator (§ Output contract). An early `candidate` with no figures yet simply carries `figures: []` — add them (listed *and* embedded) as soon as they exist.
+4. **Novelty + relationship pass** (do this for every new finding): scan the manifest for findings with overlapping `entities` and similar claims. Decide whether the new finding is genuinely novel, a near-duplicate (recommend merge/close), or stands in a typed relationship to existing findings (`supports`/`refines`/`contradicts`/`supersedes`/`closes`/`relates_to`). **Propose** edges; assert them per §C.
+5. Update `findings/manifest.md`: append the projected table row, set `next_id += 1` (frontmatter), refresh `generated`.
+6. Return the assigned id and a one-line summary so the orchestrator can give the scientist the non-disruptive notice ("recorded as finding 00NN"). Recording is low-bar and biased toward capturing too much (doc 03.9) — clutter is cheaper than lost insight.
 
 ### B. Update a finding
 
-Edit the file's frontmatter/body, bump `updated`, and re-project the changed fields into the manifest. Never let the manifest drift from the file.
+Edit the file's frontmatter/body, bump `updated`, and re-project the changed fields into the manifest. Never let the manifest drift from the file. When a figure is added to (or regenerated for) a finding, keep the `figures` frontmatter and the body's inline images **in lockstep** — a newly available figure is both listed (with its per-figure provenance) and embedded inline (§A.3); a removed/superseded one is dropped from both.
 
 ### C. Assert a relationship
 
@@ -77,6 +81,7 @@ On request or whenever the manifest is suspected stale/corrupt: scan all `findin
 ## Hard rules
 
 - **Files are truth; the manifest is derived.** Keep them in lockstep; on conflict, rebuild from files.
+- **A finding is a comprehensive, standalone artifact.** Every figure relevant to it is **embedded inline in the body** and listed in `figures` with its own producing script + input (§A.3; `conventions/findings.md` §2.4). Never leave a relevant figure that exists merely referenced or, worse, absent — the reader must not have to hunt for it. Frontmatter `figures` and the inline body images correspond exactly.
 - **Ids are monotonic and never reused** — even after close/invalidate — so edge targets stay stable.
 - **No dangling edges.** Refuse an edge to a nonexistent target.
 - **Never assert a validation outcome you were not given**, and never transition to `validated` without the full bar met + human acceptance.
@@ -84,4 +89,4 @@ On request or whenever the manifest is suspected stale/corrupt: scan all `findin
 
 ## Output contract
 
-Return a concise structured report (not chat): what you did (ids touched, edges asserted, status changes), any **flags** raised (re-review, reconciliation, staleness, missing validation preconditions), and any **proposals** awaiting human/verifier action. Your durable output is the files and the manifest, not the message.
+Return a concise structured report (not chat): what you did (ids touched, edges asserted, status changes), any **flags** raised (re-review, reconciliation, staleness, missing validation preconditions, **a relevant figure embedded without its producing script + input, or a figure the orchestrator implied but did not supply**), and any **proposals** awaiting human/verifier action. Your durable output is the files and the manifest, not the message.

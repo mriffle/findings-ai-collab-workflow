@@ -35,7 +35,7 @@ All findings carry this YAML frontmatter. `R` = required, `C` = conditional, `O`
 | `relationships` | O | list[edge] | Typed links to other findings (§6). |
 | `provenance` | R | object | How to regenerate the numbers (§2.2). |
 | `evidence` | R | list[measurement] | Effect sizes, intervals, corrected p-values (§2.3). **Stripped before blind validation (§4).** |
-| `figures` | O | list[figure] | Regenerable figure artifacts (§2.4). |
+| `figures` | C | list[figure] | Regenerable figure artifacts (§2.4). **Required whenever a figure relevant to the finding exists** — every such figure is listed here *and* embedded inline in the body (§2.4). |
 | `references` | C | list[reference] | Required for any background/interpretive claim (§2.5; doc 04.5). |
 | `validation` | O | object | Which validation senses cleared, by what, with what concordance (§4). |
 | `integrity_signoff` | R | bool | `true` only if the data cleared the integrity gate (doc 05). A finding may not be `validated` while this is `false`. |
@@ -104,6 +104,10 @@ The "no bare p / effect + CI" rule (§2.3) governs *significance* tests; this se
 
 ### 2.4 `figures`
 
+A finding is a **comprehensive, standalone artifact**: a reader must never have to go track down a figure that exists. **Every figure relevant to the finding is (a) listed in this `figures` block and (b) embedded inline in the body** (§9) as a markdown image, right where it is discussed. If a relevant figure exists but is not embedded, the finding is **incomplete**. (An early `candidate` recorded before any figure was rendered simply carries `figures: []`; the figures are added — listed *and* embedded — as soon as they exist.)
+
+Each entry carries the figure's artifacts, its caption, **and its own producing script + input** — per-figure provenance, so *that* figure is regenerable on its own even when a finding embeds several figures from different scripts (e.g. a volcano and a PCA):
+
 ```yaml
 figures:
   - png:        "figures/0042-volcano.png"        # 300 DPI raster; review + embed target
@@ -111,9 +115,19 @@ figures:
     legend_png: "figures/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3)
     legend_svg: "figures/0042-volcano.legend.svg" # legend vector master
     caption:    "Volcano plot of drug_A vs control."  # free-text caption
+    # Per-figure provenance — the script + input that produced THIS figure.
+    script:       { path: "scripts/promoted/volcano_treatment.py", commit: "abc1234" }
+    data_version: "sha256:9f86d08…"                # the pinned data the figure was rendered from
+    result_id:    "fp-a1b2c3…"                     # for a figure rendered from a cached CPU-heavy result (classification/xgboost/regression/boruta); null otherwise
+    params:       {}                               # optional: figure params that change the render
 ```
 
-Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version` or the producing script's commit changes, figures built on the old version are flagged.
+- **`png`/`svg`** — the dual-exported figure (doc 06); `legend_png`/`legend_svg` — the separate legend image (doc 06.3). The `png` is the inline-embed target.
+- **`caption`** — the free-text caption (what each axis/series/color encodes, units, n) shown with the inline image.
+- **`script`** — the **producing figure script** (path + commit). This is per-figure and may differ from the finding-level `provenance.script` (which pins the analysis that produced the *numbers*): the figure script is what re-renders the image. Follows the same promoted-script rule at `validated` (a validated finding's figures are re-rendered from `scripts/promoted/`).
+- **`data_version`** — the pinned data the figure was rendered from; **`result_id`** — set when the figure was rendered from a cached result (`conventions/results-cache.md`), so the figure re-renders from the exact cached result rather than a recompute; **`params`** — optional render params.
+
+Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`).
 
 ### 2.5 `references`
 
@@ -264,3 +278,13 @@ Findings are recorded **automatically** during exploration, governed by:
 The body is the human narrative. Section order:
 
 `Summary` · `Verdict` · `Evidence` (numbers, with inline figures/tables) · `Methods / how to produce` (sufficient to regenerate; references the promoted script) · `Discussion` (meaning, why interesting) · `Caveats` (confounds, assumptions, multiplicity context) · `Follow-ups` · `Related findings` · `References`.
+
+**Figures are embedded inline, not merely referenced.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). Each embedded figure carries its **caption** and a **one-line provenance pointer** to the script + input that produced it, so the finding stands alone and every image is regenerable:
+
+```markdown
+![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](figures/0042-volcano.png)
+
+*Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`). Legend: `figures/0042-volcano.legend.png`.*
+```
+
+The reader must never have to leave the finding to see a figure that exists.

@@ -28,7 +28,7 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 | `relationships` | list[edge] | no | Typed links to other findings (3.3) |
 | `provenance` | object | yes | `data_version` (hash), `script` (path+commit), `params`, `environment` (lock ref) |
 | `evidence` | list | yes | Effect sizes, statistics, intervals, corrected p-values (*as built:* a list of measurement objects — see `conventions/findings.md` §2.3) |
-| `figures` | list[path] | no | SVG/PNG artifacts (doc 06), regenerable |
+| `figures` | list[figure] | conditional | SVG/PNG artifacts (doc 06), regenerable. **Required whenever a relevant figure exists** — every such figure is embedded inline in the body *and* listed here with its own producing script + input (per-figure provenance; conventions/findings.md §2.4) |
 | `references` | list[ref] | conditional | Required for any background/interpretive claim (doc 04 invariant) |
 | `validation` | object | no | Which validation senses cleared, by whom/what, concordance result |
 | `integrity_signoff` | bool | yes | Data passed the integrity gate (doc 05) |
@@ -38,6 +38,8 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 ### Finding body (sections)
 
 `Summary` · `Verdict` · `Evidence` (numbers, with inline figures/tables) · `Methods / how to produce` (sufficient to regenerate; references the promoted script) · `Discussion` (meaning, why interesting) · `Caveats` (confounds, assumptions, multiplicity context) · `Follow-ups` · `Related findings` · `References`.
+
+Every figure relevant to the finding is **embedded inline** in the body (normally in Evidence), shown with its caption and a one-line pointer to the producing script + input — the finding is a comprehensive, standalone artifact, never a pointer to figures a reader must go find (conventions/findings.md §2.4).
 
 ## 3.2 Status — the lifecycle state machine
 

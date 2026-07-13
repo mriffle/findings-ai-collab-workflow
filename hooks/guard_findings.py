@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Findings Workflow hook — integrity-gate + promoted-script guard on findings.
+"""Findings Workflow hook — integrity-gate + promoted-script + figure-embed guard.
 
-Spec: docs 02.3, 03, 05. Enforces two invariants when a finding file
+Spec: docs 02.3, 03, 05, 06. Enforces three invariants when a finding file
 (``findings/NNNN-*.md``) is written or edited:
   1. A finding may not claim ``integrity_signoff: true`` or ``status: validated``
      before the integrity gate has passed
      (``state/workflow.json .integrity_gate.passed == true``).
   2. A ``validated`` finding may link only to a promoted script
      (``scripts/promoted/``), never ``scripts/scratch/``.
+  3. On a *complete* finding write (frontmatter + a non-empty body), every figure
+     listed in the ``figures`` frontmatter must be embedded as an inline image in
+     the body — a finding is a standalone artifact and the reader must never have
+     to track down a figure it lists (conventions/findings.md §2.4). This check
+     fails open on an Edit fragment that doesn't carry the whole document and on
+     an empty ``figures`` list; it cannot judge whether a *relevant* figure was
+     omitted entirely (that completeness call is the findings-manager's).
 
 This is a deterministic backstop; the findings-manager is the authoritative
-enforcer and applies the full ``validated`` bar. Scope + fail-open behavior match
-the other guards. Pure stdlib (no ``bash``/``jq``) so it runs unchanged on
-Windows, macOS, and Linux.
+enforcer and applies the full ``validated`` bar + figure completeness. Scope +
+fail-open behavior match the other guards. Pure stdlib (no ``bash``/``jq``) so it
+runs unchanged on Windows, macOS, and Linux.
 
 Reads the PreToolUse JSON event on stdin; exit 2 + stderr blocks the tool call.
 """
@@ -39,6 +46,53 @@ _CLAIMS_VALIDATED = re.compile(r'^[ \t]*status:[ \t]*["\']?validated\b', _M)
 # mention of scripts/scratch/ (e.g. in a Caveat) doesn't trigger a false block.
 _SCRATCH_PATH_LINE = re.compile(r'^[ \t]*path:[ \t]*["\']?scripts/scratch/', _M)
 _SCRATCH_INLINE = re.compile(r"script:[ \t]*\{[^}]*scripts/scratch/")
+
+# Figure-embed check. A figure PNG listed in the `figures` frontmatter: the
+# (?<!\w) lookbehind excludes `legend_png:` (and any other `*_png:` key), so only
+# the main figure raster — the inline-embed target — is required in the body.
+_OPEN_FM = re.compile(r"^\s*---[ \t]*\n")
+_CLOSE_FM = re.compile(r"\n---[ \t]*(?:\n|$)")
+_FIGURE_PNG = re.compile(r'(?<!\w)png:[ \t]*["\']?(figures/[^"\'\s,}\]]+\.png)')
+# Inline image targets in the body: markdown `![alt](target)` and HTML `<img src=…>`.
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+_HTML_IMG = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def _split_frontmatter(content: str) -> tuple[str | None, str]:
+    """Split a finding into (frontmatter, body), or (None, "") if it isn't a
+    complete document (no opening/closing `---` delimiter line) — an Edit
+    fragment fails open here."""
+    m_open = _OPEN_FM.match(content)
+    if not m_open:
+        return None, ""
+    rest = content[m_open.end() :]
+    m_close = _CLOSE_FM.search(rest)
+    if not m_close:
+        return None, ""
+    return rest[: m_close.start()], rest[m_close.end() :]
+
+
+def unembedded_figures(content: str) -> list[str]:
+    """PNG paths listed in the `figures` frontmatter but not embedded inline in
+    the body. Empty (no violation) unless `content` is a complete finding
+    document with a non-empty body and a non-empty `figures` list.
+
+    A listed path counts as embedded when it — or its basename — appears inside
+    any inline image target in the body (lenient over `./figures/…` vs `figures/…`
+    so only a genuinely missing figure blocks)."""
+    frontmatter, body = _split_frontmatter(content)
+    if frontmatter is None or not body.strip():
+        return []
+    listed = _FIGURE_PNG.findall(frontmatter)
+    if not listed:
+        return []
+    targets = _MD_IMAGE.findall(body) + _HTML_IMG.findall(body)
+    missing = []
+    for png in listed:
+        base = png.rsplit("/", 1)[-1]
+        if not any(png in t or base in t for t in targets):
+            missing.append(png)
+    return missing
 
 
 def gate_passed(cwd: str) -> bool:
@@ -99,6 +153,16 @@ def main() -> None:
             "Blocked: a validated finding may link only to a promoted script "
             "(scripts/promoted/), not scripts/scratch/ (docs 03, 05). Promote the "
             "script and re-point provenance.script.path before validating."
+        )
+
+    missing = unembedded_figures(content)
+    if missing:
+        block(
+            "Blocked: a finding must embed every figure it lists inline in the body, "
+            "so the reader never has to track one down (conventions/findings.md §2.4). "
+            "Listed in the `figures` frontmatter but not shown as an inline image in "
+            "the body: " + ", ".join(missing) + ". Add ![caption](<png>) where each is "
+            "discussed (with its producing script + input), or drop it from `figures`."
         )
 
 

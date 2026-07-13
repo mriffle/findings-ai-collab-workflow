@@ -116,6 +116,26 @@ def _find(proj: str, fp: str, content: str) -> tuple[int, str]:
         "tool_input": {"file_path": fp, "content": content}})
 
 
+def _find_edit(proj: str, fp: str, new_string: str) -> tuple[int, str]:
+    return run_guard("guard_findings.py", {
+        "cwd": proj, "tool_name": "Edit",
+        "tool_input": {"file_path": fp, "new_string": new_string}})
+
+
+# Whole-finding fixtures for the figure-embed backstop.
+_FIG_FM = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/0042-volcano.png", svg: "figures/0042-volcano.svg",'
+    ' legend_png: "figures/0042-volcano.legend.png", caption: "V" }\n---\n'
+)
+_FIG_EMBEDDED = _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+_FIG_MISSING = _FIG_FM + "\n# T\n\n## Evidence\nNumbers, but no figure image.\n"
+_FIG_LEGEND_ONLY = _FIG_FM + "\n# T\n\n## Evidence\n![key](figures/0042-volcano.legend.png)\n"
+_FIG_RELPATH = _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](./figures/0042-volcano.png)\n"
+_FIG_EMPTY_LIST = "---\nid: 42\nstatus: candidate\nfigures: []\n---\n\n# T\n\n## Evidence\nNo figures.\n"
+_FIG_FM_ONLY = _FIG_FM  # frontmatter, empty body → fail open (write in progress)
+
+
 def test_findings() -> None:
     print("guard_findings.py")
     open_proj = init_project(gate_passed=False)
@@ -147,6 +167,25 @@ def test_findings() -> None:
           _find(open_proj, "findings/manifest.md", "---\nstatus: validated\n---\n"), 0)
     check("non-findings path ignored",
           _find(open_proj, "reports/0001-x.md", "---\nstatus: validated\n---\n"), 0)
+
+    # Figure-embed backstop (invariant 3).
+    check("listed figure not embedded blocked",
+          _find(open_proj, "findings/0042-v.md", _FIG_MISSING), 2, "inline")
+    check("listed figure embedded allowed",
+          _find(open_proj, "findings/0042-v.md", _FIG_EMBEDDED), 0)
+    check("only the legend embedded still blocks (main png required)",
+          _find(open_proj, "findings/0042-v.md", _FIG_LEGEND_ONLY), 2, "inline")
+    check("embedded via ./ relative path allowed (basename match)",
+          _find(open_proj, "findings/0042-v.md", _FIG_RELPATH), 0)
+    check("empty figures list allowed",
+          _find(open_proj, "findings/0042-v.md", _FIG_EMPTY_LIST), 0)
+    check("frontmatter-only write (empty body) fails open",
+          _find(open_proj, "findings/0042-v.md", _FIG_FM_ONLY), 0)
+    check("Edit fragment (no delimiters) fails open",
+          _find_edit(open_proj, "findings/0042-v.md",
+                     '  - { png: "figures/0042-volcano.png" }\n'), 0)
+    check("missing-figure block still fires after the gate passes",
+          _find(passed_proj, "findings/0042-v.md", _FIG_MISSING), 2, "inline")
 
 
 # --------------------------------------------------------------------------- #
