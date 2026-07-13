@@ -67,6 +67,8 @@ Stage 6  Reporting                    → reports/
 
 The ordering rule is absolute: **nothing is analyzed before it is understood, and nothing is explored before the data read is verified.** See [`spec/02-workflow.md`](spec/02-workflow.md).
 
+**Restarting between stages is safe — and can help.** Progress lives in `state/`, `findings/`, and `state/workflow.json`, not in the conversation, so restarting Claude Code never loses work — a fresh session re-reads that state and resumes where you left off (`status` reorients it). A long session eventually compacts its context (lossy); a fresh one re-reads the durable state losslessly, so a restart at a stage boundary can *improve* downstream results. Watch your context indicator: on **Pro (~200k)** consider restarting after **Stage 1** and **Stage 3**; on **Max** plans (up to ~1M) you likely won't need to. (In Stage 4, record substantive insights as findings before restarting — findings survive, in-flight discussion doesn't.)
+
 ## The non-negotiables
 
 1. **Code is the source of truth; conversation is ephemeral.** Every finding is regenerable from pinned data + code + parameters + environment.

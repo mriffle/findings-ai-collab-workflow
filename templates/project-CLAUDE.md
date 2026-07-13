@@ -24,6 +24,13 @@ Stage 6  Reporting                     → reports/
 
 **Driving the workflow.** Each stage has a command (invoked as `/findings-workflow:<name>`): `stage0-science`, `stage1-metadata`, `stage2-data`, `stage3-loaders`, `stage4-explore`, `stage5-validate`, `stage6-report`. Run `status` any time to see the pipeline position, the integrity-gate state, and the findings breakdown. Each stage command refuses to run until its preconditions are met; `state/workflow.json` is the single source of truth for progress and the gate (never hand-edit it loosely — the stage commands maintain it). The scientist can also just talk to you — the commands structure the work, but the collaboration drives it.
 
+> **Restarting Claude Code is safe — and can help.** Your work lives in `state/`, `findings/`, `results/`, and `state/workflow.json`, **not** in the conversation (non-negotiable #1). So restarting Claude Code never loses progress: a fresh session re-reads those files and resumes exactly where you left off (run `status` to reorient). And because a long session eventually *compacts* its context into a lossy summary while a fresh session re-reads the durable state losslessly, **restarting at a stage boundary can improve results downstream**, not just free up context. Whether it's worth doing depends on your Claude plan's context window — **keep an eye on the context indicator**:
+>
+> - **Pro (~200k context):** consider restarting **after Stage 1 (metadata)** and **after Stage 3 (loaders + QC)** — the points where the most context has built up and the next stage benefits from a clean slate.
+> - **Max plans (up to ~1M context):** you likely won't need to restart at all.
+>
+> One caveat in **Stage 4**: the exploration loop accumulates the most context, and its durable artifacts are the **findings**. Before restarting mid-exploration, make sure every substantive insight is recorded as a finding — a committed finding survives a restart; an in-flight discussion that hasn't become one does not.
+
 ## Always-on: record findings as they emerge
 
 During exploration, **every substantive insight is captured as a finding the moment it emerges** — automatically, with a brief non-disruptive notice ("recorded as finding 0042"). Dispatch the **findings-manager** to create/update findings and the manifest; never hand-edit `findings/manifest.md`.
