@@ -335,6 +335,23 @@ def test_fingerprint_is_stable_across_invocations() -> None:
     )
 
 
+def test_feature_list_participates_in_the_fingerprint() -> None:
+    # feature_list rides in `params`, so it is part of the cache identity: a different
+    # list -> a different entry, and a restricted run differs from the whole-proteome
+    # one. (Callers record a canonical sorted/deduped list so equal sets collide.)
+    def fp(feature_list: object) -> str:
+        return rio.result_fingerprint(
+            analysis="classification",
+            data_version="v1",
+            params={"outcome": "grp", "feature_list": feature_list},
+            seed=0,
+        )
+
+    assert fp(["P1", "P2"]) == fp(["P1", "P2"])
+    assert fp(["P1", "P2"]) != fp(["P1", "P3"])
+    assert fp(["P1", "P2"]) != fp(None)
+
+
 def test_independent_runs_hit_the_same_cache_slot(tmp_path: Path) -> None:
     root = tmp_path / "results"
     params: dict[str, object] = {"outcome": "grp", "run_null": False}

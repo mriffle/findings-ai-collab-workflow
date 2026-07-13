@@ -119,6 +119,7 @@ __script_meta__: dict[str, object] = {
         "LevelMap",
         "BinarizeSpec",
         "SingletonGroupsWarning",
+        "FeatureListWarning",
         "FoldPrediction",
         "XGBClassificationResult",
         "classify_xgboost",
@@ -157,6 +158,47 @@ class SingletonGroupsWarning(UserWarning):
     Every unit appears once, so a held-out sample is already a held-out unit; row-level
     CV is used (grouping singletons only degrades class balance).
     """
+
+
+class FeatureListWarning(UserWarning):
+    """The ``feature_list`` matched few (or a small fraction) of the data's features."""
+
+
+_FEATURE_LIST_WARN_FRACTION = 0.5
+
+
+def _resolve_feature_list(
+    feature_names: np.ndarray, feature_list: Sequence[str] | None
+) -> tuple[np.ndarray, int | None, int | None]:
+    """Return (keep-mask over features, n_requested, n_matched).
+
+    An all-True mask is returned when no list is given (with ``None`` counts). Raises
+    when a list matches nothing; warns on a poor match. Restricting to a prior /
+    curated list is applied to the whole matrix **before** the CV — leakage-safe only
+    because such a list is defined **independent of the outcome** (see
+    :func:`classify_xgboost`).
+    """
+    if feature_list is None:
+        return np.ones(len(feature_names), dtype=bool), None, None
+    requested = {str(f) for f in feature_list}
+    n_requested = len(requested)
+    if n_requested == 0:
+        raise ValueError("feature_list is empty; pass None to use all features.")
+    mask = np.isin(feature_names.astype(str), list(requested))
+    n_matched = int(mask.sum())
+    if n_matched == 0:
+        raise ValueError(
+            f"feature_list matched none of the {len(feature_names)} data features "
+            f"(is the id scheme the same, e.g. UniProt accessions?)."
+        )
+    if n_matched < _FEATURE_LIST_WARN_FRACTION * n_requested:
+        warnings.warn(
+            f"feature_list matched only {n_matched}/{n_requested} data features — "
+            f"check the id scheme matches. Proceeding with the matched subset.",
+            FeatureListWarning,
+            stacklevel=3,
+        )
+    return mask, n_requested, n_matched
 
 
 # --------------------------------------------------------------------------- #
@@ -251,6 +293,9 @@ class XGBClassificationResult:
         excluded by the binarize rule.
     random_state:
         The recorded seed.
+    n_features_requested, n_features_matched:
+        When a ``feature_list`` was supplied: its unique size and how many matched the
+        data's features (``None`` when no list was given). Recorded for provenance.
     """
 
     importances: pd.DataFrame
@@ -280,6 +325,8 @@ class XGBClassificationResult:
     null_aucs: np.ndarray | None = None
     observed_auc: float | None = None
     null_p: float | None = None
+    n_features_requested: int | None = None
+    n_features_matched: int | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
 
     @property
@@ -804,6 +851,7 @@ def classify_xgboost(
     positive_class: str | None = None,
     groups: str | None = None,
     generalization_target: GeneralizationTarget = "samples",
+    feature_list: Sequence[str] | None = None,
     max_depth_grid: Sequence[int] = DEFAULT_MAX_DEPTH_GRID,
     learning_rate_grid: Sequence[float] = DEFAULT_LEARNING_RATE_GRID,
     n_estimators: int = 300,
@@ -850,6 +898,12 @@ def classify_xgboost(
         The performance question — ``"samples"``, ``"individuals"``, or ``"batches"``.
         Recorded; report performance as "on unseen <target>". With no repeats, unseen
         sample and unseen individual coincide.
+    feature_list:
+        Optional curated / hypothesis-driven feature ids to restrict to before fitting
+        (prior knowledge; cuts dimensionality). **Must be defined independent of
+        ``outcome``** (a list derived from this data's class is circular). Applied once
+        to the whole matrix (leakage-safe, since the list is outcome-independent);
+        matched/unmatched counts are recorded.
     max_depth_grid, learning_rate_grid:
         The 2-D tuning grid (tree depth x step size). The remaining XGBoost knobs
         (``n_estimators``, ``subsample``, ``colsample_bytree``, ``min_child_weight``,
@@ -924,10 +978,15 @@ def classify_xgboost(
     x_kept = abundances[keep, :]
 
     feature_names = np.asarray(dataset.feature_names)
-    non_constant = np.std(x_kept, axis=0) > 0.0
+    feat_mask, n_requested, n_matched = _resolve_feature_list(
+        feature_names, feature_list
+    )
+    x_listed = x_kept[:, feat_mask]
+    listed_names = feature_names[feat_mask]
+    non_constant = np.std(x_listed, axis=0) > 0.0
     n_dropped_constant = int((~non_constant).sum())
-    x = x_kept[:, non_constant]
-    kept_features = feature_names[non_constant]
+    x = x_listed[:, non_constant]
+    kept_features = listed_names[non_constant]
     if x.shape[1] == 0:
         raise ValueError("No non-constant features remain after dropping constants.")
 
@@ -1011,5 +1070,7 @@ def classify_xgboost(
         null_aucs=null_aucs,
         observed_auc=observed_auc,
         null_p=null_p,
+        n_features_requested=n_requested,
+        n_features_matched=n_matched,
         feature_names=kept_features,
     )

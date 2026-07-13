@@ -19,6 +19,8 @@ Split the Stage-4 work for a heavy analysis into two scripts:
 
 A cached result is keyed by `result_fingerprint(analysis, data_version, params, seed)`, a deterministic 12-hex id. **Identical inputs → the same fingerprint** (a re-run maps to the same cache entry); **any change** — `outcome`, `binarize`, `covariates`, `feature_list`, `run_null`, method, `seed`, or the dataset's `data_version` — → a **new** result. So `params` must capture *every* knob that affects the numbers. An optional human **label** rides alongside for readability; the fingerprint is the identity.
 
+**Canonicalize set-like params.** A value that is semantically a *set* — notably a `feature_list` (all three predictive templates accept one; `conventions/statistics.md`) — must be recorded in `params` in a **canonical form: sorted and de-duplicated**. The fingerprint hashes list *order* literally, so `["A","B"]` and `["B","A"]` would otherwise mint two entries for an identical model. Canonicalizing means two independent runs requesting the same feature set reliably hit one cache slot.
+
 ## The registry — `results/manifest.md`
 
 A Markdown index (like `findings/manifest.md`), one row per cached result: **id (fingerprint)**, analysis, label, `data_version`, key params, `run_null?`, **status**, created, path, and **referencing finding(s)**. The **findings-manager is its only writer** (it already owns the findings manifest + provenance linkage). It is a *derived* index — regenerable from the per-result `meta.json` sidecars (the source of truth).

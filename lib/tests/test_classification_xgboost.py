@@ -382,6 +382,38 @@ def test_importance_figure_top_n(
 
 
 # --------------------------------------------------------------------------- #
+# Prior feature-list restriction (leakage-safe; matched/unmatched counts recorded)
+# --------------------------------------------------------------------------- #
+def test_feature_list_restricts_and_records() -> None:
+    ds = _planted(n=60, p=40, n_signal=4, seed=0)
+    res = xgb.classify_xgboost(
+        ds, "grp", feature_list=[f"F{i}" for i in range(10)], random_state=0, **_FAST
+    )
+    assert res.n_features_requested == 10
+    assert res.n_features_matched == 10
+    assert res.n_features <= 10
+    assert set(res.importances["feature"]) <= {f"F{i}" for i in range(10)}
+
+
+def test_feature_list_no_match_raises() -> None:
+    ds = _planted(n=40, p=20, seed=0)
+    with pytest.raises(ValueError, match="matched none"):
+        xgb.classify_xgboost(ds, "grp", feature_list=["ZZZ", "QQQ"], **_FAST)
+
+
+def test_feature_list_poor_match_warns() -> None:
+    ds = _planted(n=40, p=20, n_signal=3, seed=0)
+    # 2 real + 8 absent -> 2/10 matched, below the 0.5 warn fraction
+    flist = [f"F{i}" for i in range(2)] + [f"ABSENT{i}" for i in range(8)]
+    with pytest.warns(xgb.FeatureListWarning):
+        res = xgb.classify_xgboost(
+            ds, "grp", feature_list=flist, random_state=0, **_FAST
+        )
+    assert res.n_features_requested == 10
+    assert res.n_features_matched == 2
+
+
+# --------------------------------------------------------------------------- #
 # Real-5xFAD smoke (git-ignored data; skips cleanly without it)
 # --------------------------------------------------------------------------- #
 _TESTDATA = Path(__file__).resolve().parents[2] / "testdata" / "5xFAD"
