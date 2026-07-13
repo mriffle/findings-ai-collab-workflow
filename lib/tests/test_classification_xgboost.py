@@ -413,6 +413,26 @@ def test_feature_list_poor_match_warns() -> None:
     assert res.n_features_matched == 2
 
 
+def test_feature_list_noted_in_figure_title(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    fig = xgbfig.plot_roc(planted_result)  # whole proteome -> no note
+    assert "prior feature list" not in fig.get_suptitle()
+    plt.close(fig)
+    fig = xgbfig.plot_roc(
+        replace(planted_result, n_features_requested=150, n_features_matched=150)
+    )
+    assert "prior feature list · 150 features" in fig.get_suptitle()
+    plt.close(fig)
+    fig = xgbfig.plot_roc(
+        replace(planted_result, n_features_requested=150, n_features_matched=142)
+    )
+    assert "prior feature list · 142 of 150 matched" in fig.get_suptitle()
+    plt.close(fig)
+
+
 # --------------------------------------------------------------------------- #
 # Real-5xFAD smoke (git-ignored data; skips cleanly without it)
 # --------------------------------------------------------------------------- #

@@ -383,6 +383,29 @@ def test_feature_list_poor_match_warns() -> None:
     assert res.n_features_matched == 2
 
 
+def test_feature_list_noted_in_figure_title(
+    planted_result: cls.ClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    # whole proteome -> no note
+    fig = clsfig.plot_roc(planted_result)
+    assert "prior feature list" not in fig.get_suptitle()
+    plt.close(fig)
+    # full match -> "N features"
+    fig = clsfig.plot_roc(
+        replace(planted_result, n_features_requested=150, n_features_matched=150)
+    )
+    assert "prior feature list · 150 features" in fig.get_suptitle()
+    plt.close(fig)
+    # partial match -> "N of M matched"
+    fig = clsfig.plot_roc(
+        replace(planted_result, n_features_requested=150, n_features_matched=142)
+    )
+    assert "prior feature list · 142 of 150 matched" in fig.get_suptitle()
+    plt.close(fig)
+
+
 # --------------------------------------------------------------------------- #
 # Real-5xFAD smoke (git-ignored data; skips cleanly without it)
 # --------------------------------------------------------------------------- #

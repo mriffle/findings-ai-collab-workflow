@@ -318,6 +318,26 @@ def test_coefficient_figure_top_n(planted_result: rg.RegressionResult) -> None:
         rgfig.plot_coefficients(planted_result, top_n=0)
 
 
+def test_feature_list_noted_in_figure_title(
+    planted_result: rg.RegressionResult,
+) -> None:
+    from dataclasses import replace
+
+    fig = rgfig.plot_predicted_vs_observed(planted_result)  # whole proteome -> no note
+    assert "prior feature list" not in fig.get_suptitle()
+    plt.close(fig)
+    fig = rgfig.plot_predicted_vs_observed(
+        replace(planted_result, n_features_requested=150, n_features_matched=150)
+    )
+    assert "prior feature list · 150 features" in fig.get_suptitle()
+    plt.close(fig)
+    fig = rgfig.plot_predicted_vs_observed(
+        replace(planted_result, n_features_requested=150, n_features_matched=142)
+    )
+    assert "prior feature list · 142 of 150 matched" in fig.get_suptitle()
+    plt.close(fig)
+
+
 # --------------------------------------------------------------------------- #
 # Real-trex smoke (git-ignored data; skips cleanly without it)
 # --------------------------------------------------------------------------- #

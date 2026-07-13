@@ -138,7 +138,7 @@ def plot_roc(result: XGBClassificationResult, *, title: str | None = None) -> Fi
             ax.set_ylabel("True positive rate")
             ax.legend(loc="lower right", fontsize=9)
             _roc_annotation(ax, result)
-            _apply_title(fig, title, _roc_default_title(result))
+            _apply_title(fig, title, _roc_default_title(result), result)
         except BaseException:
             plt.close(fig)
             raise
@@ -207,6 +207,7 @@ def plot_null(result: XGBClassificationResult, *, title: str | None = None) -> F
                 fig,
                 title,
                 f"Label-shuffle null ({n_perm} permutations, fixed hyperparameters)",
+                result,
             )
         except BaseException:
             plt.close(fig)
@@ -273,6 +274,7 @@ def plot_importance(
                 title,
                 f"Top {shown} features of {len(table)} "
                 f"(diamond = final gain, bar = resample IQR)",
+                result,
             )
             mappable = ScalarMappable(norm=norm, cmap=cmap)
             fig.colorbar(
@@ -341,7 +343,7 @@ def plot_hyperparameter_heatmap(
                 )
             )
             fig.colorbar(image, ax=ax, label="mean CV AUC", fraction=0.046, pad=0.04)
-            _apply_title(fig, title, "Hyperparameter search (all-data)")
+            _apply_title(fig, title, "Hyperparameter search (all-data)", result)
         except BaseException:
             plt.close(fig)
             raise
@@ -402,5 +404,24 @@ def save_hyperparameter_heatmap(
     return save_figure(fig, output_dir, base_name, dpi=dpi)
 
 
-def _apply_title(fig: Figure, title: str | None, default: str) -> None:
-    fig.suptitle(title if title is not None else default, fontsize=13, weight="bold")
+def _feature_list_suffix(result: XGBClassificationResult) -> str:
+    """A mandatory caveat line when the model was built on a prior feature list.
+
+    Empty for a whole-proteome run. When a ``feature_list`` was supplied, states the
+    panel size (and, on a partial match, how many of the requested ids were found), so
+    a restricted-panel figure is never mistaken for a whole-proteome result.
+    """
+    requested = result.n_features_requested
+    matched = result.n_features_matched
+    if requested is None or matched is None:
+        return ""
+    if matched < requested:
+        return f"\nprior feature list · {matched} of {requested} matched"
+    return f"\nprior feature list · {matched} features"
+
+
+def _apply_title(
+    fig: Figure, title: str | None, default: str, result: XGBClassificationResult
+) -> None:
+    base = title if title is not None else default
+    fig.suptitle(base + _feature_list_suffix(result), fontsize=13, weight="bold")
