@@ -146,6 +146,72 @@ def test_median_center_refuses_linear() -> None:
         norm.median_center(ds)
 
 
+# --------------------------------------------------------------------------- #
+# Unit — to_linear (inverse-log; enables a CV of batch-corrected/log-derived data)
+# --------------------------------------------------------------------------- #
+
+
+def test_to_linear_planted_truth_log2() -> None:
+    """log2 -> linear is 2**x, tagged linear."""
+    ds = _ds([[0.0, 1.0, 2.0, 3.0]], scale="log2")
+    out = norm.to_linear(ds)
+    np.testing.assert_allclose(out.abundances, [[1.0, 2.0, 4.0, 8.0]])
+    assert out.scale == "linear"
+
+
+def test_to_linear_log10_and_ln() -> None:
+    np.testing.assert_allclose(
+        norm.to_linear(_ds([[0.0, 1.0, 2.0]], scale="log10")).abundances,
+        [[1.0, 10.0, 100.0]],
+    )
+    np.testing.assert_allclose(
+        norm.to_linear(_ds([[0.0, 1.0]], scale="ln")).abundances,
+        [[1.0, np.e]],
+    )
+
+
+def test_to_linear_inverts_log2_transform_up_to_pseudocount() -> None:
+    """to_linear(log2_transform(x)) recovers x + pseudocount (scale, not exact)."""
+    ds = _ds([[0.0, 3.0, 7.0], [1.0, 15.0, 63.0]])  # linear intensities, incl. a zero
+    round_trip = norm.to_linear(norm.log2_transform(ds, pseudocount=1.0))
+    np.testing.assert_allclose(round_trip.abundances, ds.abundances + 1.0)
+    assert round_trip.scale == "linear"
+
+
+def test_to_linear_is_strictly_positive_on_negative_logs() -> None:
+    """Post-ComBat log values go negative; de-log must stay positive so CV mean > 0."""
+    ds = _ds([[-3.0, -0.5, 0.0, 2.0]], scale="log2")
+    out = norm.to_linear(ds)
+    assert np.all(out.abundances > 0.0)
+
+
+def test_to_linear_refuses_linear() -> None:
+    ds = _ds([[1.0, 2.0, 3.0]])  # already linear
+    with pytest.raises(ValueError, match="inverts a plain-log scale"):
+        norm.to_linear(ds)
+
+
+@pytest.mark.parametrize("scale", ["glog2", "zscore", "ratio"])
+def test_to_linear_refuses_non_invertible_scales(scale: dl.Scale) -> None:
+    ds = _ds([[0.0, 1.0, 2.0]], scale=scale)
+    with pytest.raises(ValueError, match="inverts a plain-log scale"):
+        norm.to_linear(ds)
+
+
+def test_to_linear_refuses_nan() -> None:
+    ds = _ds([[0.0, np.nan, 2.0]], scale="log2")
+    with pytest.raises(ValueError, match="non-finite"):
+        norm.to_linear(ds)
+
+
+def test_to_linear_returns_independent_dataset() -> None:
+    ds = _ds([[0.0, 1.0, 2.0]], scale="log2")
+    out = norm.to_linear(ds)
+    assert out.metadata is not ds.metadata
+    out.metadata["injected"] = 1
+    assert "injected" not in ds.metadata.columns
+
+
 def test_normalize_returns_independent_dataset() -> None:
     """Output must be independent: mutating its metadata must not touch the input."""
     ds = _ds([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])

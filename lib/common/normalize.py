@@ -29,6 +29,12 @@ silently corrupts every value. This module **refuses** any normalization or log 
 whose input ``Dataset`` is not on the ``"linear"`` scale — the guard is the tag, not a
 convention. Choose exactly one of {``mad``, ``vsn``, ``median``+``log2``}; never stack
 log-producing steps.
+
+Going the other way: :func:`to_linear` inverts a plain-log scale (``log2`` / ``log10`` /
+``ln``) back to ``"linear"`` — the strictly-positive ``base**x``. Its purpose is reading
+a linear-scale metric off log-derived data, notably a CV (``std/mean``) of a
+ComBat-batch-corrected matrix (ComBat runs on log, CV needs linear). It refuses the
+scales with no clean linear inverse (``glog2`` / ``zscore`` / ``ratio``).
 """
 
 from __future__ import annotations
@@ -42,21 +48,23 @@ from pronoms.normalizers import MADNormalizer, MedianNormalizer, VSNNormalizer
 from common.data_loading import LOG_SCALES, Dataset, Scale
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "normalize", "version": "0.3"},
+    "template": {"name": "normalize", "version": "0.4"},
     "kind": "module",
     "provides": [
         "NormalizationMethod",
         "normalize",
         "log2_transform",
+        "to_linear",
         "median_center",
     ],
     "uses": ["common.data_loading"],
     "seeded_from": None,
     "description": (
-        "Verified Dataset normalization (median / mad / vsn), log2 transform, and "
-        "log-domain median centering: scale-tag guarded against double-logging, "
-        "fail-loud, shape-preserving, returns an independent (non-aliased) Dataset. "
-        "Study-agnostic; consumes and returns the standard Dataset contract."
+        "Verified Dataset normalization (median / mad / vsn), log2 transform, plain-log"
+        " -> linear inversion (to_linear), and log-domain median centering: scale-tag "
+        "guarded against double-logging, fail-loud, shape-preserving, returns an "
+        "independent (non-aliased) Dataset. Study-agnostic; consumes and returns the "
+        "standard Dataset contract."
     ),
 }
 
@@ -180,6 +188,49 @@ def log2_transform(dataset: Dataset, *, pseudocount: float = 1.0) -> Dataset:
             f"Dataset has smaller values (log2 would be undefined)."
         )
     return _independent(dataset, np.log2(dataset.abundances + pseudocount), "log2")
+
+
+# Plain-log scales this inverts back to linear (base ** x). glog2 (VSN/arsinh) and
+# zscore are variance-stabilized / centered, not a plain base**x log, so they have no
+# clean linear inverse; ratio is not a log; linear is already there.
+_INVERTIBLE_LOG_SCALES: frozenset[Scale] = frozenset({"log2", "log10", "ln"})
+
+
+def to_linear(dataset: Dataset) -> Dataset:
+    """Invert a plain-log :class:`Dataset` (``log2`` / ``log10`` / ``ln``) to linear.
+
+    The mathematical inverse of the log **scale**: ``2**x`` / ``10**x`` / ``exp(x)``,
+    so the output is **strictly positive** and tagged ``"linear"``. The canonical use is
+    reading a *linear-scale* metric off log-derived data — e.g. a **coefficient of
+    variation** (``std / mean``, which :func:`figures.cv.compute_cv` refuses on a log
+    scale) of a **ComBat-batch-corrected** matrix: ComBat runs on log data, so de-log
+    its output before a CV comparison of raw / normalized / batch-corrected states.
+
+    This inverts the *scale*, not a specific forward transform: data produced by
+    ``log2_transform(x, pseudocount=p)`` de-logs to ``x + p`` (offset by the
+    pseudocount), which is immaterial for a relative / CV comparison — and keeps every
+    value positive, so a subsequent CV is well defined. If you need exact intensity
+    recovery, subtract the pseudocount yourself (handle any resulting non-positives).
+
+    Refuses (fail loud) ``"linear"`` (already there), ``"glog2"`` / ``"zscore"`` (no
+    clean linear inverse), and ``"ratio"`` (not a log scale).
+    """
+    if dataset.scale not in _INVERTIBLE_LOG_SCALES:
+        raise ValueError(
+            f"to_linear inverts a plain-log scale {sorted(_INVERTIBLE_LOG_SCALES)} "
+            f"back to linear but the Dataset is on scale {dataset.scale!r}. 'linear' "
+            f"is already linear; 'glog2'/'zscore' are variance-stabilized/centered "
+            f"with no clean linear inverse; 'ratio' is not a log scale."
+        )
+    _require_finite(dataset.abundances, "to_linear")
+    if dataset.scale == "log2":
+        linear = np.exp2(dataset.abundances)
+    elif dataset.scale == "log10":
+        linear = np.power(10.0, dataset.abundances)
+    else:  # "ln"
+        linear = np.exp(dataset.abundances)
+    _require_finite(linear, "to_linear (result overflowed)")
+    return _independent(dataset, linear, "linear")
 
 
 def median_center(dataset: Dataset) -> Dataset:
