@@ -37,6 +37,21 @@ constant / all-zero features (they carry no signal). The all-relevant evidence i
 **decision + importance + shadow-null**, not a significance statistic — there is no
 per-feature q (conventions/findings.md §2.3).
 
+**Tuning the selection (when the defaults land badly).** The default run
+(``max_iter=100``, ``alpha=0.05``, ``perc=100``) is a starting point, not a fixed
+contract — a few knobs trade sensitivity against specificity, and adjusting them is a
+legitimate, *recorded* choice (put every non-default into ``provenance.params`` and the
+cache fingerprint, since it changes the selection):
+
+- **Too few features confirmed** → give the selection more room: raise ``max_iter``
+  (try ``200``) so borderline **Tentatives** get more iterations to resolve into
+  **Confirmed**, and/or **lower** ``perc`` toward ``95`` or ``90`` — the shadow
+  threshold is ``percentile(imp_sha, perc)``, so a lower percentile is a more lenient
+  noise floor that more real features clear.
+- **Too many features for a tractable downstream analysis** → tighten the accept/reject
+  test: lower ``alpha`` to ``0.01`` (from the ``0.05`` default), a stricter bar that
+  confirms fewer, higher-confidence features.
+
 **Caching.** Boruta is minutes-slow on a real scope, so a project driver will usually
 cache the result. This template deliberately ships **no** save/load: caching is a
 project-local concern (the file-format convention reserves pickle for non-LLM consumers,
@@ -379,12 +394,16 @@ def boruta_select(
         Boruta's internal Random Forest size — an int or ``"auto"`` (BorutaPy grows it
         with the surviving feature count; the default).
     max_iter:
-        Maximum Boruta iterations (default 100).
+        Maximum Boruta iterations (default 100). Raise to ~200 when too few features
+        Confirm / many stay Tentative — more iterations resolve borderline calls.
     alpha:
         Significance level for the per-feature accept/reject binomial test (def. 0.05).
+        Lower to 0.01 to confirm fewer, higher-confidence features when the Confirmed
+        set is too large for a tractable downstream analysis.
     perc:
         Shadow-importance percentile that sets the threshold (default 100 = the max
-        shadow importance; lower is more lenient).
+        shadow importance; lower is more lenient). Lower toward 95/90 to confirm more
+        features when too few clear the default max-shadow floor.
     two_step:
         BorutaPy's two-step (Bonferroni then BH-style) correction (default ``True``).
     rf_n_jobs:
