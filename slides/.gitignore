@@ -1,0 +1,4 @@
+exports/
+.exp-*.html
+.t*.html
+.check-*.png

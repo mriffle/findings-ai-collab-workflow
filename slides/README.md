@@ -26,6 +26,11 @@ Each slide's progress rail links to the others.
   in one place; every slide follows.
 - Each slide card is a **16:9 minimum that grows** if a slide is content-dense,
   so text is never clipped; all type scales with the card width.
+- Each stage slide carries an **inline-SVG example visualization** of what that
+  stage produces — metadata distributions (1), id-depth bars (2), PCA + CV (3),
+  volcano + ROC (4), a concordance scatter (5), a report PDF (6), and a project
+  brief (0). They are illustrative, self-contained, and theme-aware (they inherit
+  the stage accent via `var(--accent)`); the data is fictional.
 - Colors are consistent with the poster schematic figures in `../prompts/`.
 
 ## Export / print

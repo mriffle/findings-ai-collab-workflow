@@ -44,18 +44,26 @@
       </div>
 
       <aside class="col-side">
-        <div class="card">
-          <div class="card-label">Output</div>
-          <div class="artifact">
-            <span class="file">validated findings</span>
+        <figure class="figpanel">
+          <div class="fig-head">Example output</div>
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Concordance scatter of recorded vs blind verifier results">
+              <line class="ax" x1="48" y1="16" x2="48" y2="172"/>
+              <line class="ax" x1="48" y1="172" x2="308" y2="172"/>
+              <polygon points="48,162 298,16 308,26 58,172" fill="var(--accent)" opacity="0.12"/>
+              <line class="ax dash" x1="48" y1="172" x2="308" y2="16"/>
+              <g fill="#059669">
+                <circle cx="78" cy="150" r="3.2"/><circle cx="98" cy="140" r="3.2"/><circle cx="116" cy="126" r="3.2"/><circle cx="134" cy="118" r="3.2"/><circle cx="152" cy="100" r="3.2"/><circle cx="172" cy="90" r="3.2"/><circle cx="192" cy="74" r="3.2"/><circle cx="212" cy="64" r="3.2"/><circle cx="232" cy="50" r="3.2"/><circle cx="252" cy="42" r="3.2"/><circle cx="272" cy="28" r="3.2"/><circle cx="92" cy="152" r="3.2"/><circle cx="200" cy="66" r="3.2"/>
+              </g>
+              <text x="178" y="188" font-size="9" text-anchor="middle">recorded effect</text>
+              <text transform="rotate(-90 16 94)" x="16" y="94" font-size="9" text-anchor="middle">verifier (blind)</text>
+            </svg>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-label">Subagents</div>
-          <ul class="chips">
-            <li class="chip chip-verifier">verifier</li>
-            <li class="chip chip-findings-manager">findings-manager</li>
-          </ul>
+          <figcaption class="fig-cap">Blind re-derivation <b>concordant</b> along y = x</figcaption>
+        </figure>
+        <div class="metabar">
+          <div class="mb-row"><span class="meta-k">Output</span><span class="file">validated findings</span></div>
+          <div class="mb-row"><span class="meta-k">Agents</span><ul class="chips"><li class="chip chip-verifier">verifier</li><li class="chip chip-findings-manager">findings-manager</li></ul></div>
         </div>
       </aside>
     </section>

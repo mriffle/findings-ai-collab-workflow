@@ -43,15 +43,35 @@
       </div>
 
       <aside class="col-side">
-        <div class="card">
-          <div class="card-label">Output</div>
-          <div class="artifact">
-            <span class="file">state/DATA_DESCRIPTION.md</span>
+        <figure class="figpanel">
+          <div class="fig-head">Example output</div>
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Identifications per replicate run">
+              <line class="ax" x1="24" y1="30" x2="24" y2="170"/>
+              <line class="ax" x1="24" y1="170" x2="320" y2="170"/>
+              <text transform="rotate(-90 12 100)" x="12" y="100" font-size="9" text-anchor="middle"># IDs / run</text>
+              <line class="ax dash" x1="24" y1="54" x2="320" y2="54"/>
+              <text x="318" y="50" font-size="8" text-anchor="end">median</text>
+              <rect x="30"  y="52"  width="18" height="118" fill="var(--accent)"/>
+              <rect x="54"  y="44"  width="18" height="126" fill="var(--accent)"/>
+              <rect x="78"  y="60"  width="18" height="110" fill="var(--accent)"/>
+              <rect x="102" y="48"  width="18" height="122" fill="var(--accent)"/>
+              <rect x="126" y="118" width="18" height="52"  fill="#D55E00"/>
+              <rect x="150" y="50"  width="18" height="120" fill="var(--accent)"/>
+              <rect x="174" y="56"  width="18" height="114" fill="var(--accent)"/>
+              <rect x="198" y="42"  width="18" height="128" fill="var(--accent)"/>
+              <rect x="222" y="54"  width="18" height="116" fill="var(--accent)"/>
+              <rect x="246" y="110" width="18" height="60"  fill="#D55E00"/>
+              <rect x="270" y="46"  width="18" height="124" fill="var(--accent)"/>
+              <rect x="294" y="58"  width="18" height="112" fill="var(--accent)"/>
+              <text x="172" y="188" font-size="9" text-anchor="middle">replicate runs (acquisition order)</text>
+            </svg>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-label">Applied later</div>
-          <p>Decisions here are applied in Stage 3 (QC) and Stage 4 (analysis), seeded from the <code>lib/</code> normalize + batch-correct templates.</p>
+          <figcaption class="fig-cap">Identifications per run — <b>low-ID runs stand out</b></figcaption>
+        </figure>
+        <div class="metabar">
+          <div class="mb-row"><span class="meta-k">Output</span><span class="file">state/DATA_DESCRIPTION.md</span></div>
+          <p class="mb-note">Preprocessing decisions here are applied in <strong>QC (3)</strong> &amp; <strong>analysis (4)</strong>.</p>
         </div>
       </aside>
     </section>

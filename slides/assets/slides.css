@@ -254,6 +254,42 @@ body.slide {
 .chip-researcher       { --chip: #0891b2; } /* cyan   */
 .chip-research-reviewer{ --chip: #db2777; } /* pink   */
 
+/* ---- example-figure panel (visual slides) -------------------------------- */
+.figpanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid var(--hair);
+  border-radius: 0.9cqw;
+  padding: 1.1cqw 1.2cqw 0.9cqw;
+}
+.fig-head {
+  font-size: 1.1cqw; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 0.7cqw;
+}
+.fig { position: relative; flex: 1; min-height: 0; }
+.fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fig-cap { font-size: 1.12cqw; line-height: 1.25; color: var(--muted); margin: 0.7cqw 0 0; }
+.fig-cap b { color: var(--ink-2); font-weight: 700; }
+
+/* compact meta beneath the figure */
+.metabar { display: flex; flex-direction: column; gap: 0.7cqw; }
+.mb-row { display: flex; align-items: baseline; gap: 0.7cqw; flex-wrap: wrap; }
+.meta-k {
+  font-size: 1.02cqw; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); flex: 0 0 auto;
+}
+.mb-note { font-size: 1.2cqw; line-height: 1.24; color: var(--ink-2); margin: 0; }
+.mb-note strong { color: var(--ink); font-weight: 700; }
+
+/* inline-SVG chart helpers (illustrative example figures) */
+.fig svg text { font-family: var(--sans); fill: var(--muted); }
+.fig .ax { stroke: #cbd5e1; stroke-width: 1; }
+.fig .grid { stroke: #eef2f7; stroke-width: 1; }
+.fig .dash { stroke-dasharray: 4 3; }
+
 /* ---- footer -------------------------------------------------------------- */
 .slide-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 2cqw;
@@ -270,6 +306,10 @@ body.slide {
 }
 .next { font-size: 1.42cqw; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .next b { color: var(--ink); font-weight: 700; }
+
+/* Install slide: the fixed-width commands stand out in dark red */
+body.stage-install code { color: #b91c1c; font-weight: 600; }
+body.stage-install .cmd { color: #b91c1c; background: #fdecec; }
 
 /* ---- print --------------------------------------------------------------- */
 @media print {

@@ -24,47 +24,62 @@
     <header class="slide-head">
       <div class="kicker">STAGE 4 · THE HEART</div>
       <h1 class="title">Explore ⇄ record findings</h1>
-      <p class="lede">Explore the data with the scientist and capture every substantive insight as a durable finding — the moment it emerges.</p>
+      <p class="lede">Explore with the scientist while every substantive insight is captured <strong>automatically</strong> as a durable, provenance-pinned finding — a <strong>self-updating lab notebook</strong>.</p>
     </header>
 
     <section class="body">
       <div class="col-main">
         <h2 class="col-title">The loop</h2>
         <ol class="steps">
-          <li><strong>Spark discussion with vetted boilerplate</strong> — differential abundance, classifiers, regression, Boruta, enrichment, dimensionality reduction (seeded from <code>lib/</code> templates).</li>
-          <li><strong>Go back and forth</strong> — investigate, held to the conventions: effect size + CI + named correction, no leakage, CV matched to the target, label-shuffle null, small-n = exploratory.</li>
-          <li><strong>Record every insight as a finding</strong> — biased toward capturing too much; candidates are cheap. Figures embedded inline with provenance.</li>
-          <li><strong>Keep the exploration log honest</strong> — the multiplicity context behind each finding's caveats.</li>
+          <li><strong>Spark discussion with vetted boilerplate</strong> — differential abundance, classifiers, regression, Boruta, enrichment (seeded from <code>lib/</code> templates).</li>
+          <li><strong>Go back and forth</strong> — held to the conventions: effect size + CI + named correction, no leakage, label-shuffle null, small-n = exploratory.</li>
+          <li><strong>Findings record themselves</strong> — the findings-manager captures every substantive insight <strong>automatically, the moment it emerges</strong>. You never stop to write anything up; exploration flow is never broken.</li>
+          <li><strong>Every finding is regenerable</strong> — each pins its <strong>data version, script + commit, params, environment &amp; seed</strong>, with figures embedded inline. Full provenance, by default.</li>
         </ol>
         <div class="callout">
-          <span class="callout-label">Skepticism: generous here</span>
-          Capture freely as candidates; the ruthless gate is Stage 5. CPU-heavy results are cached — compute once, re-render figures.
+          <span class="callout-label">A self-updating lab notebook</span>
+          The durable output is a curated, provenance-tracked <strong>findings graph</strong> — not a chat transcript. Capture is automatic and generous; the ruthless gate waits for Stage 5.
         </div>
       </div>
 
       <aside class="col-side">
-        <div class="card">
-          <div class="card-label">Output</div>
-          <div class="artifact">
-            <span class="file">findings/</span>
+        <figure class="figpanel">
+          <div class="fig-head">Example output</div>
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Volcano plot and ROC curve">
+              <text x="16" y="14" font-size="9" font-weight="700">Volcano</text>
+              <line class="ax" x1="16" y1="16" x2="16" y2="172"/>
+              <line class="ax" x1="16" y1="172" x2="158" y2="172"/>
+              <line class="grid dash" x1="16" y1="108" x2="158" y2="108"/>
+              <line class="grid dash" x1="60" y1="16" x2="60" y2="172"/>
+              <line class="grid dash" x1="110" y1="16" x2="110" y2="172"/>
+              <g fill="#94a3b8">
+                <circle cx="72" cy="150" r="2.4"/><circle cx="85" cy="158" r="2.4"/><circle cx="95" cy="148" r="2.4"/><circle cx="78" cy="140" r="2.4"/><circle cx="100" cy="152" r="2.4"/><circle cx="88" cy="145" r="2.4"/><circle cx="72" cy="160" r="2.4"/><circle cx="104" cy="150" r="2.4"/><circle cx="82" cy="136" r="2.4"/><circle cx="96" cy="138" r="2.4"/><circle cx="90" cy="163" r="2.4"/><circle cx="76" cy="128" r="2.4"/>
+              </g>
+              <g fill="#0072B2">
+                <circle cx="42" cy="82" r="2.8"/><circle cx="36" cy="66" r="2.8"/><circle cx="48" cy="92" r="2.8"/><circle cx="30" cy="74" r="2.8"/><circle cx="44" cy="56" r="2.8"/><circle cx="52" cy="98" r="2.8"/>
+              </g>
+              <g fill="#D55E00">
+                <circle cx="126" cy="80" r="2.8"/><circle cx="132" cy="64" r="2.8"/><circle cx="120" cy="92" r="2.8"/><circle cx="138" cy="72" r="2.8"/><circle cx="130" cy="56" r="2.8"/><circle cx="118" cy="98" r="2.8"/><circle cx="136" cy="100" r="2.8"/>
+              </g>
+              <text x="88" y="188" font-size="9" text-anchor="middle">log2 FC</text>
+              <text transform="rotate(-90 8 94)" x="8" y="94" font-size="9" text-anchor="middle">−log10 q</text>
+              <text x="180" y="14" font-size="9" font-weight="700">ROC</text>
+              <line class="ax" x1="186" y1="16" x2="186" y2="172"/>
+              <line class="ax" x1="186" y1="172" x2="322" y2="172"/>
+              <line class="grid dash" x1="186" y1="172" x2="322" y2="16"/>
+              <path d="M186,172 C204,120 214,70 244,46 C274,24 300,18 322,16 L322,172 Z" fill="var(--accent)" opacity="0.12"/>
+              <path d="M186,172 C204,120 214,70 244,46 C274,24 300,18 322,16" fill="none" stroke="var(--accent)" stroke-width="2.4"/>
+              <text x="316" y="150" font-size="9" font-weight="700" fill="var(--accent)" text-anchor="end">AUC 0.92</text>
+              <text x="254" y="188" font-size="9" text-anchor="middle">FPR</text>
+              <text transform="rotate(-90 178 94)" x="178" y="94" font-size="9" text-anchor="middle">TPR</text>
+            </svg>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-label">Subagents</div>
-          <ul class="chips">
-            <li class="chip chip-statistician">statistician</li>
-            <li class="chip chip-stats-reviewer">stats-reviewer</li>
-            <li class="chip chip-coder">coder</li>
-            <li class="chip chip-code-reviewer">code-reviewer</li>
-            <li class="chip chip-figure-generator">figure-generator</li>
-            <li class="chip chip-figure-reviewer">figure-reviewer</li>
-            <li class="chip chip-findings-manager">findings-manager</li>
-            <li class="chip chip-librarian">librarian</li>
-          </ul>
-        </div>
-        <div class="card">
-          <div class="card-label">Requires</div>
-          <p>The <strong>integrity gate</strong> must have passed (hard precondition).</p>
+          <figcaption class="fig-cap">Result figures — <b>volcano, ROC-vs-null, heatmaps</b></figcaption>
+        </figure>
+        <div class="metabar">
+          <div class="mb-row"><span class="meta-k">Output</span><span class="file">findings/</span></div>
+          <div class="mb-row"><span class="meta-k">Agents</span><ul class="chips"><li class="chip chip-statistician">statistician</li><li class="chip chip-stats-reviewer">stats-reviewer</li><li class="chip chip-figure-generator">figure-generator</li><li class="chip chip-findings-manager">findings-manager</li><li class="chip chip-librarian">librarian</li></ul></div>
         </div>
       </aside>
     </section>
