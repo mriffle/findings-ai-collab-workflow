@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 1 — Understand the metadata · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide stage-1">
+  <main class="deck">
+    <div class="watermark" aria-hidden="true">1</div>
+
+    <nav class="rail" aria-label="Workflow steps">
+      <a class="pill" href="00-install-init.html">Install</a>
+      <a class="pill" href="01-stage0-science.html">0 · Science</a>
+      <a class="pill is-current" href="02-stage1-metadata.html">1 · Metadata</a>
+      <a class="pill" href="03-stage2-data.html">2 · Data</a>
+      <a class="pill" href="04-stage3-loaders-qc.html">3 · Loaders + QC</a>
+      <a class="pill" href="05-stage4-explore.html">4 · Explore</a>
+      <a class="pill" href="06-stage5-validate.html">5 · Validate</a>
+      <a class="pill" href="07-stage6-report.html">6 · Report</a>
+    </nav>
+
+    <header class="slide-head">
+      <div class="kicker">STAGE 1 · FIRST CODE RUNS</div>
+      <h1 class="title">Understand the metadata</h1>
+      <p class="lede">A verified understanding of the experiment — generated from evidence in code, never hand-asserted.</p>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ol class="steps">
+          <li><strong>Infer &amp; validate every column</strong> — meanings, types, ranges, uniqueness. Fail loud on anything inconsistent.</li>
+          <li><strong>Identify control samples</strong> — pooled QC, reference / bridge, standards, blanks. Classify every sample <strong>experimental vs control</strong>.</li>
+          <li><strong>Test the inferences in code</strong> — relationships that should hold; independence from batch, run-order, and covariates (bias-corrected Cramér's V).</li>
+          <li><strong>Characterize the cohort</strong> — per-variable distributions, pairwise crosstabs, a publishable "Table 1".</li>
+          <li><strong>Record material imbalance / skew / confounds</strong> as <code>caveat</code> findings.</li>
+        </ol>
+        <div class="callout">
+          <span class="callout-label">Human checkpoint</span>
+          The scientist confirms the inferred column meanings and the experimental / control split before the file is written.
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-label">Output</div>
+          <div class="artifact">
+            <span class="file">state/METADATA.md</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Subagents</div>
+          <ul class="chips">
+            <li class="chip chip-findings-manager">findings-manager</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-label">Requires</div>
+          <p><strong>Python ≥ 3.11</strong> — the first stage that executes code (hard gate).</p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="slide-foot">
+      <code class="cmd">/findings-workflow:stage1-metadata</code>
+      <span class="next">Next → <b>Stage 2 · Understand the data</b></span>
+    </footer>
+  </main>
+</body>
+</html>

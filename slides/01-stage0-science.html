@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 0 — State the science · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide stage-0">
+  <main class="deck">
+    <div class="watermark" aria-hidden="true">0</div>
+
+    <nav class="rail" aria-label="Workflow steps">
+      <a class="pill" href="00-install-init.html">Install</a>
+      <a class="pill is-current" href="01-stage0-science.html">0 · Science</a>
+      <a class="pill" href="02-stage1-metadata.html">1 · Metadata</a>
+      <a class="pill" href="03-stage2-data.html">2 · Data</a>
+      <a class="pill" href="04-stage3-loaders-qc.html">3 · Loaders + QC</a>
+      <a class="pill" href="05-stage4-explore.html">4 · Explore</a>
+      <a class="pill" href="06-stage5-validate.html">5 · Validate</a>
+      <a class="pill" href="07-stage6-report.html">6 · Report</a>
+    </nav>
+
+    <header class="slide-head">
+      <div class="kicker">STAGE 0</div>
+      <h1 class="title">State the science</h1>
+      <p class="lede">Capture the study's framing before any data is touched — the framing that shapes everything downstream.</p>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ol class="steps">
+          <li><strong>Interview the scientist</strong> (one focused exchange): the <strong>domain</strong>, <strong>what is being examined and why</strong>, the <strong>experimental design</strong>, and the <strong>scientific goals</strong>.</li>
+          <li>Write <code>state/PROJECT.md</code> — a living document capturing all of the above in clear prose.</li>
+          <li><strong>Guard against motivated reasoning</strong>: record goals faithfully, but don't let stated hopes bias what you later report.</li>
+        </ol>
+        <div class="callout">
+          <span class="callout-label">No data yet</span>
+          Understanding precedes analysis. The skepticism gates and independent validation exist partly to counter the bias that stating goals invites.
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-label">Output</div>
+          <div class="artifact">
+            <span class="file">state/PROJECT.md</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Flow</div>
+          <p><strong>Needs:</strong> an initialized project</p>
+          <p><strong>Unlocks:</strong> Stage 1</p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="slide-foot">
+      <code class="cmd">/findings-workflow:stage0-science</code>
+      <span class="next">Next → <b>Stage 1 · Understand the metadata</b></span>
+    </footer>
+  </main>
+</body>
+</html>

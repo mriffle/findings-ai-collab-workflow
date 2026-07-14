@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 4 — Explore ⇄ record findings · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide stage-4">
+  <main class="deck">
+    <div class="watermark" aria-hidden="true">4</div>
+
+    <nav class="rail" aria-label="Workflow steps">
+      <a class="pill" href="00-install-init.html">Install</a>
+      <a class="pill" href="01-stage0-science.html">0 · Science</a>
+      <a class="pill" href="02-stage1-metadata.html">1 · Metadata</a>
+      <a class="pill" href="03-stage2-data.html">2 · Data</a>
+      <a class="pill" href="04-stage3-loaders-qc.html">3 · Loaders + QC</a>
+      <a class="pill is-current" href="05-stage4-explore.html">4 · Explore</a>
+      <a class="pill" href="06-stage5-validate.html">5 · Validate</a>
+      <a class="pill" href="07-stage6-report.html">6 · Report</a>
+    </nav>
+
+    <header class="slide-head">
+      <div class="kicker">STAGE 4 · THE HEART</div>
+      <h1 class="title">Explore ⇄ record findings</h1>
+      <p class="lede">Explore the data with the scientist and capture every substantive insight as a durable finding — the moment it emerges.</p>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">The loop</h2>
+        <ol class="steps">
+          <li><strong>Spark discussion with vetted boilerplate</strong> — differential abundance, classifiers, regression, Boruta, enrichment, dimensionality reduction (seeded from <code>lib/</code> templates).</li>
+          <li><strong>Go back and forth</strong> — investigate, held to the conventions: effect size + CI + named correction, no leakage, CV matched to the target, label-shuffle null, small-n = exploratory.</li>
+          <li><strong>Record every insight as a finding</strong> — biased toward capturing too much; candidates are cheap. Figures embedded inline with provenance.</li>
+          <li><strong>Keep the exploration log honest</strong> — the multiplicity context behind each finding's caveats.</li>
+        </ol>
+        <div class="callout">
+          <span class="callout-label">Skepticism: generous here</span>
+          Capture freely as candidates; the ruthless gate is Stage 5. CPU-heavy results are cached — compute once, re-render figures.
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-label">Output</div>
+          <div class="artifact">
+            <span class="file">findings/</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Subagents</div>
+          <ul class="chips">
+            <li class="chip chip-statistician">statistician</li>
+            <li class="chip chip-stats-reviewer">stats-reviewer</li>
+            <li class="chip chip-coder">coder</li>
+            <li class="chip chip-code-reviewer">code-reviewer</li>
+            <li class="chip chip-figure-generator">figure-generator</li>
+            <li class="chip chip-figure-reviewer">figure-reviewer</li>
+            <li class="chip chip-findings-manager">findings-manager</li>
+            <li class="chip chip-librarian">librarian</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-label">Requires</div>
+          <p>The <strong>integrity gate</strong> must have passed (hard precondition).</p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="slide-foot">
+      <code class="cmd">/findings-workflow:stage4-explore</code>
+      <span class="next">Next → <b>Stage 5 · Independent validation</b></span>
+    </footer>
+  </main>
+</body>
+</html>

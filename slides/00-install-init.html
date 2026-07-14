@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install &amp; Initialize · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide stage-install">
+  <main class="deck">
+    <div class="watermark" aria-hidden="true">⚙</div>
+
+    <nav class="rail" aria-label="Workflow steps">
+      <a class="pill is-current" href="00-install-init.html">Install</a>
+      <a class="pill" href="01-stage0-science.html">0 · Science</a>
+      <a class="pill" href="02-stage1-metadata.html">1 · Metadata</a>
+      <a class="pill" href="03-stage2-data.html">2 · Data</a>
+      <a class="pill" href="04-stage3-loaders-qc.html">3 · Loaders + QC</a>
+      <a class="pill" href="05-stage4-explore.html">4 · Explore</a>
+      <a class="pill" href="06-stage5-validate.html">5 · Validate</a>
+      <a class="pill" href="07-stage6-report.html">6 · Report</a>
+    </nav>
+
+    <header class="slide-head">
+      <div class="kicker">Get started</div>
+      <h1 class="title">Install &amp; initialize</h1>
+      <p class="lede">Add the plugin, set up a project-local Python, and scaffold your study — the engine is shared; your project holds only data and derived state.</p>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ol class="steps">
+          <li><strong>Install the plugin.</strong> Add this repo as a marketplace, install <code>findings-workflow</code>, then <code>/reload-plugins</code> (or restart Claude Code).</li>
+          <li><strong>Set up Python (≥ 3.11).</strong> <code>setup-env</code> detects an existing interpreter, or — with your consent — installs one <em>into the project</em> via uv: zero global footprint, a committed <code>uv.lock</code>.</li>
+          <li><strong>Scaffold the project.</strong> <code>init</code> creates the layout, seeds the color registry, initializes the findings graph and workflow state, and writes the project <code>CLAUDE.md</code>.</li>
+        </ol>
+        <div class="callout">
+          <span class="callout-label">The load-bearing boundary</span>
+          The <strong>plugin is the engine</strong> — shared, versioned, carries no data. Your <strong>project is the data + derived state</strong>, generated per study.
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-label">Creates</div>
+          <div class="artifact">
+            <span class="file">data/</span>
+            <span class="file">state/</span>
+            <span class="file">findings/</span>
+            <span class="file">scripts/</span>
+            <span class="file">results/</span>
+            <span class="file">figures/</span>
+            <span class="file">reports/</span>
+            <span class="file">state/workflow.json</span>
+            <span class="file">CLAUDE.md</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Commands</div>
+          <p><code>/findings-workflow:setup-env</code></p>
+          <p><code>/findings-workflow:init</code></p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="slide-foot">
+      <code class="cmd">/findings-workflow:init</code>
+      <span class="next">Next → <b>Stage 0 · State the science</b></span>
+    </footer>
+  </main>
+</body>
+</html>

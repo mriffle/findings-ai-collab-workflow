@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 5 — Independent validation · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide stage-5">
+  <main class="deck">
+    <div class="watermark" aria-hidden="true">5</div>
+
+    <nav class="rail" aria-label="Workflow steps">
+      <a class="pill" href="00-install-init.html">Install</a>
+      <a class="pill" href="01-stage0-science.html">0 · Science</a>
+      <a class="pill" href="02-stage1-metadata.html">1 · Metadata</a>
+      <a class="pill" href="03-stage2-data.html">2 · Data</a>
+      <a class="pill" href="04-stage3-loaders-qc.html">3 · Loaders + QC</a>
+      <a class="pill" href="05-stage4-explore.html">4 · Explore</a>
+      <a class="pill is-current" href="06-stage5-validate.html">5 · Validate</a>
+      <a class="pill" href="07-stage6-report.html">6 · Report</a>
+    </nav>
+
+    <header class="slide-head">
+      <div class="kicker">STAGE 5</div>
+      <h1 class="title">Independent validation</h1>
+      <p class="lede">Promote a candidate finding toward <code>validated</code> through blinded, independent re-derivation.</p>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ol class="steps">
+          <li><strong>Pick the mode</strong> — analytic replication (same data), or data replication (held-out / orthogonal data → <code>confirmatory</code>).</li>
+          <li><strong>Build the blind task</strong> — derived mechanically from the finding's fields, with verdict / evidence / summary <strong>stripped</strong>.</li>
+          <li><strong>Pre-specify the concordance criterion</strong> — before the verifier runs (deciding "close enough" afterward reintroduces forking paths).</li>
+          <li><strong>Dispatch the verifier</strong> — clean context, no history; re-derives from scratch; never sees the answer.</li>
+          <li><strong>Judge concordance &amp; record</strong> the outcome.</li>
+        </ol>
+        <div class="callout">
+          <span class="callout-label">The validated bar</span>
+          integrity sign-off + computational reproduction + blinded analytic replication + the phase bar. Promotion is <strong>never silent</strong> — the scientist accepts.
+        </div>
+      </div>
+
+      <aside class="col-side">
+        <div class="card">
+          <div class="card-label">Output</div>
+          <div class="artifact">
+            <span class="file">validated findings</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Subagents</div>
+          <ul class="chips">
+            <li class="chip chip-verifier">verifier</li>
+            <li class="chip chip-findings-manager">findings-manager</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="slide-foot">
+      <code class="cmd">/findings-workflow:stage5-validate [id]</code>
+      <span class="next">Next → <b>Stage 6 · Reporting</b></span>
+    </footer>
+  </main>
+</body>
+</html>
