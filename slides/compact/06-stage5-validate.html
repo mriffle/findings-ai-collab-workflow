@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 5 — Independent validation · Findings Workflow (compact)</title>
+  <link rel="stylesheet" href="../assets/slides.css">
+  <link rel="stylesheet" href="compact.css">
+</head>
+<body class="slide stage-5">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">STAGE 5</div>
+      <h1 class="title">Independent validation</h1>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ul class="bullets">
+          <li>Blind task from the finding's fields — the <strong>answer is stripped</strong>.</li>
+          <li><strong>Concordance criterion pre-specified</strong> before the verifier runs.</li>
+          <li>The verifier re-derives from scratch; concordance judged &amp; recorded.</li>
+        </ul>
+      </div>
+
+      <aside class="col-side">
+        <figure class="figpanel">
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Concordance scatter of recorded vs blind verifier results">
+              <line class="ax" x1="48" y1="16" x2="48" y2="172"/>
+              <line class="ax" x1="48" y1="172" x2="308" y2="172"/>
+              <polygon points="48,162 298,16 308,26 58,172" fill="var(--accent)" opacity="0.12"/>
+              <line class="ax dash" x1="48" y1="172" x2="308" y2="16"/>
+              <g fill="#059669">
+                <circle cx="78" cy="150" r="3.2"/><circle cx="98" cy="140" r="3.2"/><circle cx="116" cy="126" r="3.2"/><circle cx="134" cy="118" r="3.2"/><circle cx="152" cy="100" r="3.2"/><circle cx="172" cy="90" r="3.2"/><circle cx="192" cy="74" r="3.2"/><circle cx="212" cy="64" r="3.2"/><circle cx="232" cy="50" r="3.2"/><circle cx="252" cy="42" r="3.2"/><circle cx="272" cy="28" r="3.2"/><circle cx="92" cy="152" r="3.2"/><circle cx="200" cy="66" r="3.2"/>
+              </g>
+              <text x="178" y="188" font-size="9" text-anchor="middle">recorded effect</text>
+              <text transform="rotate(-90 16 94)" x="16" y="94" font-size="9" text-anchor="middle">verifier (blind)</text>
+            </svg>
+          </div>
+        </figure>
+      </aside>
+    </section>
+
+    <footer class="metafoot">
+      <span class="meta-k">Run</span><code class="cmd">/findings-workflow:stage5-validate [id]</code>
+      <span class="meta-k">Agents</span><ul class="chips"><li class="chip chip-verifier">verifier</li><li class="chip chip-findings-manager">findings-manager</li></ul>
+    </footer>
+  </main>
+</body>
+</html>

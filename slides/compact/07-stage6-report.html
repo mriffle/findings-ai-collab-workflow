@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 6 — Reporting · Findings Workflow (compact)</title>
+  <link rel="stylesheet" href="../assets/slides.css">
+  <link rel="stylesheet" href="compact.css">
+</head>
+<body class="slide stage-6">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">STAGE 6</div>
+      <h1 class="title">Reporting</h1>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ul class="bullets">
+          <li>A report is a <strong>projection of the findings graph</strong> — not fresh writing.</li>
+          <li>Two modes: <code>qc</code> (exhaustive) or <code>research</code> (selective, narrative).</li>
+          <li>Every claim maps to a finding id; status &amp; caveats propagate.</li>
+        </ul>
+      </div>
+
+      <aside class="col-side">
+        <figure class="figpanel">
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Report PDF document">
+              <path d="M96,22 H214 L234,42 V178 H96 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+              <path d="M214,22 V42 H234 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1.5"/>
+              <rect x="112" y="44" width="64" height="9" rx="2" fill="var(--accent)"/>
+              <rect x="112" y="60" width="96" height="5" rx="2" fill="#cbd5e1"/>
+              <rect x="112" y="74" width="104" height="4" rx="2" fill="#e2e8f0"/>
+              <rect x="112" y="82" width="98"  height="4" rx="2" fill="#e2e8f0"/>
+              <rect x="112" y="90" width="106" height="4" rx="2" fill="#e2e8f0"/>
+              <line class="ax" x1="112" y1="140" x2="216" y2="140"/>
+              <rect x="120" y="122" width="14" height="18" fill="var(--accent)" opacity="0.85"/>
+              <rect x="140" y="110" width="14" height="30" fill="var(--accent)" opacity="0.85"/>
+              <rect x="160" y="118" width="14" height="22" fill="var(--accent)" opacity="0.85"/>
+              <rect x="180" y="104" width="14" height="36" fill="var(--accent)" opacity="0.85"/>
+              <rect x="150" y="150" width="42" height="18" rx="3" fill="#D55E00"/>
+              <text x="171" y="163" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">PDF</text>
+            </svg>
+          </div>
+        </figure>
+      </aside>
+    </section>
+
+    <footer class="metafoot">
+      <span class="meta-k">Run</span><code class="cmd">/findings-workflow:stage6-report [qc | research]</code>
+      <span class="meta-k">Agents</span><ul class="chips"><li class="chip chip-writer">writer</li><li class="chip chip-report-reviewer">report-reviewer</li></ul>
+    </footer>
+  </main>
+</body>
+</html>

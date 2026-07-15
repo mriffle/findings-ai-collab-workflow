@@ -1,0 +1,27 @@
+/* Compact slide overrides — same design system as ../assets/slides.css,
+   same fonts / colors / components. The compact format is: no top nav rail,
+   briefer text, a scaled-down figure, and a ~half-height card (same width).
+   The 6K PNG export injects its own fill-the-viewport override; the deck rule
+   here only affects direct browser viewing. Only margins/spacing are tuned for
+   the shorter card — font sizes are unchanged. */
+
+/* Half-height card for direct viewing (same width as the full slides). */
+.deck { min-height: calc((100vh - 5vmin) / 2); }
+
+/* Slightly tighter header spacing (no lede in compact) — margins only. */
+.slide-head { margin-bottom: 1.2cqw; }
+.title { margin-bottom: 0.7cqw; }
+
+/* Figure fills the right column (bigger, since the meta strip moved below). */
+.figpanel { padding: 0.8cqw; }
+
+/* Full-width meta strip at the bottom: Run command + Agents on one line. */
+.metafoot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8cqw 1.4cqw;
+  margin-top: 1.1cqw;
+  padding-top: 1cqw;
+  border-top: 1px solid var(--hair);
+}

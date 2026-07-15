@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 1 — Understand the metadata · Findings Workflow (compact)</title>
+  <link rel="stylesheet" href="../assets/slides.css">
+  <link rel="stylesheet" href="compact.css">
+</head>
+<body class="slide stage-1">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">STAGE 1 · FIRST CODE RUNS</div>
+      <h1 class="title">Understand the metadata</h1>
+    </header>
+
+    <section class="body">
+      <div class="col-main">
+        <h2 class="col-title">What happens</h2>
+        <ul class="bullets">
+          <li>Infer &amp; validate every column; identify <strong>control samples</strong>.</li>
+          <li>Test inferences in code — independence from batch &amp; covariates.</li>
+          <li>Characterize the cohort; record imbalance/confounds as <code>caveat</code> findings.</li>
+        </ul>
+      </div>
+
+      <aside class="col-side">
+        <figure class="figpanel">
+          <div class="fig">
+            <svg viewBox="0 0 330 196" role="img" aria-label="Metadata distribution plots for cohort covariates">
+              <!-- Panel A: Group counts -->
+              <text x="12" y="16" font-size="9" font-weight="700">Group</text>
+              <line class="ax" x1="14" y1="92" x2="150" y2="92"/>
+              <rect x="28" y="46" width="26" height="46" rx="1.5" fill="#0072B2"/>
+              <rect x="64" y="34" width="26" height="58" rx="1.5" fill="#E69F00"/>
+              <rect x="100" y="58" width="26" height="34" rx="1.5" fill="#009E73"/>
+              <!-- Panel B: Age histogram -->
+              <text x="184" y="16" font-size="9" font-weight="700">Age</text>
+              <line class="ax" x1="186" y1="92" x2="322" y2="92"/>
+              <rect x="188" y="74" width="19" height="18" fill="var(--accent)" opacity="0.85"/>
+              <rect x="209" y="58" width="19" height="34" fill="var(--accent)" opacity="0.85"/>
+              <rect x="230" y="40" width="19" height="52" fill="var(--accent)" opacity="0.85"/>
+              <rect x="251" y="46" width="19" height="46" fill="var(--accent)" opacity="0.85"/>
+              <rect x="272" y="66" width="19" height="26" fill="var(--accent)" opacity="0.85"/>
+              <rect x="293" y="78" width="19" height="14" fill="var(--accent)" opacity="0.85"/>
+              <!-- Panel C: Sex -->
+              <text x="12" y="112" font-size="9" font-weight="700">Sex</text>
+              <line class="ax" x1="14" y1="186" x2="150" y2="186"/>
+              <rect x="36" y="134" width="30" height="52" rx="1.5" fill="#CC79A7"/>
+              <rect x="84" y="142" width="30" height="44" rx="1.5" fill="#56B4E9"/>
+              <!-- Panel D: Group x Batch crosstab -->
+              <text x="184" y="112" font-size="9" font-weight="700">Group × Batch</text>
+              <rect x="186" y="120" width="35" height="18" fill="var(--accent)" opacity="0.85"/>
+              <rect x="225" y="120" width="35" height="18" fill="var(--accent)" opacity="0.32"/>
+              <rect x="264" y="120" width="35" height="18" fill="var(--accent)" opacity="0.20"/>
+              <rect x="186" y="142" width="35" height="18" fill="var(--accent)" opacity="0.30"/>
+              <rect x="225" y="142" width="35" height="18" fill="var(--accent)" opacity="0.80"/>
+              <rect x="264" y="142" width="35" height="18" fill="var(--accent)" opacity="0.42"/>
+              <rect x="186" y="164" width="35" height="18" fill="var(--accent)" opacity="0.24"/>
+              <rect x="225" y="164" width="35" height="18" fill="var(--accent)" opacity="0.46"/>
+              <rect x="264" y="164" width="35" height="18" fill="var(--accent)" opacity="0.74"/>
+            </svg>
+          </div>
+        </figure>
+      </aside>
+    </section>
+
+    <footer class="metafoot">
+      <span class="meta-k">Run</span><code class="cmd">/findings-workflow:stage1-metadata</code>
+      <span class="meta-k">Agents</span><ul class="chips"><li class="chip chip-findings-manager">findings-manager</li></ul>
+    </footer>
+  </main>
+</body>
+</html>
