@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Why the Findings Workflow — Confidence &amp; Provenance</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide why">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">Why the Findings Workflow</div>
+      <h1 class="title">Confidence &amp; provenance</h1>
+      <p class="lede">Two doubts shadow every data analysis — with or without AI. Am I sure I understand my data and analyzed it correctly? And when an insight appears, can I retrace exactly how I got there?</p>
+    </header>
+
+    <section class="pillars">
+      <div class="pillar pillar-confidence">
+        <div class="pillar-head">
+          <span class="pillar-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3 19 6 V11 C19 15.5 15.9 19.3 12 21 C8.1 19.3 5 15.5 5 11 V6 Z"/>
+              <path d="M9 12 11.2 14.2 15 10"/>
+            </svg>
+          </span>
+          <div>
+            <p class="pillar-eyebrow">Am I sure?</p>
+            <h2 class="pillar-title">Confidence</h2>
+          </div>
+        </div>
+        <p class="pillar-q">Everything downstream depends on this — one silent mistake and the rest is built on sand.</p>
+        <ul class="bullets">
+          <li>Are my metadata internally consistent — and is it really what I think it is?</li>
+          <li>Do the data have the <strong>shape I expect</strong>?</li>
+          <li>Do the samples <strong>map to their metadata</strong> correctly?</li>
+          <li>Am I using an <strong>appropriate statistical test</strong> — and applying it correctly?</li>
+        </ul>
+      </div>
+
+      <div class="pillar pillar-provenance">
+        <div class="pillar-head">
+          <span class="pillar-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.6 9 A9 9 0 1 1 3 13.5"/>
+              <path d="M3.2 4 V9 H8.2"/>
+              <path d="M12 7.5 V12.4 L15.3 14.2"/>
+            </svg>
+          </span>
+          <div>
+            <p class="pillar-eyebrow">How did I get here?</p>
+            <h2 class="pillar-title">Provenance</h2>
+          </div>
+        </div>
+        <p class="pillar-q">Insight is fragile in the moment — and a result is only as good as the trail behind it.</p>
+        <ul class="bullets">
+          <li>An insight appears mid-analysis — and is <strong>gone before it's written down</strong>.</li>
+          <li>And if you did record it — <strong>what made you believe it</strong>?</li>
+          <li>Exactly <strong>what data, run through which script</strong>, produced this number?</li>
+          <li>How was <strong>this figure</strong> made — and what data are in it?</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="slide-foot">
+      <span class="tagline">Get either wrong, and the finding — however exciting — <b>can't be trusted, reproduced, or reported</b>.</span>
+    </footer>
+  </main>
+</body>
+</html>

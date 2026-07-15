@@ -311,6 +311,53 @@ body.slide {
 body.stage-install code { color: #b91c1c; font-weight: 600; }
 body.stage-install .cmd { color: #b91c1c; background: #fdecec; }
 
+.bullets > li strong { color: var(--ink); font-weight: 700; }
+
+/* ===========================================================================
+   Motivation / "why" slide — two pillars: Confidence · Provenance
+   =========================================================================== */
+body.why {
+  --accent: #334155;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, white);
+  --accent-ink:  color-mix(in srgb, var(--accent) 60%, black);
+}
+.pillars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3.4cqw;
+  flex: 1;
+  min-height: 0;
+}
+.pillar {
+  --accent: var(--pillar);
+  --accent-soft: color-mix(in srgb, var(--pillar) 12%, white);
+  --accent-ink:  color-mix(in srgb, var(--pillar) 58%, black);
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-top: 0.55cqw solid var(--pillar);
+  border-radius: 1cqw;
+  padding: 2.3cqw 2.5cqw 1.6cqw;
+}
+.pillar-confidence { --pillar: #2563eb; }  /* blue  — trust the read */
+.pillar-provenance { --pillar: #0d9488; }  /* teal  — reproduce & report */
+.pillar-head { display: flex; align-items: center; gap: 1.5cqw; margin-bottom: 1.4cqw; }
+.pillar-icon {
+  flex: 0 0 auto; width: 4.8cqw; height: 4.8cqw; border-radius: 1cqw;
+  background: var(--accent-soft); color: var(--pillar);
+  display: flex; align-items: center; justify-content: center;
+}
+.pillar-icon svg { width: 3cqw; height: 3cqw; display: block; }
+.pillar-eyebrow {
+  font-size: 1.3cqw; font-weight: 700; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--accent-ink); margin: 0 0 0.4cqw;
+}
+.pillar-title { font-size: 3.2cqw; line-height: 1; font-weight: 800; color: var(--ink); margin: 0; letter-spacing: -0.01em; }
+.pillar-q { font-size: 1.85cqw; line-height: 1.24; font-weight: 600; color: var(--accent-ink); margin: 0 0 1.5cqw; }
+.tagline { font-size: 1.72cqw; color: var(--muted); }
+.tagline b { color: var(--ink); font-weight: 700; }
+
 /* ---- print --------------------------------------------------------------- */
 @media print {
   @page { size: landscape; margin: 0; }
