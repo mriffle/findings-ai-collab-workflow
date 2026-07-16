@@ -215,6 +215,8 @@ design notes retained for reference:
   (DIA-NN / Spectronaut / Skyline), not the quant matrix — outside the `Dataset` contract.
   Explicitly out of scope for a quant-matrix workflow; a separate ingestion path if a user
   has the search-engine QC export.
-- **Enrichment / pathway analysis (GO / Reactome / GSEA).** Canonical downstream *analysis*,
-  but a large scope of its own (gene-set databases, ID mapping, within-set multiple
-  testing). A future analysis area, not a QC plot.
+- **Enrichment / pathway analysis (GO / KEGG).** Canonical downstream *analysis* — **now
+  shipped** as `lib/analysis/enrichment` (GO/KEGG over-representation via g:Profiler) + its
+  three figures (dot / bar / Manhattan), with a signed-off UniProt-id parser and the
+  detected-proteome background. See [`ENRICHMENT.md`](ENRICHMENT.md). It is an analysis
+  layer, not a QC plot. (Rank-based **GSEA** and other gene-set DBs remain out of scope.)

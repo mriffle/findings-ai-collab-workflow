@@ -641,9 +641,14 @@ examples.
 - **Per-study design-matrix builders stay project-local.** A user's metadata schema is
   unknowable a priori (same rationale as control detection / caveat findings). The template
   ships the **generic encoders + the contrast/covariate API**, never named builders.
-- **Enrichment / pathway / GSEA** is downstream of feature finding and a large scope of its
-  own (gene-set DBs, ID mapping, within-set multiple testing) — out of scope here (also noted
-  in `QC_GAPS.md`).
+- **Enrichment / pathway** ORA is downstream of feature finding — **now shipped as its own
+  layer:** `lib/analysis/enrichment` (GO/KEGG over-representation via g:Profiler) + the three
+  `lib/figures/enrichment` figures. It consumes a query (a DE hit list, Boruta-confirmed,
+  classifier-selected, a cluster) + the detected-proteome background, so it is a new family,
+  not a `method=` of this template. Full plan/record in [`ENRICHMENT.md`](ENRICHMENT.md).
+  **GSEA** (rank-based, no cutoff) remains a possible later template (a different method
+  family — fgsea-style), and other enrichment services / offline gene-set DBs stay out of
+  scope for now.
 - **Full predictive modelling** (ROC, calibration, held-out performance *as the deliverable*)
   is roadmap #3/#4. This doc covers those models' **feature-selection** use only — keep the
   line explicit.
