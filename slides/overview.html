@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What the Findings Workflow is — a shipped set of opinions</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide overview">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">What the Findings Workflow is</div>
+      <h1 class="title">A shipped set of opinions</h1>
+      <p class="lede">The Findings Workflow is a Claude Code <strong>plugin</strong> — the shared engine behind the whole process. It's built from four kinds of parts, and it ships with vetted templates for the analysis itself.</p>
+    </header>
+
+    <section class="components">
+      <div class="component" style="--c:#2563eb">
+        <span class="ci" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="8" width="16" height="12" rx="2"/>
+            <path d="M12 8V5"/><circle cx="12" cy="3.5" r="1.2"/>
+            <path d="M2 14h2"/><path d="M20 14h2"/>
+            <path d="M9 13v2"/><path d="M15 13v2"/>
+          </svg>
+        </span>
+        <div class="ck">The workers</div>
+        <h3>Agents</h3>
+        <p>Specialized AI workers, each in its own clean context, doing one job — <strong>writing code, reviewing it, running stats, validating a result</strong>.</p>
+      </div>
+
+      <div class="component" style="--c:#7c3aed">
+        <span class="ci" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 10 12 5 2 10l10 5 10-5Z"/>
+            <path d="M6 12v4.5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5V12"/>
+            <path d="M22 10v5"/>
+          </svg>
+        </span>
+        <div class="ck">The know-how</div>
+        <h3>Skills</h3>
+        <p>Procedures the AI pulls in on demand — <strong>the right, vetted way</strong> to do the task at hand.</p>
+      </div>
+
+      <div class="component" style="--c:#0891b2">
+        <span class="ci" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="5 8 9 12 5 16"/>
+            <line x1="12" y1="16" x2="18" y2="16"/>
+          </svg>
+        </span>
+        <div class="ck">The steps</div>
+        <h3>Commands</h3>
+        <p>What you run — <strong>one per stage</strong>, walking the study from setup to final report.</p>
+      </div>
+
+      <div class="component" style="--c:#dc2626">
+        <span class="ci" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 20 6.3V11c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6.3Z"/>
+            <path d="M9 12l2 2 4-4.2"/>
+          </svg>
+        </span>
+        <div class="ck">The guardrails</div>
+        <h3>Hooks</h3>
+        <p>Automatic checks that <strong>enforce</strong> the rules — not just suggest them. Deterministic gates.</p>
+      </div>
+
+      <div class="tpl">
+        <span class="ci" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="8" width="13" height="13" rx="2"/>
+            <path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/>
+          </svg>
+        </span>
+        <div class="tpl-body">
+          <div class="ck">Ships with — the analysis itself</div>
+          <h3>Templates — tested opinions, not black boxes</h3>
+          <p>Vetted, tested <strong>analysis scripts and data loaders</strong> — not code to run blindly. They're robust, defensible starting points, <strong>copied into your project and adapted to your data</strong>. Each one encodes how a step <em>should</em> be done.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="slide-foot">
+      <span class="tagline">Really, it's a set of <b>opinions</b> — how to analyze proteomics data well, distilled from <b>years of experience</b> and shipped as robust, tested, reviewable defaults.</span>
+    </footer>
+  </main>
+</body>
+</html>

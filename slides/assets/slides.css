@@ -358,6 +358,80 @@ body.why {
 .tagline { font-size: 1.72cqw; color: var(--muted); }
 .tagline b { color: var(--ink); font-weight: 700; }
 
+/* ===========================================================================
+   Overview / "what it is" slide — the plugin's parts + the thesis.
+   Standalone conceptual slide (like .why): no rail, no watermark. A row of
+   component cards (agents · skills · commands · hooks), each with its own
+   color, and an emphasized templates band spanning below.
+   =========================================================================== */
+body.overview {
+  --accent: #334155;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, white);
+  --accent-ink:  color-mix(in srgb, var(--accent) 60%, black);
+}
+
+.components {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.7cqw;
+  flex: 1;
+  min-height: 0;
+}
+.component {
+  --c: #475569;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-top: 0.5cqw solid var(--c);
+  border-radius: 1cqw;
+  padding: 1.7cqw 1.6cqw 1.6cqw;
+}
+.component .ci,
+.tpl .ci {
+  flex: 0 0 auto;
+  border-radius: 0.9cqw;
+  background: color-mix(in srgb, var(--c) 13%, white);
+  color: var(--c);
+  display: flex; align-items: center; justify-content: center;
+}
+.component .ci { width: 4.2cqw; height: 4.2cqw; margin-bottom: 1.1cqw; }
+.component .ci svg { width: 2.6cqw; height: 2.6cqw; display: block; }
+.component .ck {
+  font-size: 1.05cqw; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--c); margin-bottom: 0.25cqw;
+}
+.component h3 {
+  font-size: 2.15cqw; font-weight: 800; color: var(--ink);
+  margin: 0 0 0.85cqw; letter-spacing: -0.01em;
+}
+.component p { font-size: 1.42cqw; line-height: 1.32; color: var(--ink-2); margin: 0; }
+.component p strong { color: var(--ink); font-weight: 700; }
+
+/* emphasized templates band, spanning the row below the four parts */
+.tpl {
+  grid-column: 1 / -1;
+  --c: #059669;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2.2cqw;
+  background: color-mix(in srgb, var(--c) 7%, white);
+  border: 1px solid color-mix(in srgb, var(--c) 24%, white);
+  border-left: 0.7cqw solid var(--c);
+  border-radius: 1cqw;
+  padding: 1.7cqw 2.2cqw;
+}
+.tpl .ci { width: 5.4cqw; height: 5.4cqw; border-radius: 1.1cqw; }
+.tpl .ci svg { width: 3.2cqw; height: 3.2cqw; display: block; }
+.tpl .ck {
+  font-size: 1.08cqw; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--c); margin-bottom: 0.3cqw;
+}
+.tpl h3 { font-size: 2.25cqw; font-weight: 800; color: var(--ink); margin: 0; letter-spacing: -0.01em; }
+.tpl p { font-size: 1.5cqw; line-height: 1.34; color: var(--ink-2); margin: 0.55cqw 0 0; max-width: 96%; }
+.tpl p strong { color: var(--ink); font-weight: 700; }
+
 /* ---- print --------------------------------------------------------------- */
 @media print {
   @page { size: landscape; margin: 0; }

@@ -18,6 +18,18 @@ Each slide's progress rail links to the others.
 | `06-stage5-validate.html` | Stage 5 — Independent validation → `validated` findings |
 | `07-stage6-report.html` | Stage 6 — Reporting → `reports/` |
 
+## Standalone slides
+
+Conceptual slides that sit outside the numbered stage sequence — same design
+system (they set a distinct `<body>` class instead of a `stage-N` one), with no
+progress rail or watermark.
+
+| File | Slide |
+|------|-------|
+| `overview.html` | **What the workflow *is*** — a Claude Code plugin (agents · skills · commands · hooks) plus vetted templates; a shipped set of opinions. Good deck opener / sits before `00-install-init`. |
+| `motivation.html` | **Why** — the two doubts that shadow every analysis: Confidence & Provenance. |
+| `approach.html` | **How the workflow answers them** — Confidence & Provenance, by design. |
+
 ## Design
 
 - **`assets/slides.css`** is the shared design system: a per-stage accent color
