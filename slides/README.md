@@ -30,6 +30,30 @@ progress rail or watermark.
 | `motivation.html` | **Why** — the two doubts that shadow every analysis: Confidence & Provenance. |
 | `approach.html` | **How the workflow answers them** — Confidence & Provenance, by design. |
 
+## Architecture figure slides
+
+Image-hero slides whose delivered artifact is one **sub-architecture schematic**
+(the source PNGs live in `agent-figures/`). Each is a compact header
+(kicker / title / subtitle, in the standalone-slide voice) over the full-bleed
+figure. They use `body.figure-slide` with the accent set inline
+(`style="--accent:#…"`) to match that subsystem's color in the deck; the image
+fills the hero via the absolute-fill pattern (`.hero` / `.hero img`). Filenames
+mirror their image 1:1.
+
+| File | Schematic | Accent |
+|------|-----------|--------|
+| `main-orchestrator-agent.html` | Orchestrator dispatching context-isolated subagents; engine vs project state | slate |
+| `findings-system-schematic.html` | The findings graph — nodes, edges, statuses, inputs from every subsystem | pink |
+| `coding-agent.html` | Coder → scratch → code-reviewer → promotion gate → promoted script | blue |
+| `statistician-agent.html` | Statistician + stats-reviewer; the statistical-discipline checklist | green |
+| `figure-generator-agent.html` | Figure-generator → dual export → figure-reviewer (inspects the PNG) | purple |
+| `librarian-agent.html` | Librarian dispatching parallel researchers; research-reviewer verifies refs | cyan |
+| `verification-agent.html` | Blind verifier, answer stripped, pre-specified concordance | red |
+| `report-writing-agent.html` | Findings graph → writers (shared spec) → report-reviewer → report | amber |
+
+Suggested narrative order is the table order (two big-picture slides, then the
+worker subsystems, then validation, then reporting).
+
 ## Design
 
 - **`assets/slides.css`** is the shared design system: a per-stage accent color

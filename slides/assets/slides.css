@@ -432,6 +432,36 @@ body.overview {
 .tpl p { font-size: 1.5cqw; line-height: 1.34; color: var(--ink-2); margin: 0.55cqw 0 0; max-width: 96%; }
 .tpl p strong { color: var(--ink); font-weight: 700; }
 
+/* ===========================================================================
+   Figure-hero slide — a page whose delivered artifact is one image (the
+   sub-architecture schematics). Compact header (kicker/title/subtitle) over a
+   large centered image. Accent is set inline per slide, e.g.
+   <body class="slide figure-slide" style="--accent:#db2777">.
+   =========================================================================== */
+body.figure-slide {
+  --accent: #475569;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, white);
+  --accent-ink:  color-mix(in srgb, var(--accent) 60%, black);
+}
+body.figure-slide .slide-head { margin-bottom: 0.9cqw; }
+body.figure-slide .title { font-size: 3.35cqw; margin-bottom: 0.55cqw; }
+body.figure-slide .lede { font-size: 1.72cqw; max-width: 100%; }
+
+.hero {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.6cqw;
+}
+.hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
 /* ---- print --------------------------------------------------------------- */
 @media print {
   @page { size: landscape; margin: 0; }

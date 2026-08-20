@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The orchestrator &amp; its workers · Findings Workflow</title>
+  <link rel="stylesheet" href="assets/slides.css">
+</head>
+<body class="slide figure-slide" style="--accent:#334155">
+  <main class="deck">
+    <header class="slide-head">
+      <div class="kicker">The architecture</div>
+      <h1 class="title">The orchestrator &amp; its workers</h1>
+      <p class="lede">The main session drives the workflow and dispatches context-isolated subagents — only each result returns, never its bulk. Everything reads and writes durable project state, not the chat.</p>
+    </header>
+    <section class="hero">
+      <img src="agent-figures/main-orchestrator-agent.png" alt="The orchestrator &amp; its workers — sub-architecture schematic">
+    </section>
+  </main>
+</body>
+</html>
