@@ -3,6 +3,13 @@
 # suite passes against (mirrors the strict bar in conventions/coding.md). The
 # .venv it populates is git-ignored and regenerable: `pip install -r requirements-dev.txt`.
 #
+# TWO INTERPRETERS, ONE FILE. The workflow's floor is Python >= 3.11 and CI tests both
+# 3.11 and 3.12, so the pins carry PEP 508 environment markers where a package has moved
+# past the floor: scipy >= 1.18 and xgboost >= 3.3 require Python >= 3.12, so 3.11 gets
+# the newest release that still supports it. Markers keep this a single source of truth —
+# a second requirements file would drift. When bumping either package, check whether the
+# new version still supports 3.11 and update BOTH lines.
+#
 # This is the ENGINE-DEV env only — it never ships to or governs a user's project.
 # A user's project env is separate, seeded by `setup-env` and pinned in their uv.lock.
 #
@@ -16,7 +23,8 @@
 # Scientific baseline the lib/ templates build on
 numpy==2.4.6
 pandas==3.0.3
-scipy==1.18.0
+scipy==1.18.0; python_version >= "3.12"
+scipy==1.17.1; python_version < "3.12"   # newest scipy supporting 3.11
 scikit-learn==1.9.0
 matplotlib==3.11.0
 statsmodels==0.14.6
@@ -38,7 +46,8 @@ textalloc==1.2.3
 # Gradient-boosted-tree classifier the lib/analysis/classification-xgboost template
 # seeds from (XGBClassifier). Ships py.typed, so it type-checks under mypy --strict with
 # no stub/override needed. Pinned for reproducible tree builds across the test suite.
-xgboost==3.3.0
+xgboost==3.3.0; python_version >= "3.12"
+xgboost==3.2.0; python_version < "3.12"   # newest xgboost supporting 3.11
 
 # Quality + test toolchain (the promotion-gate lint/types + the code-reviewer's test bar)
 ruff==0.15.18
