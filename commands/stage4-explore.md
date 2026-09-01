@@ -65,6 +65,8 @@ Stage 4 has no `## Then`, because it does not end on a command: it ends when the
 - a **matured candidate to validate** — `stage5-validate <id>`, naming the id. This is a **within-loop** step, not an exit: validation runs continuously as candidates mature;
 - a **script to promote** (`scripts/scratch/` → `scripts/promoted/`) so a finding can be validated against it.
 
+**Suggest these; don't start them.** Offering `stage5-validate 42` is the job — running it unbidden is not (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). Within the exploration loop itself, keep working: the rule governs stage boundaries, not each analysis you run while exploring.
+
 **Never suggest that exploration is over.** Do not raise `stage6-report`, do not observe that the findings look complete, do not ask whether they are ready to wrap up. Exploration has no end *you* can judge; nudging toward closure is exactly the motivated-reasoning pressure the skepticism gates exist to resist; and which findings a report is about is a **human checkpoint the scientist owns** (doc 02.8). If the scientist **asks** what comes after exploring, answer plainly; if they **signal** they are wrapping up, follow their lead. The rule forbids you raising it, not discussing it.
 
 ## Workflow state

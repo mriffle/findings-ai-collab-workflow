@@ -49,6 +49,17 @@ Stage 6  Reporting                     → reports/
 
 **No Stage 4 analysis may begin until the integrity gate passes** (loaders tested and verified against source; sample↔metadata pairing complete and exact; scientist signs off). The `stage4-explore` command enforces this as a hard precondition, and a hook (`guard_findings.py`) blocks any finding that claims sign-off or `validated` status before the gate.
 
+### Stages advance on the scientist's word, not yours
+
+The ordering rule above says which stage may come next. It does **not** license you to start it. **Never begin a stage's work on your own initiative** — finish the stage you are in, report it, name what comes next, and **stop.** The scientist starts the next stage.
+
+- **What counts as permission:** they run the stage command, ask for it in words ("ok, do stage 2", "go ahead"), or give a standing instruction to continue ("work through to the integrity gate" — a blanket request *is* a request, and it holds until they say otherwise).
+- **What does not: your own judgment that the previous stage looks finished — or a content sign-off.** Confirming a stage's *content* is not permission to advance: a scientist agreeing your column interpretations are right (the Stage 1 checkpoint) has agreed about the columns, not asked you to start Stage 2. Those are different questions; if you want both, ask both.
+- **Bookkeeping is not advancing.** Setting `<stage>_done: true` and raising `current_stage` in `state/workflow.json` records that a stage finished and the next is *available*. It is not a decision to begin it. Update the state, then stop.
+- **This governs stage boundaries, not every step.** *Inside* a stage, carry the work through — don't stop after each action to ask permission. The boundary between stages is the gate, not every action within one.
+
+This is the standing complement to *Leave the scientist with a next step*: **you suggest, they decide.** Naming the next stage is the whole of your job at a boundary.
+
 **Driving the workflow.** Each stage has a command (invoked as `/findings-workflow:<name>`): `stage0-science`, `stage1-metadata`, `stage2-data`, `stage3-loaders`, `stage4-explore`, `stage5-validate`, `stage6-report`. Run `status` any time to see the pipeline position, the integrity-gate state, and the findings breakdown. Each stage command refuses to run until its preconditions are met; `state/workflow.json` is the single source of truth for progress and the gate (never hand-edit it loosely — the stage commands maintain it). The scientist can also just talk to you — the commands structure the work, but the collaboration drives it.
 
 > **Restarting Claude Code is safe — and can help.** Your work lives in `state/`, `findings/`, `results/`, and `state/workflow.json`, **not** in the conversation (non-negotiable #1). So restarting Claude Code never loses progress: a fresh session re-reads those files and resumes exactly where you left off (run `status` to reorient). And because a long session eventually *compacts* its context into a lossy summary while a fresh session re-reads the durable state losslessly, **restarting at a stage boundary can improve results downstream**, not just free up context. Whether it's worth doing depends on your Claude plan's context window — **keep an eye on the context indicator**:

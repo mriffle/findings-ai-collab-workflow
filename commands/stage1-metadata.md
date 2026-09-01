@@ -41,3 +41,5 @@ This is the canonical reference for *what the experiment is*. Regenerate it from
 
 - Update `state/workflow.json`: `metadata_done: true`, `current_stage: 2`, bump `updated`.
 - Next: **Stage 2 — Understand the data** (`stage2-data`).
+
+**Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). Note the scientist's confirmation at the checkpoint above was about the *metadata*, not about starting Stage 2.

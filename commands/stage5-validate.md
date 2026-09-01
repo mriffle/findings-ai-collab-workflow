@@ -47,4 +47,4 @@ Close with the concrete next step (project `CLAUDE.md`, *Leave the scientist wit
 - **On a pass + acceptance** — say the finding is now `validated`, then name the next thing: the next matured candidate to validate (give its id from the manifest), or back to `stage4-explore` for the analysis this result invites.
 - **On a discordant result** — the next step is the *reconciliation*, not a retreat: discuss the divergence with the scientist, and name the concrete follow-up (re-examine the analysis, consider `invalidated`, and re-review the dependents the findings-manager just cascaded a flag to).
 
-**Do not suggest moving on to reporting** — Stage 4 is closed by the scientist, not by you (the Stage 4 exception in the project `CLAUDE.md`).
+**Do not suggest moving on to reporting** — Stage 4 is closed by the scientist, not by you (the Stage 4 exception in the project `CLAUDE.md`). And do not *start* the next thing you suggest — offer it and stop; validating another candidate or resuming exploration is the scientist's call to make (*Stages advance on the scientist's word, not yours*).

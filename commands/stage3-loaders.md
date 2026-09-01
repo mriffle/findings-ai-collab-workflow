@@ -99,6 +99,8 @@ Set `current_stage: 4`, bump `updated`. Record the certified `data_version` — 
 
 Then tell the scientist: **the integrity gate has passed; Stage 4 exploration is now unlocked** (`stage4-explore`). Findings recorded from here may set `integrity_signoff: true` for this `data_version`.
 
+**Unlocked is not started.** **Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). The sign-off you just took was on the *loaders and QC* — it certified the data, it did not ask you to begin analyzing it.
+
 ## On fail
 
 Do not flip the gate. Report exactly which checks failed and what must be fixed. Analysis stays blocked.

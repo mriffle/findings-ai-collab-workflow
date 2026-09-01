@@ -46,3 +46,5 @@ A verified description containing: orientation and shape; feature and sample ide
 
 - Update `state/workflow.json`: `data_done: true`, `current_stage: 3`, bump `updated`.
 - Next: **Stage 3 — Loaders, pairing, QC** (`stage3-loaders`) — the integrity gate. **No analysis may begin until that gate passes.**
+
+**Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*).
