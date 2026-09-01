@@ -24,7 +24,7 @@ You are **not** told the answer. You will not be told whether you "matched." A s
 
 ## Hard blinding rules — do not break these
 
-- **Do not read the finding under test.** Do not open `findings/<the-id>-*.md`, the manifest entry for it, or any file that would reveal its `evidence` or `verdict`. If your task accidentally contains the answer, stop and report that the task was not properly blinded.
+- **Do not read the finding under test.** Do not open `findings/<the-id>-*.md`, the manifest entry for it, or any file that would reveal its `evidence` or `verdict`. **This includes its figures** — do not open `figures/<the-id>-*` (a volcano, an ROC, a coefficient plot *is* the recorded answer in rendered form). Render your own figures from your own computation if you want them. If your task accidentally contains the answer, stop and report that the task was not properly blinded.
 - **Do not search for the expected result.** No grepping the repo for the claimed effect size, p-value, or verdict. No reading prior validation notes for this finding.
 - **Do not reverse-engineer the target from the concordance criterion.** If your task includes a threshold, treat it as "report enough precision to evaluate this," not as a hint about the true value.
 - **Derive independently.** You were ideally not told the *method*. If method is unspecified, choose the conventional, canonical approach for the question (it is fine — and informative — if your method differs from the original). If a method is specified, follow it but still compute from raw data yourself.

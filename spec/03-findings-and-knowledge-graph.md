@@ -28,7 +28,7 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 | `relationships` | list[edge] | no | Typed links to other findings (3.3) |
 | `provenance` | object | yes | `data_version` (hash), `script` (path+commit), `params`, `environment` (lock ref) |
 | `evidence` | list | yes | Effect sizes, statistics, intervals, corrected p-values (*as built:* a list of measurement objects — see `conventions/findings.md` §2.3) |
-| `figures` | list[figure] | conditional | SVG/PNG artifacts (doc 06), regenerable. **Required whenever a relevant figure exists** — every such figure is embedded inline in the body *and* listed here with its own producing script + input (per-figure provenance; conventions/findings.md §2.4) |
+| `figures` | list[figure] | conditional | SVG/PNG artifacts (doc 06), regenerable. **Required for every claim that can be shown** (show, don't tell) — the figure is commissioned with the claim, embedded inline in the body, explained in the prose, *and* listed here with its own producing script + input (per-figure provenance; conventions/findings.md §2.4, §9) |
 | `references` | list[ref] | conditional | Required for any background/interpretive claim (doc 04 invariant) |
 | `validation` | object | no | Which validation senses cleared, by whom/what, concordance result |
 | `integrity_signoff` | bool | yes | Data passed the integrity gate (doc 05) |
@@ -39,7 +39,7 @@ A finding is a structured, uniquely numbered document capturing one substantive 
 
 `Summary` · `Verdict` · `Evidence` (numbers, with inline figures/tables) · `Methods / how to produce` (sufficient to regenerate; references the promoted script) · `Discussion` (meaning, why interesting) · `Caveats` (confounds, assumptions, multiplicity context) · `Follow-ups` · `Related findings` · `References`.
 
-Every figure relevant to the finding is **embedded inline** in the body (normally in Evidence), shown with its caption and a one-line pointer to the producing script + input — the finding is a comprehensive, standalone artifact, never a pointer to figures a reader must go find (conventions/findings.md §2.4).
+**Show, don't tell** *(strengthened after implementation, by user decision)*. Figures are first-class evidence in a finding, so it carries two obligations. **Coverage:** every claim the finding makes about *this dataset* that **can** be shown carries a figure — the question "what figure shows this?" is asked claim by claim and the figure is commissioned as part of recording the claim, not gathered afterwards (interpretive claims in Discussion are exempt; they rest on `references`). **Embedding + explanation:** every figure the finding has is **embedded inline** in the body (normally in Evidence) in a four-part pattern — the claim in prose, the image, its caption + a one-line pointer to the producing script + input, and **the reading** (one or two sentences on what is plotted, where to look, and what it establishes). The finding is a comprehensive, standalone artifact, never a pointer to figures a reader must go find, and never an image the reader must decode unaided (conventions/findings.md §2.4, §9; the annotation budget in doc 06.4 keeps the words in the text rather than on the canvas).
 
 ## 3.2 Status — the lifecycle state machine
 

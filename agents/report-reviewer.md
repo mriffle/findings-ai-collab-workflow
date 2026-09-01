@@ -22,6 +22,7 @@ Review against `conventions/reporting.md`. A report (and each section) is accept
 - **Status + caveats propagate.** Verify that `exploratory` findings are not written with `validated` confidence, and that each source finding's caveats survive into the prose. A confident write-up of an exploratory result re-hides the multiplicity the whole system worked to expose — flag it.
 - **No invented references.** Every reference in the report must come from a source finding (or the environment). Re-check any that appear — that it exists and supports its use (spot-verify with WebFetch where needed). A citation not present in a source finding is flagged.
 - **Methods/figures are the findings' own.** Methods trace to the findings' pinned scripts/environment; figures are the exact artifacts the findings point to.
+- **Show, don't tell.** A Results claim whose source finding illustrated it must stay **illustrated**: the figure is embedded inline, not merely referenced, and the prose **explains** it (what is plotted, where to look, what it establishes). Flag a claim written as bare assertion when its finding carries a figure for it, and flag an embedded figure the prose never reads (`conventions/reporting.md`; `conventions/findings.md` §9).
 
 ## Coherence / editor pass (real editing, not concatenation)
 

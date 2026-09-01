@@ -4,7 +4,7 @@
 
 A **finding** is a structured, uniquely numbered markdown document capturing one substantive insight, recorded the moment it emerges from the scientist–agent exchange. It is simultaneously:
 
-- **human-readable** — a markdown narrative with inline figures (the body), and
+- **human-readable** — a markdown narrative that *shows* its claims with explained inline figures (the body), and
 - **machine-readable** — a YAML frontmatter block the manifest and graph tooling consume.
 
 The durable artifact is never the conversation. It is this document **plus the pinned, regenerable code that produced its numbers.**
@@ -35,7 +35,7 @@ All findings carry this YAML frontmatter. `R` = required, `C` = conditional, `O`
 | `relationships` | O | list[edge] | Typed links to other findings (§6). |
 | `provenance` | R | object | How to regenerate the numbers (§2.2). |
 | `evidence` | R | list[measurement] | Effect sizes, intervals, corrected p-values (§2.3). **Stripped before blind validation (§4).** |
-| `figures` | C | list[figure] | Regenerable figure artifacts (§2.4). **Required whenever a figure relevant to the finding exists** — every such figure is listed here *and* embedded inline in the body (§2.4). |
+| `figures` | C | list[figure] | Regenerable figure artifacts (§2.4). **Required for every claim that can be shown** — a figure is commissioned for each such claim, listed here, embedded inline in the body, and explained in the prose (§2.4, §9). |
 | `references` | C | list[reference] | Required for any background/interpretive claim (§2.5; doc 04.5). |
 | `validation` | O | object | Which validation senses cleared, by what, with what concordance (§4). |
 | `integrity_signoff` | R | bool | `true` only if the data cleared the integrity gate (doc 05). A finding may not be `validated` while this is `false`. |
@@ -106,7 +106,14 @@ The "no bare p / effect + CI" rule (§2.3) governs *significance* tests; this se
 
 ### 2.4 `figures`
 
-A finding is a **comprehensive, standalone artifact**: a reader must never have to go track down a figure that exists. **Every figure relevant to the finding is (a) listed in this `figures` block and (b) embedded inline in the body** (§9) as a markdown image, right where it is discussed. If a relevant figure exists but is not embedded, the finding is **incomplete**. (An early `candidate` recorded before any figure was rendered simply carries `figures: []`; the figures are added — listed *and* embedded — as soon as they exist.)
+**Show, don't tell.** A finding is a **comprehensive, standalone artifact**, and figures are **first-class evidence** in it — not decoration, not an appendix, and not a pointer to something in `figures/`. Two obligations follow, and both are required:
+
+1. **Coverage — every claim that can be shown, is shown.** For each claim the finding makes about *this dataset* (in `Summary`, `Verdict`, `Evidence`, or `Caveats`), ask **“what figure shows this?”** If a figure can be made, it **is** made — commissioned from the figure-generator as part of recording the finding, not deferred. A claim is not illustrated by a figure of something adjacent: the figure must show *that claim*. (Interpretive/background claims in `Discussion` are exempt — they rest on `references` (§2.5), not on a plot of this data.)
+2. **Embedding — every figure the finding has is (a) listed in this `figures` block and (b) embedded inline in the body** (§9) as a markdown image, right where it is discussed. If a relevant figure exists but is not embedded, the finding is **incomplete**.
+
+**Every embedded figure is also explained in the prose** (§9) — a caption is a label, not an explanation.
+
+Where a claim genuinely cannot be shown (a bare count, an identifier, a design fact), that is a legitimate call and the finding simply carries no figure for it — the **findings-manager reports the uncovered claim back to the orchestrator** so a figure can be commissioned if one is possible after all (`agents/findings-manager.md`). An early `candidate` recorded before anything was rendered simply carries `figures: []`; figures are added — listed, embedded, *and* explained — as soon as they exist.
 
 Each entry carries the figure's artifacts, its caption, **and its own producing script + input** — per-figure provenance, so *that* figure is regenerable on its own even when a finding embeds several figures from different scripts (e.g. a volcano and a PCA):
 
@@ -129,7 +136,7 @@ figures:
 - **`script`** — the **producing figure script** (path + commit). This is per-figure and may differ from the finding-level `provenance.script` (which pins the analysis that produced the *numbers*): the figure script is what re-renders the image. Follows the same promoted-script rule at `validated` (a validated finding's figures are re-rendered from `scripts/promoted/`).
 - **`data_version`** — the pinned data the figure was rendered from; **`result_id`** — set when the figure was rendered from a cached result (`conventions/results-cache.md`), so the figure re-renders from the exact cached result rather than a recompute; **`params`** — optional render params.
 
-Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`).
+Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`), and `guard_findings.py` enforces the correspondence **in both directions**: a listed figure must be embedded, and an embedded figure under `figures/` must be listed so it carries its provenance.
 
 ### 2.5 `references`
 
@@ -281,12 +288,25 @@ The body is the human narrative. Section order:
 
 `Summary` · `Verdict` · `Evidence` (numbers, with inline figures/tables) · `Methods / how to produce` (sufficient to regenerate; references the promoted script) · `Discussion` (meaning, why interesting) · `Caveats` (confounds, assumptions, multiplicity context) · `Follow-ups` · `Related findings` · `References`.
 
-**Figures are embedded inline, not merely referenced.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). Each embedded figure carries its **caption** and a **one-line provenance pointer** to the script + input that produced it, so the finding stands alone and every image is regenerable:
+**Figures are embedded inline, not merely referenced — and every one is explained.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). The canonical pattern is **four parts, in order**:
+
+1. **The claim**, in prose.
+2. **The figure**, as a markdown image.
+3. **The caption + a one-line provenance pointer** — the producing script + input, so the image is regenerable on its own.
+4. **The reading** — one or two sentences telling the reader *how to see the claim in the picture*: what is plotted, where to look, and what that establishes. **This is required.** A reader who looked only at the figures and their readings should come away with the finding's argument.
 
 ```markdown
+The drug_A response is a small, coherent set of proteins rather than a global shift:
+37 of 4,812 proteins clear BH q < 0.05, and the largest effects share a direction.
+
 ![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](figures/0042-volcano.png)
 
 *Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`). Legend: `figures/0042-volcano.legend.png`.*
+
+Each point is one protein, positioned by log2 fold change (x) against BH-corrected
+significance (y). The colored significant points sit almost entirely right of zero — a
+coordinated up-regulation, not a symmetric scatter — while the bulk of the proteome stays
+in the gray cloud at the center, which is what rules out a global abundance shift.
 ```
 
-The reader must never have to leave the finding to see a figure that exists.
+The reader must never have to leave the finding to see a figure that exists, and never has to work out unaided what a figure is telling them. **The words live in the text, not on the canvas** — a figure carries only the annotation needed to read it (`conventions/visualization.md`, *The annotation budget*).

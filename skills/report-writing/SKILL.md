@@ -24,7 +24,7 @@ The selection discipline is inverted between them — everyone writing must know
 
 - **Results** = selected findings rendered into narrative, each sentence carrying its finding id.
 - **Methods** = union of those findings' methods + pinned script/environment provenance.
-- **Figures** = the exact artifacts the findings already point to (svg/png + legend).
+- **Figures** = the exact artifacts the findings already point to (svg/png + legend), **embedded inline and explained** — show, don't tell: a claim the source finding illustrated stays illustrated, and each figure keeps its caption plus a one-or-two-sentence reading in the prose (`conventions/findings.md` §9).
 - **References** = the findings' fact-checked references + software/environment citations, deduped and styled at compile time.
 
 ## Process (matches the stage6-report command)

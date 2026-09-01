@@ -8,7 +8,7 @@ Because findings already carry evidence, figures, methods, caveats, references, 
 
 - **Results** = selected findings rendered into narrative.
 - **Methods** = the union of those findings' methods + their pinned script and environment provenance (comes essentially for free).
-- **Figures** = the exact artifacts the findings already point to (dual-exported, with legends), **embedded inline** — each finding already embeds its figures with per-figure provenance (`conventions/findings.md` §2.4), so the report inherits shown-not-referenced figures for free.
+- **Figures** = the exact artifacts the findings already point to (dual-exported, with legends), **embedded inline and explained** — each finding already shows its claims with figures carrying per-figure provenance and a prose reading (`conventions/findings.md` §2.4, §9), so the report inherits shown-not-referenced, explained figures for free. The report keeps that discipline — **show, don't tell**: a Results claim a finding illustrated stays illustrated, and each figure keeps a reading in the report's own prose. A selected finding that makes a showable claim carrying no figure is a **gap to fill** (commission a `figure-generator`), never a licence to drop to bare assertion.
 - **References** = the findings' fact-checked references + software/environment citations, deduped and styled at compile time.
 
 Writers **select, order, and add connective tissue; they do not invent content.** The report inherits the findings' rigor and traceability.
@@ -50,4 +50,4 @@ Reporting is where an LLM most easily overstates, so:
 | Every Results/Discussion claim maps to a finding id | **Report-reviewer** |
 | Status + caveats propagate (exploratory ≠ validated confidence); `kind: caveat` findings rendered as Limitations | **Report-reviewer** |
 | No invented references; all re-checked | **Report-reviewer** (+ research-reviewer's prior fact-check) |
-| Figures are the findings' existing artifacts, embedded inline (not merely referenced) | **Report-reviewer** |
+| Figures are the findings' existing artifacts, embedded inline (not merely referenced) and **explained in the prose**; a showable Results claim is shown, not asserted | **Report-reviewer** |

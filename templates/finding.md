@@ -46,9 +46,11 @@ evidence:
     note: "<what this measures>"
 
 # Regenerable figure artifacts (dual export + separate legend image, per doc 06).
-# REQUIRED whenever a figure relevant to this finding exists: list every such figure here
-# AND embed it inline in the body (see ## Evidence). Each entry carries its OWN producing
-# script + input (per-figure provenance) so that figure is regenerable on its own.
+# SHOW, DON'T TELL: every claim this finding makes about the data that CAN be shown gets a
+# figure — commissioned with the claim, not gathered afterwards. List every such figure here
+# AND embed it inline in the body AND explain it in the prose (see ## Evidence). Each entry
+# carries its OWN producing script + input (per-figure provenance) so that figure is
+# regenerable on its own.
 figures: []
   # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg",
   #     legend_png: "figures/<NNNN>-<name>.legend.png", legend_svg: "figures/<NNNN>-<name>.legend.svg",
@@ -81,15 +83,19 @@ integrity_signoff: false
 <The current bottom line in plain terms. Honest about confidence and phase.>
 
 ## Evidence
-<The numbers behind the claim — effect sizes, intervals, corrected p-values — with inline figures/tables. Mirrors the `evidence` frontmatter in narrative form.>
+<The numbers behind the claim — effect sizes, intervals, corrected p-values — shown with inline figures/tables. Mirrors the `evidence` frontmatter in narrative form.>
 
-<Embed **every** figure relevant to this finding inline, right where it is discussed — the reader must never have to go find a figure that exists. For each, show the 300-DPI PNG, its caption, and a one-line pointer to the script + input that produced it. Every figure embedded here is also listed in the `figures` frontmatter (and vice-versa).>
+<**Show, don't tell.** Every claim here that *can* be shown carries a figure: ask "what figure shows this?" and commission it with the claim. Embed each one inline, right where it is discussed — the reader must never have to go find it. Every figure embedded here is also listed in the `figures` frontmatter (and vice-versa). Write each in **four parts**: the claim → the figure → its caption + provenance pointer → **the reading** (how to see the claim in the picture). The reading is required; a caption is a label, not an explanation. Keep the words here, not on the canvas (`conventions/visualization.md`, *The annotation budget*).>
 
 <!-- Example (delete if the finding has no figures):
+
+<The claim, in prose — what the figure below is being shown to establish.>
 
 ![<caption — what each axis/series/color encodes, units, n>](figures/<NNNN>-<name>.png)
 
 *Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`]. Legend: `figures/<NNNN>-<name>.legend.png`.*
+
+<The reading — one or two sentences: what is plotted, where to look, and what that establishes for the claim.>
 -->
 
 

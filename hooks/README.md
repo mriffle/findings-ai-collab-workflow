@@ -33,7 +33,7 @@ The two interpreter paths are **mutually exclusive per platform** (`bin/python` 
 | File | Role |
 |---|---|
 | `guard_readonly_data.py` | PreToolUse `Write\|Edit`, `Bash` — raw `data/` is read-only (Write/Edit blocked under `data/`; best-effort Bash block). |
-| `guard_findings.py` | PreToolUse `Write\|Edit` — no `integrity_signoff: true` / `status: validated` on a finding before the integrity gate passes; a `validated` finding may link only to `scripts/promoted/`. |
+| `guard_findings.py` | PreToolUse `Write\|Edit` — four invariants: no `integrity_signoff: true` / `status: validated` on a finding before the integrity gate passes; a `validated` finding may link only to `scripts/promoted/`; and, on a *complete* finding write, the `figures` frontmatter and the body's inline images must correspond **both ways** — a listed figure is embedded, and an embedded figure under `figures/` is listed (so a shown figure always carries its provenance; `.legend.` images exempt). Both figure checks fail open on an Edit fragment or an empty body. |
 | `guard_promotion.py` | PreToolUse `Write` (blocks), PostToolUse `Write\|Edit` (warns) — a `scripts/promoted/*.py` must pass `ruff` + `mypy` (where available/configured), resolved from `./.venv` first then `PATH`. Tests are verified by the code-reviewer, not in-hook. |
 | `_hooklib.py` | Shared helpers (event parse, project scope, fail-open exits). Imported by the guards — not itself a hook. |
 | `test_guards.py` | Stdlib-only synthetic-event tests: `python3 hooks/test_guards.py`. |

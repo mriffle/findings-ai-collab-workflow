@@ -26,6 +26,7 @@ From the finding's frontmatter, **remove and set aside** (the verifier must neve
 - `verdict` — the plain-language bottom line.
 - `evidence` — every recorded number (this is the answer).
 - `validation` — prior validation notes.
+- `figures` — **the whole block, plus the body's inline images and their readings.** A figure *is* the answer rendered: a volcano shows the direction and the hit count, an ROC shows the performance, and the four-part body pattern puts a plain-language **reading** right beside each image (`conventions/findings.md` §9). Never pass a figure path, caption, or reading to the verifier, and never point it at this finding's `figures/<NNNN>-*` artifacts — it renders its own figures if it wants them.
 
 Also treat `summary` as **answer-bearing**: it states the claim and often its direction/magnitude. **Do not pass `summary` to the verifier.** Derive the question from the structured comparison instead (Step 2).
 

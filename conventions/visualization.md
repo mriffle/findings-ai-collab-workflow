@@ -2,6 +2,15 @@
 
 *Spec source: doc 06. Figures are evidence — a wrong or misleading figure propagates as confidently as a wrong number. Governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.** Enforced by the **figure-reviewer**, now backed by the shipped `lib/figures/` machinery — `figure-io` (dual export + separate legend + publication style) and `okabe-ito-colors` (the color registry + the >8-category raising guard) — which carries these defaults mechanically for any project figure script that routes through it. The QC/descriptive plot templates built on it have shipped and are wired into the Stage 3 QC report (`id-depth`, `missingness`, `dynamic-range`, `abundance-boxplot`, `cv-plot`, `sample-correlation`, `pca-plot` — see *QC & exploration figures*), as have the first **analysis-result** plot templates — the **`volcano`** and **`pvalue-hist`** companions of the differential-abundance template, and the **four classifier result plots** — ROC-vs-null, coefficient/selection-frequency, and the hyperparameter heatmap (`lib/figures/classification`) — of the classification template, and the **four regression result plots** — predicted-vs-observed, target-shuffle null, coefficient/selection-frequency, and the hyperparameter heatmap (`lib/figures/regression`) — of the regression template (see *Analysis-result figures*). The analysis-result figure set now ships in full.*
 
+## Show, don't tell — figures are first-class evidence
+
+**A claim that can be shown is shown.** Figures are not decoration on a finding or a report; they are how a claim is *made* — the reader should be able to see the result, not merely read an assertion that it holds. Two rules follow, and together they divide the labor between the picture and the words:
+
+- **Coverage.** For every claim a finding makes about the data, ask **"what figure shows this?"** — and if a figure can be made, commission it (`conventions/findings.md` §2.4). Figures are produced *with* the claim, not gathered afterwards. A finding whose claims could have been shown and were not is incomplete, not merely terse.
+- **The figure shows; the text explains.** The image carries the evidence; the finding's (or report's) prose carries the reading — what is plotted, where to look, what it establishes (`conventions/findings.md` §9). Neither does the other's job: an unexplained figure leaves the reader guessing, and an explanation baked onto the canvas is unreadable at print scale and drifts out of sync with the text it duplicates.
+
+The rendering consequence is the **annotation budget** below.
+
 ## Accuracy & review
 
 - Every generated figure is **reviewed as a rendered PNG**, not merely as the code that produced it. Code can be correct and the render still wrong (clipped labels, misleading axis, wrong color mapping, overplotting). The **figure-reviewer** inspects the actual render.
@@ -26,6 +35,26 @@ Render the **legend as its own image** (`figures/<name>.legend.svg` + `figures/<
 ## Publication-ready defaults
 
 Figures default to publication quality: legible font sizes **at print scale**, no chartjunk, clear axis labels **with units**, appropriate aspect ratios, consistent typography. The `lib/` figure templates encode these defaults (a shared matplotlib style, imported by the project's figure scripts) so each figure starts from them rather than re-specifying them.
+
+## The annotation budget — what belongs on the canvas
+
+**Do not embed long descriptions in a figure.** A figure carries only the annotation a reader needs in order to *read* it. Everything else — the interpretation, the methods narrative, the caveats — lives in the prose of the finding or report, where it can be edited, reviewed, and kept in sync with the claim it serves.
+
+**On the canvas (the budget):**
+
+- axis labels **with units**, tick labels, and a **short title** naming the comparison (and, where it matters, the processing state + scale);
+- the load-bearing numbers, kept terse — N, the effect / test statistic / p or q, hit counts, the value of a threshold line;
+- **mandatory caveat markers**, e.g. the `prior feature list · N features` title note a restricted-panel model figure must carry (*Analysis-result figures*);
+- direct point or series labels where they beat a legend (the volcano's `annotate_top`, the rank-abundance leader-line highlights).
+
+**Off the canvas:**
+
+- **paragraphs of any kind** — interpretation, "what this shows", methods prose, conclusions;
+- a duplicated **caption** — the caption lives once, in the finding's `figures[].caption` (and the report's figure caption);
+- the **legend / key** — rendered as its own image (*Legends as separate images*);
+- anything legible only by zooming past print scale.
+
+Rule of thumb: **if it is a sentence someone could say *about* the figure, it belongs in the text; if it is a label the eye needs *while looking at* the figure, it belongs on the figure.** The figure-reviewer fails a render carrying explanatory prose.
 
 ## Descriptive & cohort figures
 
@@ -114,6 +143,9 @@ Every figure records — and the finding that uses it pins — the producing **s
 
 | Rule | Enforced by |
 |---|---|
+| Every claim that can be shown carries a figure (coverage — "show, don't tell") | **findings-manager** (authoritative) + **Report-reviewer** + orchestrator behavior — judgment, no hook |
+| Each embedded figure is explained in the prose (the reading: what is plotted, where to look, what it establishes) | **findings-manager** + **Report-reviewer** |
+| Annotation budget respected — no explanatory prose, duplicated caption, or baked-in legend on the canvas | **Figure-reviewer** |
 | Render reviewed (PNG), not just code | **Figure-reviewer** |
 | Dual export (SVG + 300 DPI PNG) + separate legend image present | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
 | Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `okabe-ito-colors` reads/extends `state/color_registry.json`) |

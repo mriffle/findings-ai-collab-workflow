@@ -2,6 +2,16 @@
 
 Figures are evidence. They carry findings into talks and reports, and a wrong or misleading figure propagates as confidently as a wrong number. The governing principles: **accuracy is paramount**, and **a figure is a regenerable artifact, not a hand-made image.**
 
+## 6.0 Show, don't tell — figures are first-class evidence
+
+*(Added after implementation, by user decision — the strengthening of the inline-figures rule of doc 03.)*
+
+- **A claim that can be shown is shown.** Figures are how a claim is made, not decoration on it. For every claim a finding makes about the data, the question "what figure shows this?" is asked, and where a figure can be made it **is** made — commissioned as part of recording the claim (doc 03; `conventions/findings.md` §2.4). A finding whose claims could have been shown and were not is incomplete.
+- **The figure shows; the text explains.** The image carries the evidence; the finding's (or report's) prose carries the reading — what is plotted, where to look, what it establishes (`conventions/findings.md` §9). An unexplained figure leaves the reader guessing; an explanation baked onto the canvas is illegible at print scale and drifts out of sync with the text it duplicates.
+- **The annotation budget** (§6.4) follows from this: only what a reader needs in order to *read* the figure goes on the canvas.
+
+Coverage is a **judgment call and has no hook** — "could this claim have been shown?" is not decidable from a tool-use event. The findings-manager runs the claim→figure coverage pass and reports uncovered-but-showable claims; the figure-reviewer enforces the annotation budget; the report-reviewer checks a shown claim stays shown (`conventions/enforcement-map.md`).
+
 ## 6.1 Accuracy and review
 
 - Every generated figure is **reviewed as a rendered PNG**, not merely as the code that produced it. Code can be correct and the render still wrong (clipped labels, misleading axis, wrong color mapping, overplotting). The figure reviewer (doc 04) inspects the actual render. This mirrors the correctness charter's rule: verify the artifact, not just the script.
@@ -26,6 +36,8 @@ Render **legends as separate documents** alongside each figure, rather than only
 ## 6.4 Publication-ready defaults
 
 Figures default to publication quality: legible font sizes at print scale, no chartjunk, clear axis labels with units, appropriate aspect ratios, and consistent typography. The visualization library (`lib/`, doc 04) encodes these defaults so every figure inherits them.
+
+**The annotation budget — do not embed long descriptions in a figure.** A figure carries only the annotation a reader needs in order to *read* it: axis labels with units, tick labels, a short title naming the comparison (and the processing state + scale where it matters), terse load-bearing numbers (N, effect, p/q, hit counts, a threshold's value), mandatory caveat markers, and direct point/series labels where they beat a legend. **Off the canvas:** paragraphs of any kind (interpretation, "what this shows", methods narrative, conclusions), a duplicated caption (it lives once, in the finding's `figures[].caption`), the legend (a separate image, §6.3), and anything legible only past print scale. *A sentence someone could say about the figure belongs in the text; a label the eye needs while looking at the figure belongs on the figure.* The figure-reviewer fails a render carrying explanatory prose.
 
 ## 6.5 Color — palette and the category registry
 

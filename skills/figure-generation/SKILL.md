@@ -25,6 +25,12 @@ Load `state/color_registry.json`. For every categorical dimension you plot, use 
 
 Seed from the relevant `lib/` figure template (`${CLAUDE_PLUGIN_ROOT}/lib/`), or reuse the project's existing script for this plot type (one script per task). The templates encode these defaults and import a shared figure/style module. If working without one, apply: legible font sizes at print scale, no chartjunk, axis labels **with units**, an appropriate aspect ratio, consistent typography, and the **Okabe–Ito** palette (color-blind-safe; aim for grayscale-interpretable too).
 
+## The annotation budget — the figure shows, the text explains
+
+Put on the canvas only what a reader needs to **read** the figure: axis labels **with units**, tick labels, a **short title** naming the comparison (and the processing state + scale where it matters), terse load-bearing numbers (N, the effect / statistic / p or q, hit counts, a threshold's value), mandatory caveat markers, and direct point/series labels where they beat a legend.
+
+**Never write paragraphs on a figure** — no interpretation, no "what this shows" box, no methods narrative or conclusions, no caption duplicated onto the canvas (the caption goes to the finding's `figures[].caption`), no baked-in legend (separate image). The explanation belongs in the finding's prose, where it is reviewed and stays in sync with the claim; prose on the canvas is illegible at print scale and unusable in a paper. **A sentence someone could say *about* the figure goes in the text; a label the eye needs *while looking at* the figure goes on the figure.** The figure-reviewer fails a render carrying explanatory prose.
+
 ## The >8-category rule
 
 Color encodes **at most eight** categories. If you're about to exceed eight, do **not** add colors — pick an explicit strategy and note it in the figure caption:
@@ -51,5 +57,7 @@ The `lib/figures/figure_io.save_figure` helper does both exports (pass `legend_f
 The producing script (path + commit), the data version, and parameters are recorded so the figure is regenerable and staleness-tracked.
 
 ## Handoff
+
+Return, with each figure, a **caption** (axes/series/color encodings, units, n) and a one-or-two-sentence **reading** — what is plotted, where to look, what it establishes — so the finding can explain the figure it embeds (`conventions/findings.md` §9) without reconstructing it from the render.
 
 Render, then route the family's **PNG(s)** to a **fresh figure-reviewer** — the review happens in its own isolated context (it holds the image, returns a verdict, and is discarded), so the renders never accumulate in your context or the orchestrator's. The figure is accepted only after the render passes review; a FAIL comes back to you (the same family's generator) with the specific corrections.

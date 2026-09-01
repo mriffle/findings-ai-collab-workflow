@@ -135,6 +135,32 @@ _FIG_RELPATH = _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](./figures/0042-volcan
 _FIG_EMPTY_LIST = "---\nid: 42\nstatus: candidate\nfigures: []\n---\n\n# T\n\n## Evidence\nNo figures.\n"
 _FIG_FM_ONLY = _FIG_FM  # frontmatter, empty body → fail open (write in progress)
 
+# Fixtures for the embedded⇒listed backstop (invariant 4): a shown figure must
+# carry its own provenance, i.e. appear in the `figures` frontmatter.
+_FIG_UNLISTED = (
+    _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+    "![PCA](figures/0042-pca.png)\n"
+)
+_FIG_UNLISTED_HTML = (
+    _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+    '<img src="figures/0042-pca.png" alt="PCA">\n'
+)
+_FIG_EMBED_NO_LIST = (
+    "---\nid: 42\nstatus: candidate\nfigures: []\n---\n"
+    "\n# T\n\n## Evidence\n![PCA](figures/0042-pca.png)\n"
+)
+_FIG_WITH_LEGEND = (
+    _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+    "![key](figures/0042-volcano.legend.png)\n"
+)
+_FIG_MD_TITLE = (
+    _FIG_FM + '\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png "Volcano")\n'
+)
+_FIG_EXTERNAL_IMG = (
+    _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+    "![schematic](https://example.org/s.png)\n"
+)
+
 
 def test_findings() -> None:
     print("guard_findings.py")
@@ -186,6 +212,25 @@ def test_findings() -> None:
                      '  - { png: "figures/0042-volcano.png" }\n'), 0)
     check("missing-figure block still fires after the gate passes",
           _find(passed_proj, "findings/0042-v.md", _FIG_MISSING), 2, "inline")
+
+    # Embedded⇒listed backstop (invariant 4): a shown figure carries its provenance.
+    check("embedded but unlisted figure blocked",
+          _find(open_proj, "findings/0042-v.md", _FIG_UNLISTED), 2, "but not listed")
+    check("embedded but unlisted figure blocked (HTML img)",
+          _find(open_proj, "findings/0042-v.md", _FIG_UNLISTED_HTML), 2, "but not listed")
+    check("embedded figure with an empty figures list blocked",
+          _find(open_proj, "findings/0042-v.md", _FIG_EMBED_NO_LIST), 2, "but not listed")
+    check("embedded legend image needs no figures entry",
+          _find(open_proj, "findings/0042-v.md", _FIG_WITH_LEGEND), 0)
+    check("markdown image title stripped before matching",
+          _find(open_proj, "findings/0042-v.md", _FIG_MD_TITLE), 0)
+    check("image outside figures/ ignored",
+          _find(open_proj, "findings/0042-v.md", _FIG_EXTERNAL_IMG), 0)
+    check("Edit fragment with an unlisted image fails open",
+          _find_edit(open_proj, "findings/0042-v.md",
+                     "![PCA](figures/0042-pca.png)\n"), 0)
+    check("unlisted-figure block still fires after the gate passes",
+          _find(passed_proj, "findings/0042-v.md", _FIG_UNLISTED), 2, "but not listed")
 
 
 # --------------------------------------------------------------------------- #
