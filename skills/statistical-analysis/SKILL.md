@@ -33,7 +33,7 @@ Prefer a **moderated linear model** (limma / MSstats-style) over naive per-featu
 
 - Build a scikit-learn **`Pipeline`** so every learned preprocessing step (scaling, imputation, feature selection, normalization, batch correction) is **fit inside the training fold only**. Never fit on the full dataset before splitting.
 - **Match CV to the generalization target.** Define the unit (new samples? patients? batches?) and use **`GroupKFold`** / grouped splits when samples cluster within a subject, so a subject never spans train and test.
-- **Always run a label-shuffle null:** permute labels, re-run the full pipeline, confirm performance collapses to chance. Report the null distribution beside the real score. If it doesn't collapse, there is leakage — find it before reporting anything.
+- **The shuffle null is a second pass, not part of the first.** Run the model **without** it initially (`run_null=False` — the template default) so the scientist sees performance, coefficients, and figures quickly; the null roughly **3.5×'s** the run. Then **propose it as the immediate follow-up**: permute the target, re-run at the fixed hyperparameters, confirm performance collapses to chance, and report the null distribution + empirical p beside the real score. Until it runs, the finding is **`exploratory`** and the coefficients are flagged "not tested against a null." Do not skip it quietly — it is the **leakage detector** too (if performance doesn't collapse, there is leakage or no real signal), so it is required before any strong claim.
 - Set and record `random_state` everywhere.
 
 ## Power & honesty

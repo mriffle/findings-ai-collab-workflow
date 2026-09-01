@@ -27,7 +27,7 @@ Conventions are an **enforcement spec**: a convention is only real if something 
 - **Canonical over esoteric.** Prefer widely used, explainable tests. For differential abundance prefer a moderated linear model (limma / MSstats) over naive per-feature t-tests.
 - **No data leakage.** Every preprocessing step that learns from data — normalization, imputation, feature selection, scaling — happens **inside** each cross-validation fold, never on the full dataset first.
 - **Match cross-validation to the generalization target.** Define the unit of generalization (new samples? new patients? new batches?) and structure folds accordingly (group/subject-wise folds when samples cluster within a patient).
-- **Mandate a label-shuffle null** for classifiers: if performance does not collapse under randomized labels, there is leakage.
+- **Require a shuffle null for classifiers/regressors — as a second pass** *(ordering added after implementation, by user decision)*: if performance does not collapse under a randomized target, there is leakage. Because the null roughly triples the run, it is **off by default**: the first pass returns performance, coefficients, and figures quickly, and the null is **proposed as the immediate follow-up**. Until it runs the finding is capped at `exploratory` and its coefficients are flagged "not tested against a null"; it is required before any strong claim, never quietly dropped.
 - **Be honest about power.** Treat small-n results as `exploratory` by default (doc 03.6).
 
 ## 5.4 Correctness and data integrity (the charter)
@@ -80,7 +80,7 @@ Where feasible, derive key numbers two independent ways and reconcile. Because l
 | Finding links only to a promoted script | **Hook** / findings-manager check |
 | Record-the-finding during exploration | **Orchestrator behavior** (CLAUDE.md) |
 | No bare p; correction named; effect+CI present | Stats reviewer |
-| No leakage; CV matched to target; label-shuffle null | Stats reviewer |
+| No leakage; CV matched to target; shuffle null run **or** proposed as the outstanding follow-up (finding capped `exploratory`) | Stats reviewer |
 | Canonical tests; moderated models for DE | Stats reviewer |
 | Loader test + load verification complete | Code reviewer + hook on gate |
 | Every reference exists and supports its claim | Research reviewer |
