@@ -382,6 +382,101 @@ def test_raises_on_order_by_missing_column(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Unit — identifier fidelity (id columns are never type-inferred)
+#
+# Regression suite for the defect where pandas' type inference silently rewrote
+# feature ids on read: 0001 -> 1, 1001 -> 1001.0 (one decimal value anywhere in the
+# column promotes the whole column to float), 1E5 -> 100000.0, TRUE -> True. The
+# corrupted id lands in `feature_names` — the key every downstream result, figure,
+# and finding is reported against — so these assert the on-disk bytes survive.
+# Files are written raw (not via to_csv) so the fixture pins exactly what is read.
+# --------------------------------------------------------------------------- #
+
+_ID_META = "Replicate,Group\nsA,c\nsB,t\n"
+
+
+def _write_raw(
+    path: Path, data_text: str, meta_text: str = _ID_META
+) -> tuple[Path, Path]:
+    """Write a data.tsv / meta.csv pair verbatim; return (data, meta)."""
+    data_file = path / "data.tsv"
+    meta_file = path / "meta.csv"
+    data_file.write_text(data_text)
+    meta_file.write_text(meta_text)
+    return data_file, meta_file
+
+
+def test_numeric_looking_feature_ids_keep_their_exact_text(tmp_path: Path) -> None:
+    """Leading zeros survive, and one decimal id does not float-promote its column."""
+    data, meta = _write_raw(
+        tmp_path,
+        "protein\tsA\tsB\n0001\t10\t20\n1002\t30\t40\n1003.5\t50\t60\n",
+    )
+    ds = dl.load_wide_data(data, meta, join_key="Replicate")
+    assert [str(x) for x in ds.feature_names] == ["0001", "1002", "1003.5"]
+
+
+def test_bool_like_and_sci_notation_feature_ids_are_not_coerced(tmp_path: Path) -> None:
+    data, meta = _write_raw(
+        tmp_path,
+        "protein\tsA\tsB\nTRUE\t10\t20\nFALSE\t30\t40\n1E5\t50\t60\n",
+    )
+    ds = dl.load_wide_data(data, meta, join_key="Replicate")
+    assert [str(x) for x in ds.feature_names] == ["TRUE", "FALSE", "1E5"]
+
+
+def test_every_id_column_keeps_string_fidelity_not_just_the_feature_id(
+    tmp_path: Path,
+) -> None:
+    """The fidelity rule covers feature_metadata, not only feature_names."""
+    data, meta = _write_raw(
+        tmp_path,
+        "protein\tgene_id\tsA\tsB\nP1\t0001\t10\t20\nP2\t1002\t30\t40\n",
+    )
+    ds = dl.load_wide_data(
+        data, meta, join_key="Replicate", id_columns=("protein", "gene_id")
+    )
+    assert ds.feature_metadata["gene_id"].tolist() == ["0001", "1002"]
+
+
+def test_numeric_ids_stay_distinct_after_the_str_read(tmp_path: Path) -> None:
+    """Ids differing only in leading zeros must not collide into one feature."""
+    data, meta = _write_raw(
+        tmp_path,
+        "protein\tsA\tsB\n0001\t10\t20\n001\t30\t40\n1\t50\t60\n",
+    )
+    ds = dl.load_wide_data(data, meta, join_key="Replicate")
+    assert [str(x) for x in ds.feature_names] == ["0001", "001", "1"]
+
+
+def test_raises_on_blank_feature_id(tmp_path: Path) -> None:
+    data, meta = _write_raw(tmp_path, "protein\tsA\tsB\nP1\t10\t20\n\t30\t40\n")
+    with pytest.raises(ValueError, match="Missing value"):
+        dl.load_wide_data(data, meta, join_key="Replicate")
+
+
+def test_raises_on_feature_id_spelling_an_na_token(tmp_path: Path) -> None:
+    """An id read as NaN would otherwise become the literal feature name "nan"."""
+    data, meta = _write_raw(tmp_path, "protein\tsA\tsB\nNA\t10\t20\nP1\t30\t40\n")
+    with pytest.raises(ValueError, match="NA token"):
+        dl.load_wide_data(data, meta, join_key="Replicate")
+
+
+def test_precursor_ids_are_not_coerced_and_charges_still_parse(tmp_path: Path) -> None:
+    """The precursor path keeps id text and still resolves charges to ints."""
+    data, meta = _write_raw(
+        tmp_path,
+        "protein\tmodifiedSequence\tprecursorCharge\tsA\tsB\n"
+        "0001\tPEPTIDEK\t2\t10\t20\n"
+        "0001\tPEPTIDEK\t3\t1\t2\n"
+        "1003\tELVISK\t2\t30\t40\n",
+    )
+    ds = dl.load_precursor_data(data, meta, join_key="Replicate")
+    assert ds.feature_metadata["protein"].tolist() == ["0001", "1003"]
+    assert ds.feature_metadata["precursorCharge"].tolist() == [2, 2]
+
+
+# --------------------------------------------------------------------------- #
 # Unit — precursor charge collapse
 # --------------------------------------------------------------------------- #
 

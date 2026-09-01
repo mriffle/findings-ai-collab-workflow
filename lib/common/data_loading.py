@@ -34,11 +34,15 @@ refuses to load if any value is missing, ``"preserve"`` keeps them — and ``na_
 declares which tokens count as missing.
 
 Orientation is *inferred* (non-id columns are taken as samples and the matrix is
-transposed) and validated only *transitively* by the sample<->metadata pairing check —
-a transposed file fails there, but confirming orientation is a Stage-2 step, not the
-loader's job. The loader likewise does NOT police domain fidelity: identifier corruption
-(gene symbols turned to dates, accessions in sci-notation) and linear-vs-log scale
-confusion are caught in Stages 1-2 and by the reviewers, not here.
+transposed) and validated only *transitively* by the sample<->metadata pairing check — a
+transposed file fails there, but confirming orientation is a Stage-2 step, not the
+loader's job. The loader likewise does NOT police domain fidelity: corruption that
+arrived *in the file* (gene symbols Excel turned into dates, accessions already written
+in sci-notation) and linear-vs-log scale confusion are caught in Stages 1-2 and by the
+reviewers, not here. It does, however, refuse to *introduce* such corruption: id columns
+are read as ``str``, so pandas' type inference can never rewrite an identifier on the
+way in (``0001`` -> ``1``, ``1001`` -> ``1001.0``, ``1E5`` -> ``100000.0``), and a
+missing id fails loud rather than becoming the literal feature ``"nan"``.
 
 Downstream contract: the returned :class:`Dataset` — not this file's input format — is
 the stable interface the other templates (PCA, differential abundance, figures) consume.
@@ -79,7 +83,7 @@ Scale = Literal["linear", "log2", "log10", "ln", "glog2", "zscore", "ratio"]
 LOG_SCALES: frozenset[Scale] = frozenset({"log2", "log10", "ln", "glog2", "zscore"})
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "wide-data-loader", "version": "0.4"},
+    "template": {"name": "wide-data-loader", "version": "0.5"},
     "kind": "module",
     "provides": [
         "Dataset",
@@ -94,7 +98,8 @@ __script_meta__: dict[str, object] = {
     "description": (
         "Verified loader for wide feature x sample omics matrices + a sample-metadata "
         "table: orientation/pairing checks, optional technical-replicate collapse, "
-        "precursor charge-state collapse, zero-preserving, fail-loud, scale-tagged. "
+        "precursor charge-state collapse, zero-preserving, identifier-preserving (id "
+        "columns are read as text, never type-inferred), fail-loud, scale-tagged. "
         "Study-agnostic (column names are arguments)."
     ),
 }
@@ -192,6 +197,15 @@ def _read_wide(
     Duplicate headers are caught on the *raw* header line because ``pandas`` silently
     renames them (``sA`` -> ``sA``, ``sA.1``), which would otherwise slip a phantom
     sample column through to a confusing pairing mismatch instead of a clear error.
+
+    **Id columns are read as ``str``** (like the metadata join key in
+    :func:`_load_metadata`) so pandas' type inference can never rewrite an identifier.
+    Left to infer, a numeric-looking id column is silently corrupted — ``0001`` -> ``1``
+    (leading zeros dropped), ``1001`` -> ``1001.0`` (one decimal value anywhere in the
+    column promotes it to float, so *every* id gains a ``.0``), ``1E5`` -> ``100000.0``,
+    ``TRUE`` -> ``True`` — and the damage lands in ``feature_names``, i.e. the key every
+    downstream result, figure, and finding is reported against. Abundance columns are
+    left to infer as usual (they must be numeric).
     """
     raw_header = _read_header(data_file, sep)
     duplicate_headers = _duplicates(raw_header)
@@ -200,11 +214,13 @@ def _read_wide(
             f"Duplicate column headers in data file {data_file}: {duplicate_headers}"
         )
     extra_na = list(na_values) if na_values is not None else None
-    frame = pd.read_csv(data_file, sep=sep, na_values=extra_na)
+    id_dtypes: dict[str, type[str]] = {str(c): str for c in id_columns}
+    frame = pd.read_csv(data_file, sep=sep, na_values=extra_na, dtype=id_dtypes)
     id_set = set(id_columns)
     missing = [c for c in id_columns if c not in frame.columns]
     if missing:
         raise ValueError(f"Data file {data_file} is missing id column(s): {missing}")
+    _check_ids_present(frame, id_columns, data_file)
     sample_columns = [str(c) for c in frame.columns if c not in id_set]
     if not sample_columns:
         raise ValueError(
@@ -212,6 +228,30 @@ def _read_wide(
             f"{list(id_columns)}"
         )
     return frame, sample_columns
+
+
+def _check_ids_present(
+    frame: pd.DataFrame, id_columns: Sequence[str], data_file: Path
+) -> None:
+    """Raise if any id-column cell is missing — an unnamed feature is never loadable.
+
+    Reading the id columns as ``str`` stops pandas rewriting an identifier, but it does
+    not stop NA *detection*: a blank cell, or an id that happens to spell one of pandas'
+    NA tokens (``NA``, ``NULL``, ``None``, ``N/A``, ``nan``, ...), still arrives as NaN
+    and would otherwise be stringified into the literal feature id ``"nan"``. Fail loud
+    instead (conventions/correctness.md) — a feature with no usable id is a data problem
+    for the scientist to resolve, not something a loader may paper over.
+    """
+    for col in id_columns:
+        blank = frame[col].isna()
+        if bool(blank.any()):
+            rows = (frame.index[blank][:5] + 2).tolist()  # +2: 1-based, past the header
+            raise ValueError(
+                f"Missing value(s) in id column {str(col)!r} of {data_file} at data "
+                f"row(s) {rows} (of {int(blank.sum())} total). Every feature needs an "
+                f"id. Note that an id spelling an NA token (NA, NULL, None, N/A) "
+                f"reads as missing — rename it in the source file if it is a real id."
+            )
 
 
 def _load_metadata(
