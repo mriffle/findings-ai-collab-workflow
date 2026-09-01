@@ -9,12 +9,20 @@ Capture the research framing before any data is touched. This is the first stage
 
 ## Do this
 
-Interview the scientist (one focused exchange, not a form dump) to establish:
+Interview the scientist — **one question at a time, never a form dump**. Ask, wait for the
+answer, then ask the next; each answer shapes what is worth asking next. This stage is
+mostly *elicitation*, so the questions are open-ended prose, not option lists (see *How to
+ask* in the project `CLAUDE.md`). Establish:
 
 - **Domain** — what field/system this is, in enough depth to interpret findings.
 - **What is being examined and why** — the biological/scientific question motivating the study.
 - **Experimental design** — conditions, groups, replication, timepoints, batches; what was manipulated and what was measured.
 - **Scientific goals** — what we want to find out. Be concrete about the hypotheses or discovery aims.
+
+Where a question *does* resolve to a small set of known options (a design is one of a few
+standard shapes; the goal is discovery vs hypothesis-testing), offer them with
+**`AskUserQuestion`**, recommended option first — but never force an open-ended answer into
+buttons.
 
 Write **`state/PROJECT.md`** capturing all of the above in clear prose. This is a living document — note that it will be updated as understanding deepens.
 

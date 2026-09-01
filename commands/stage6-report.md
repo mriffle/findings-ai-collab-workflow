@@ -13,7 +13,7 @@ A report is **not** a fresh act of writing. Because findings already carry evide
 - **`qc`** — QC / data-quality report: exhaustive and descriptive, so collaborators can trust the data. Produced largely from Stage 3 outputs and the project state files.
 - **`research`** — research report: selective and narrative; a **disseminable artifact that supports downstream manuscript preparation** (not a manuscript itself). The primary deliverable. Findings are deliberately left out to tell a focused story.
 
-The selection discipline is **inverted** between modes (completeness vs focus) — confirm the mode before writing.
+The selection discipline is **inverted** between modes (completeness vs focus) — confirm the mode before writing. If it wasn't given in `$ARGUMENTS`, ask for it with **`AskUserQuestion`** (the two modes as the options, the likelier one first) rather than in prose (*How to ask*, project `CLAUDE.md`).
 
 ## Process
 

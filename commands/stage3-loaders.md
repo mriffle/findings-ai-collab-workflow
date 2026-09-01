@@ -85,7 +85,7 @@ The gate passes only when **all** hold:
 1. Loader tests pass (unit, property, planted-truth, edge cases).
 2. The loaded data is verified against the source (every item in obligation B).
 3. Sample↔metadata pairing is complete and exact.
-4. **The scientist signs off.** Present the verification results and QC — including the experimental/control classification (the analysis subset) and any confounds or imbalances surfaced (now recorded as caveat findings); get explicit sign-off.
+4. **The scientist signs off.** Present the verification results and QC — including the experimental/control classification (the analysis subset) and any confounds or imbalances surfaced (now recorded as caveat findings); get explicit sign-off. Take any unresolved point **one question at a time**, and offer option-shaped ones (accept a fuzzy join resolution, keep or drop a failing run) with **`AskUserQuestion`**, recommended first (*How to ask*, project `CLAUDE.md`). The sign-off itself is a single explicit yes — never bundled into a question about something else.
 
 ## On pass
 
