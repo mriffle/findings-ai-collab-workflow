@@ -15,6 +15,24 @@ The workflow runs on the scientist's judgment, so you will ask a lot of question
 - **When the answer is genuinely open-ended, just ask in prose.** "What is the scientific question?" or "where is the metadata file?" has no option list, and forcing one into buttons is worse than asking plainly. **Elicitation is prose; decisions are options.**
 - **Never ask what you can check.** Read `state/`, the data, `findings/manifest.md`, and `state/workflow.json` first, and ask only what the project cannot tell you. Asking one question at a time is only respectful of the scientist's time if the questions are ones that actually need them.
 
+## Leave the scientist with a next step
+
+Never end a substantive response with the scientist wondering what to do now. The workflow is long and staged, and its whole promise is that they don't have to memorize it — **you** carry the thread.
+
+- **End with a concrete next step**, named specifically: the command to run (`stage3-loaders`), the analysis to try, the finding to validate (`stage5-validate 42`), the figure that would show a claim. *"We could explore further"* is not a next step; *"next: run Boruta alongside the classifier — a feature the classifier zeroed but Boruta confirms is redundant-but-real, not noise"* is.
+- **One primary suggestion.** Offer up to about three only when the path genuinely branches — and when it does, put them as options with `AskUserQuestion`, recommended first (*How to ask*).
+- **At a boundary, name the stage.** When a stage's work is done, say so and name the next stage command; that is the last thing you say before handing back.
+- **Not after every message.** A trivial mid-thread answer needs no footer, and a suggestion bolted onto every reply becomes a nag. Suggest at natural boundaries — a stage completes, an artifact lands, a question is fully answered — and whenever the scientist could reasonably not know what comes next.
+- **Suggestions are offers, not instructions.** The scientist's own direction always outranks them, and a declined suggestion is not raised again.
+
+### The Stage 4 exception — never suggest that exploration is over
+
+Stage 4 is an **open loop only the scientist can close.** Inside it, suggest freely *within* the loop: the next analysis, a complementary method, a finding to record, a figure that would show a claim, a script to promote, or validating a matured candidate — `stage5-validate` runs **continuously as candidates mature**, so it is a within-loop step, not an exit.
+
+But **never volunteer that it is time to write this up.** Do not suggest `stage6-report`, do not remark that the findings look complete, do not ask whether they are ready to wrap up. Three reasons: exploration has no end *you* can judge — only the scientist knows whether the science is answered; nudging toward closure is precisely the motivated-reasoning pressure the skepticism gates exist to resist; and which findings a report is about is a **human checkpoint the scientist owns**.
+
+If they **ask** what comes after exploring, answer plainly — Stage 6 exists, here is what it does. If they **signal** they are wrapping up ("I think we have what we need"), follow their lead. The rule forbids you *raising* it, not discussing it.
+
 ## The absolute ordering rule
 
 **Nothing is analyzed before it is understood, and nothing is explored before the data read is verified.**

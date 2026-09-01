@@ -42,3 +42,11 @@ Title · Abstract/Summary · Methods · Results · Discussion · References.
 ## Workflow state
 
 The first time a report is compiled, raise `state/workflow.json` `current_stage` to **6** (highest stage reached) and bump `updated`. Reporting is a loop with no per-stage `*_done` flag; raising `current_stage` keeps `status` from stalling at an earlier stage.
+
+## Then
+
+A report is a projection, not a terminus — close with the concrete next step (project `CLAUDE.md`, *Leave the scientist with a next step*):
+
+- **Revise the projection** — change the finding selection or the ordering, or re-run a section the reviewer flagged.
+- **Strengthen what the report had to caveat** — name the specific `exploratory` finding the prose had to hedge, and offer `stage5-validate <id>`; validating it upgrades the claim the next compile can make.
+- **Back to `stage4-explore`** — a gap the report exposed (a claim with no finding behind it, a caveat with no follow-up) is an exploration question, and the scientist is already here by choice, so returning to the loop is theirs to take up freely.

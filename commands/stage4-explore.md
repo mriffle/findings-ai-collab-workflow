@@ -44,6 +44,18 @@ Every finding's numbers must be regenerable: pin `data_version`, the script (pat
 
 Run `stage5-validate` to put a finding through independent validation. Validation runs continuously as candidates mature — you don't have to finish exploring first.
 
+## Where to next — and where not
+
+Stage 4 has no `## Then`, because it does not end on a command: it ends when the **scientist** decides the science is answered. But never leave them without a next step. After each exchange, suggest the concrete thing to do next **within the loop** — one primary suggestion, named specifically (project `CLAUDE.md`, *Leave the scientist with a next step*):
+
+- the **next analysis** the result invites, or the **complementary method** (Boruta alongside the classifier; the tree model when a linear boundary underperforms; the both-ways batch check; enrichment on the hit list);
+- the **figure that would show a claim** the finding currently only asserts (*show, don't tell*);
+- a **finding to record**, or an existing one to update / relate / re-run against new params;
+- a **matured candidate to validate** — `stage5-validate <id>`, naming the id. This is a **within-loop** step, not an exit: validation runs continuously as candidates mature;
+- a **script to promote** (`scripts/scratch/` → `scripts/promoted/`) so a finding can be validated against it.
+
+**Never suggest that exploration is over.** Do not raise `stage6-report`, do not observe that the findings look complete, do not ask whether they are ready to wrap up. Exploration has no end *you* can judge; nudging toward closure is exactly the motivated-reasoning pressure the skepticism gates exist to resist; and which findings a report is about is a **human checkpoint the scientist owns** (doc 02.8). If the scientist **asks** what comes after exploring, answer plainly; if they **signal** they are wrapping up, follow their lead. The rule forbids you raising it, not discussing it.
+
 ## Workflow state
 
 `current_stage` is already **4** (set when the integrity gate passed); Stage 4 is the open exploration loop, so there is no `*_done` flag to set. Bump `state/workflow.json` `updated` as exploration proceeds so `status` reflects recent activity.

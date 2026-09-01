@@ -39,3 +39,12 @@ If the verifier's result is discordant, do not promote. Record `failed`, conside
 ## Workflow state
 
 The first time validation runs for a project, raise `state/workflow.json` `current_stage` to **5** (highest stage reached) and bump `updated`. Validation is a continuous loop, so there is no per-stage `*_done` flag — raising `current_stage` keeps `status` from perpetually rendering "Stage 4" once validation is underway.
+
+## Then
+
+Close with the concrete next step (project `CLAUDE.md`, *Leave the scientist with a next step*) — validation is a **within-loop** step, so the thread returns to exploration:
+
+- **On a pass + acceptance** — say the finding is now `validated`, then name the next thing: the next matured candidate to validate (give its id from the manifest), or back to `stage4-explore` for the analysis this result invites.
+- **On a discordant result** — the next step is the *reconciliation*, not a retreat: discuss the divergence with the scientist, and name the concrete follow-up (re-examine the analysis, consider `invalidated`, and re-review the dependents the findings-manager just cascaded a flag to).
+
+**Do not suggest moving on to reporting** — Stage 4 is closed by the scientist, not by you (the Stage 4 exception in the project `CLAUDE.md`).

@@ -46,3 +46,5 @@ When the gate has passed, show it as passed with the signer/date/data_version, m
 ```
 
 End with the **single most useful next action** for the current position (e.g. "Next: run `stage3-loaders` to build and verify the loaders and pass the integrity gate").
+
+**In Stage 4, keep that next action inside the loop** — a matured candidate to validate (`stage5-validate <id>`, named from the manifest), a candidate whose figures or provenance are incomplete, a script awaiting promotion, or simply continuing exploration. **Do not render "next: write the report"**: the pipeline diagram may show Stage 6 as a position (it is a dashboard), but the recommended action never nudges the scientist out of exploration — closing Stage 4 is theirs to decide (project `CLAUDE.md`, *The Stage 4 exception*).
