@@ -85,13 +85,15 @@ integrity_signoff: false
 ## Evidence
 <The numbers behind the claim — effect sizes, intervals, corrected p-values — shown with inline figures/tables. Mirrors the `evidence` frontmatter in narrative form.>
 
+<Body markdown links are relative to `findings/`: a figure is `../figures/<name>.png`, another finding is `<id>-<slug>.md`. (Frontmatter paths stay project-root-relative — see `conventions/findings.md` §2.7.)>
+
 <**Show, don't tell.** Every claim here that *can* be shown carries a figure: ask "what figure shows this?" and commission it with the claim. Embed each one inline, right where it is discussed — the reader must never have to go find it. Every figure embedded here is also listed in the `figures` frontmatter (and vice-versa). Write each in **four parts**: the claim → the figure → its caption + provenance pointer → **the reading** (how to see the claim in the picture). The reading is required; a caption is a label, not an explanation. Keep the words here, not on the canvas (`conventions/visualization.md`, *The annotation budget*).>
 
 <!-- Example (delete if the finding has no figures):
 
 <The claim, in prose — what the figure below is being shown to establish.>
 
-![<caption — what each axis/series/color encodes, units, n>](figures/<NNNN>-<name>.png)
+![<caption — what each axis/series/color encodes, units, n>](../figures/<NNNN>-<name>.png)
 
 *Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`]. Legend: `figures/<NNNN>-<name>.legend.png`.*
 
@@ -112,7 +114,7 @@ integrity_signoff: false
 <Open questions and next analyses this finding suggests.>
 
 ## Related findings
-<Narrative companion to the `relationships` edges: how this connects to other findings.>
+<Narrative companion to the `relationships` edges: how this connects to other findings. **Every edge target in `relationships` is mentioned and linked here**, and every mention of a finding anywhere in this body is a link — `[finding 0031](0031-sex-confounded-with-group.md)`, target relative to `findings/` (`conventions/findings.md` §2.7). Link text is free prose but must carry the zero-padded id.>
 
 ## References
 <Rendered from `references`. Literature with identifiers; software/tools with versions. Every entry fact-checked.>

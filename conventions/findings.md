@@ -165,6 +165,28 @@ Caveat findings use the **same schema and lifecycle** as discoveries, with three
 
 **What earns a caveat finding** (the trigger): a metadata observation becomes a finding when it would **change how a downstream result is analyzed or interpreted** — a severe group imbalance, a real confound, a notable covariate skew. A clean, balanced distribution does not need one; the full descriptive characterization lives in `state/METADATA.md` and the QC report (`conventions/statistics.md`). Record the consequential ones, not every histogram.
 
+### 2.7 Cross-references — every mention of another finding is a link
+
+A finding that names another finding **links to it**. A reader following an argument should never have to go hunt for the finding being cited, any more than they should have to hunt for a figure (§2.4).
+
+**The form.** The link target is the sibling filename `<id>-<slug>.md` — findings all live in `findings/`, so a bare filename resolves. The **link text is free prose that must contain the zero-padded id**:
+
+```markdown
+This refines [finding 0031](0031-sex-confounded-with-group.md).
+The effect survives correction, unlike [the batch caveat (0007)](0007-batch-skew.md).
+```
+
+Both are legal; the phrasing is yours, the id and the target are not. Resolve the filename from the manifest's `ID` + `Slug` columns — that is what `Slug` is for (`conventions/manifest.md`) — never by scanning the directory.
+
+**Two path conventions, deliberately different.** Frontmatter paths (`figures[]`, `provenance.script.path`) are **project-root-relative**, because scripts run from the project root. Markdown links in the **body** — both finding cross-references and inline figure images — are **relative to `findings/`**, because that is where the document lives: a figure is `../figures/<name>.png`, a sibling finding is `<id>-<slug>.md`. Getting this wrong renders a broken image or a dead link.
+
+**Where it applies:** anywhere in the body — `Summary`, `Evidence`, `Caveats`, `Discussion`, `Follow-ups`, `Related findings`. Not the frontmatter: `relationships` carries machine-readable ids, not links.
+
+**Links and edges are different things, and both matter.** `relationships` (§6) is the typed, machine-readable **graph**; body links are human **navigation**. Two rules follow:
+
+- Every `relationships` target **is** mentioned and linked in `## Related findings` — that section is the narrative companion to the edges (§9), so an edge with no narrative is an unexplained edge.
+- A body mention that is **not** in `relationships` is a **flag, not an error** — often it is a real edge nobody asserted. The findings-manager surfaces it for the scientist to type; it does not invent the edge itself.
+
 ## 3. Status — the lifecycle state machine
 
 `status` is a position in a state machine with evidentiary bars on transitions, **not** a free-text label.
@@ -273,6 +295,7 @@ Edges are **directed** and recorded in the **source** finding's frontmatter. The
 - **Reverse edges** are kept consistent: an edge A→B is queryable from B.
 - **Cascade on fall:** when a finding moves to `invalidated`/`superseded`, dependents (incoming `supports`/`refines`/`closes` edges) are detected and **flagged for re-review**.
 - **Staleness:** when a finding's `data_version` or a linked script's commit changes, the finding (and its figures) are flagged for re-verification — a `validated` finding built on a now-stale version is no longer trusted on autopilot.
+- **Link integrity:** every cross-reference link in a body resolves to an existing finding file (§2.7). Because a link embeds the **slug**, renaming a finding's file breaks every inbound link — so a rename is not complete until the inbound links are repaired, resolved from the manifest's `ID` + `Slug` columns. A link to a finding that has since been `invalidated` or `superseded` is **kept, not deleted** — the citation is part of the record — but the manager flags it so the citing finding's text can be reconciled with what the target now says.
 
 ## 8. Recording trigger policy (doc 03.9)
 
@@ -288,6 +311,8 @@ The body is the human narrative. Section order:
 
 `Summary` · `Verdict` · `Evidence` (numbers, with inline figures/tables) · `Methods / how to produce` (sufficient to regenerate; references the promoted script) · `Discussion` (meaning, why interesting) · `Caveats` (confounds, assumptions, multiplicity context) · `Follow-ups` · `Related findings` · `References`.
 
+**Every mention of another finding is a link** (§2.7) — `[finding 0031](0031-slug.md)`, target relative to `findings/`. `## Related findings` is where the `relationships` edges are narrated, and every edge target is linked there.
+
 **Figures are embedded inline, not merely referenced — and every one is explained.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). The canonical pattern is **four parts, in order**:
 
 1. **The claim**, in prose.
@@ -299,7 +324,7 @@ The body is the human narrative. Section order:
 The drug_A response is a small, coherent set of proteins rather than a global shift:
 37 of 4,812 proteins clear BH q < 0.05, and the largest effects share a direction.
 
-![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](figures/0042-volcano.png)
+![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](../figures/0042-volcano.png)
 
 *Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`). Legend: `figures/0042-volcano.legend.png`.*
 

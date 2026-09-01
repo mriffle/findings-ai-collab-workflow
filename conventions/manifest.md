@@ -42,7 +42,7 @@ Derived index of the findings graph — regenerable from the finding files (the 
 | Column | From the finding | Purpose |
 |---|---|---|
 | `ID` | `id` | Identity; filename resolution with `Slug`. |
-| `Slug` | filename | Resolve `findings/<id>-<slug>.md` without a directory scan. |
+| `Slug` | filename | Resolve `findings/<id>-<slug>.md` without a directory scan — also how the findings-manager builds and repairs **cross-reference links** between finding bodies (`conventions/findings.md` §2.7). A slug change breaks inbound links, so a rename must repair them. |
 | `Title` | `title` | Human label in listings. |
 | `Status` | `status` | Filter/queries; consistency checks. |
 | `Phase` | `phase` | Multiplicity-honest filtering (exploratory vs confirmatory). |

@@ -162,6 +162,21 @@ _FIG_EXTERNAL_IMG = (
 )
 
 
+# Fixtures for the cross-reference link backstop (invariant 5): a finding that
+# names another finding links to it (conventions/findings.md §2.7).
+_XREF_FM = '---\nid: 42\nstatus: candidate\nfigures: []\n---\n'
+_XREF_LINKED = _XREF_FM + "\n# T\n\n## Related findings\nRefines [finding 0031](0031-sex-confound.md).\n"
+_XREF_UNLINKED = _XREF_FM + "\n# T\n\n## Related findings\nThis refines finding 0031.\n"
+_XREF_BARE_NUMBERS = _XREF_FM + "\n# T\n\n## Evidence\nCollected in 2026; n=1998 precursors.\n"
+_XREF_OWN_ID = _XREF_FM + "\n# T\n\n## Summary\nThis is finding 0042, recorded today.\n"
+_XREF_ALT_TEXT = _XREF_FM + "\n# T\n\n## Caveats\nQualified by [the batch caveat (0007)](0007-batch-skew.md).\n"
+_XREF_MIXED = (
+    _XREF_FM + "\n# T\n\n## Related findings\nSee [finding 0031](0031-x.md) "
+    "and finding 0055.\n"
+)
+_XREF_WRONG_TARGET = _XREF_FM + "\n# T\n\n## Related findings\nSee [finding 0031](0099-other.md).\n"
+
+
 def test_findings() -> None:
     print("guard_findings.py")
     open_proj = init_project(gate_passed=False)
@@ -231,6 +246,24 @@ def test_findings() -> None:
                      "![PCA](figures/0042-pca.png)\n"), 0)
     check("unlisted-figure block still fires after the gate passes",
           _find(passed_proj, "findings/0042-v.md", _FIG_UNLISTED), 2, "but not listed")
+
+    # Cross-reference link backstop (invariant 5).
+    check("linked finding mention allowed",
+          _find(open_proj, "findings/0042-v.md", _XREF_LINKED), 0)
+    check("unlinked finding mention blocked",
+          _find(open_proj, "findings/0042-v.md", _XREF_UNLINKED), 2, "must be a link")
+    check("bare 4-digit numbers (year, n) are not citations",
+          _find(open_proj, "findings/0042-v.md", _XREF_BARE_NUMBERS), 0)
+    check("a finding may name its own id unlinked",
+          _find(open_proj, "findings/0042-v.md", _XREF_OWN_ID), 0)
+    check("link text without the word 'finding' still counts",
+          _find(open_proj, "findings/0042-v.md", _XREF_ALT_TEXT), 0)
+    check("one linked, one unlinked -> blocks on the unlinked",
+          _find(open_proj, "findings/0042-v.md", _XREF_MIXED), 2, "0055")
+    check("link pointing at the wrong finding file blocked",
+          _find(open_proj, "findings/0042-v.md", _XREF_WRONG_TARGET), 2, "must be a link")
+    check("Edit fragment with an unlinked mention fails open",
+          _find_edit(open_proj, "findings/0042-v.md", "This refines finding 0031.\n"), 0)
 
 
 # --------------------------------------------------------------------------- #

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Findings Workflow hook — integrity-gate + promoted-script + figure-embed guard.
 
-Spec: docs 02.3, 03, 05, 06. Enforces four invariants when a finding file
+Spec: docs 02.3, 03, 05, 06. Enforces five invariants when a finding file
 (``findings/NNNN-*.md``) is written or edited:
   1. A finding may not claim ``integrity_signoff: true`` or ``status: validated``
      before the integrity gate has passed
@@ -20,6 +20,13 @@ Spec: docs 02.3, 03, 05, 06. Enforces four invariants when a finding file
      conventions/findings.md §2.4). Legend images (``<base>.legend.png``) are
      exempt — they are a figure's key, carried by its entry's ``legend_png``.
      Same fail-open scope as invariant 3.
+
+  5. Every mention of another finding in the body is a **link**: a ``finding NNNN``
+     reference must sit inside a markdown link (conventions/findings.md §2.7), so
+     a reader never has to hunt for a cited finding. Deliberately narrow — only a
+     4-digit id directly preceded by the word ``finding``/``findings`` counts, so
+     a bare number (a year, an n) can never trigger it. A finding's own id is
+     exempt (a document may name itself). Same fail-open scope as 3 and 4.
 
 Neither figure check can judge whether a *showable claim* was left unillustrated,
 or whether an embedded figure was actually explained in the prose — those are the
@@ -66,6 +73,16 @@ _FIGURE_PNG = re.compile(r'(?<!\w)png:[ \t]*["\']?(figures/[^"\'\s,}\]]+\.png)')
 # Inline image targets in the body: markdown `![alt](target)` and HTML `<img src=…>`.
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 _HTML_IMG = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+
+# Cross-reference check (invariant 5). A mention is the word finding/findings
+# followed by a 4-digit id — narrow on purpose, so a bare 4-digit number (a year,
+# an n, a count) is never mistaken for a citation.
+_FINDING_MENTION = re.compile(r"\bfindings?\s+#?([0-9]{4})\b", re.IGNORECASE)
+# Markdown links in the body: `[text](target)`. A mention counts as linked when it
+# falls inside the *text* of a link whose target names that id's file.
+_MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
+# The finding's own id, so a document may name itself without linking.
+_OWN_ID = re.compile(r"^[ \t]*id:[ \t]*[\"\']?([0-9]+)", _M)
 
 
 def _split_frontmatter(content: str) -> tuple[str | None, str]:
@@ -147,6 +164,46 @@ def unlisted_figures(content: str) -> list[str]:
     return unlisted
 
 
+def unlinked_mentions(content: str) -> list[str]:
+    """Ids mentioned as ``finding NNNN`` in the body but not linked to that finding.
+
+    A finding that names another finding links to it, so a reader never has to hunt
+    for the one being cited (conventions/findings.md §2.7). A mention counts as
+    linked when it sits inside the text of a markdown link whose target names the
+    same id (``[finding 0031](0031-sex-confounded-with-group.md)``).
+
+    Empty (no violation) unless ``content`` is a complete finding document with a
+    non-empty body. The document's **own** id is exempt — a finding may name itself.
+    The pattern requires the literal word ``finding``/``findings`` before the id, so a
+    bare 4-digit number (a year, a sample count) never trips it.
+    """
+    frontmatter, body = _split_frontmatter(content)
+    if frontmatter is None or not body.strip():
+        return []
+
+    own = _OWN_ID.search(frontmatter)
+    own_id = f"{int(own.group(1)):04d}" if own else None
+
+    # Ids that appear inside the text of a link pointing at that id's file.
+    linked: set[str] = set()
+    for text, target in _MD_LINK.findall(body):
+        base = target.replace("\\", "/").rsplit("/", 1)[-1]
+        for mention in _FINDING_MENTION.findall(text):
+            if base.startswith(mention):
+                linked.add(mention)
+        # `[the batch caveat (0007)](0007-batch-skew.md)` — the link text may carry
+        # the bare id without the word, so credit the target's own id too.
+        if len(base) >= 4 and base[:4].isdigit() and base[:4] in text.replace(",", " "):
+            linked.add(base[:4])
+
+    missing: list[str] = []
+    for mention in _FINDING_MENTION.findall(body):
+        if mention == own_id or mention in linked or mention in missing:
+            continue
+        missing.append(mention)
+    return missing
+
+
 def gate_passed(cwd: str) -> bool:
     """Whether the integrity gate has passed per state/workflow.json.
 
@@ -226,6 +283,17 @@ def main() -> None:
             "listed: " + ", ".join(unlisted) + ". Add a `figures` entry for each "
             "(png/svg/legend_png + caption + script/data_version/result_id), or "
             "remove the image."
+        )
+
+    unlinked = unlinked_mentions(content)
+    if unlinked:
+        block(
+            "Blocked: every mention of another finding must be a link, so a reader "
+            "never has to hunt for the finding being cited "
+            "(conventions/findings.md §2.7). Mentioned but not linked: "
+            + ", ".join(f"finding {m}" for m in unlinked)
+            + ". Link each as [finding <NNNN>](<NNNN>-<slug>.md) — the target is the "
+            "sibling filename, resolved from the manifest's ID + Slug columns."
         )
 
 
