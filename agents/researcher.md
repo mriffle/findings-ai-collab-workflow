@@ -7,6 +7,7 @@ description: >-
   scoped topic. Context-isolated so research detail never fills analytic agents'
   context.
 tools: Read, Write, WebFetch, WebSearch, Bash, Glob, Grep
+model: sonnet
 color: cyan
 ---
 

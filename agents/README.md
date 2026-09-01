@@ -8,18 +8,20 @@ Context isolation is the point: research, code, statistics, and figure work happ
 
 Roster (doc 04.2):
 
-| Agent | Built | Role |
-|---|---|---|
-| `findings-manager` | ✅ | Owns the findings graph + manifest. |
-| `verifier` | ✅ | Blind, history-starved independent validation. |
-| `coder` | ✅ | Write Python scripts/loaders (→ scratch). |
-| `code-reviewer` | ✅ | Run tests/types/lint + data-handling review; gates promotion. |
-| `statistician` | ✅ | Perform analysis via `lib/`, obey stats conventions. |
-| `stats-reviewer` | ✅ | Check analysis against statistical conventions. |
-| `figure-generator` | ✅ | Render publication figures (dual export + legend). |
-| `figure-reviewer` | ✅ | Review the rendered PNG for accuracy/standards. |
-| `researcher` | ✅ | Research one bounded topic → research-finding. |
-| `librarian` | ✅ | Control the research corpus; scope/dispatch research. |
-| `research-reviewer` | ✅ | Fact-check research; verify every reference. |
-| `writer` | ✅ | Draft a report section by projecting selected findings. |
-| `report-reviewer` | ✅ | Claim-source check + status/caveat propagation + coherence pass. |
+| Agent | Built | Model | Role |
+|---|---|---|---|
+| `findings-manager` | ✅ | default | Owns the findings graph + manifest. |
+| `verifier` | ✅ | default | Blind, history-starved independent validation. |
+| `coder` | ✅ | **sonnet** | Write Python scripts/loaders (→ scratch). |
+| `code-reviewer` | ✅ | default | Run tests/types/lint + data-handling review; gates promotion. |
+| `statistician` | ✅ | default | Perform analysis via `lib/`, obey stats conventions. |
+| `stats-reviewer` | ✅ | default | Check analysis against statistical conventions. |
+| `figure-generator` | ✅ | default | Render publication figures (dual export + legend). |
+| `figure-reviewer` | ✅ | default | Review the rendered PNG for accuracy/standards. |
+| `researcher` | ✅ | **sonnet** | Research one bounded topic → research-finding. |
+| `librarian` | ✅ | default | Control the research corpus; scope/dispatch research. |
+| `research-reviewer` | ✅ | default | Fact-check research; verify every reference. |
+| `writer` | ✅ | default | Draft a report section by projecting selected findings. |
+| `report-reviewer` | ✅ | default | Claim-source check + status/caveat propagation + coherence pass. |
+
+**Model column.** `default` = no `model` in the frontmatter, so Claude Code resolves it through its own order (per-invocation parameter → the `CLAUDE_CODE_SUBAGENT_MODEL` env var → the main conversation's model). A **pinned** agent names an alias (`model: sonnet`). The pattern: pin the **generator** of a generator/reviewer pair, leave the **reviewer** on the default — the reviewer is the gate, and the gates are where the engine spends its capability budget.
