@@ -114,19 +114,38 @@ A rule of thumb by plan: on **Pro (~200k context)**, consider restarting after *
 
 ## Updating the plugin
 
-To pull a newer version:
+> **Re-installing does *not* upgrade it.** If you run `/plugin install findings-workflow@findings-workflow` again, Claude Code just answers *"already installed — use `/plugin` to manage existing plugins"* and pulls nothing. There is also no `/plugin update` slash command. Use one of the two routes below instead.
 
-```text
-# 1. Refresh the marketplace catalog so Claude Code sees the latest version
-/plugin marketplace update findings-workflow
+### Option 1 — Update from inside Claude Code
 
-# 2. Re-install to upgrade
-/plugin install findings-workflow@findings-workflow
+1. Run `/plugin`
+2. Go to the **Installed** tab
+3. Select **findings-workflow** and press **Enter**
+4. Choose **Update now**
 
-# 3. Restart Claude Code so the update takes effect
+### Option 2 — Update from your shell
+
+This one is a **shell command**, typed in a terminal — not a slash command:
+
+```bash
+claude plugin update findings-workflow@findings-workflow
 ```
 
-The `marketplace update` step comes first — without it, the install may not see a newly published version, because the local catalog is cached. As with a fresh install, **restart Claude Code** afterward so the updated commands load. You can also manage updates interactively through the `/plugin` menu (**Marketplaces** → select → **Update**).
+It refreshes this repository's marketplace catalog for you first, so no separate `/plugin marketplace update` step is needed. If you're already current it tells you so: `findings-workflow is already at the latest version (0.2.0)`.
+
+**If you installed at *local* or *project* scope**, note that this command targets your **user**-scope install by default. Pass the scope explicitly and run it from the project directory you installed into:
+
+```bash
+claude plugin update findings-workflow@findings-workflow --scope local
+```
+
+(`claude plugin list` shows every install and its scope — handy if you're not sure which one you have.)
+
+### ⚠️ Update between studies, not in the middle of one
+
+Updating swaps out the engine your project is running on, so do it at a natural boundary — before you start a study, or between stages — rather than partway through an analysis. Claude Code leaves this to you: auto-update is **off by default** for marketplaces like this one, and we recommend leaving it off for exactly this reason.
+
+After updating, **quit and relaunch Claude Code** — the running session keeps using the version it loaded at launch. (`/reload-plugins` often applies it without a restart, but if anything looks stale, a full restart always fixes it.)
 
 ---
 
