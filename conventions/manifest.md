@@ -23,7 +23,7 @@ A YAML frontmatter block for the manifest's own metadata, then one Markdown tabl
 schema_version: 1
 generated: 2026-06-22      # date last regenerated (YYYY-MM-DD)
 next_id: 43                # next finding id to assign (monotonic; see IDs)
-engine_version: 0.1.0      # plugin version that last wrote it
+engine_version: 0.2.0      # plugin version that last wrote it
 ---
 
 # Findings manifest

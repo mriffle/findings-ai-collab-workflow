@@ -10,7 +10,7 @@
       "name": "findings-workflow",
       "source": "./",
       "description": "Collaborative, provenance-tracked scientific data analysis: scientist + Claude Code build an independently validated findings graph.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }

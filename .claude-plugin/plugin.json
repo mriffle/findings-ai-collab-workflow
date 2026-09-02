@@ -1,6 +1,6 @@
 {
   "name": "findings-workflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A collaborative, provenance-tracked workflow for AI-assisted scientific data analysis. A scientist and Claude Code turn exploratory analysis into a curated, independently validated findings graph instead of a disposable chat transcript.",
   "author": {
     "name": "Michael Riffle",

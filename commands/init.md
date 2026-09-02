@@ -31,7 +31,7 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
    schema_version: 1
    generated: <today's date, YYYY-MM-DD>
    next_id: 1
-   engine_version: 0.1.0
+   engine_version: <the plugin's own version, read from the plugin's `.claude-plugin/plugin.json`>
    ---
 
    # Findings manifest
