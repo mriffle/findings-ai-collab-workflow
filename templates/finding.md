@@ -48,9 +48,10 @@ evidence:
 # Regenerable figure artifacts (dual export + separate legend image, per doc 06).
 # SHOW, DON'T TELL: every claim this finding makes about the data that CAN be shown gets a
 # figure — commissioned with the claim, not gathered afterwards. List every such figure here
-# AND embed it inline in the body AND explain it in the prose (see ## Evidence). Each entry
-# carries its OWN producing script + input (per-figure provenance) so that figure is
-# regenerable on its own.
+# AND embed it inline in the body — WITH its legend image directly beneath it — AND explain
+# it in the prose (see ## Evidence). Each entry carries its OWN producing script + input
+# (per-figure provenance) so that figure is regenerable on its own. legend_png/legend_svg
+# are present whenever the figure has a legend image; omit them when its key is on-axes.
 figures: []
   # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg",
   #     legend_png: "figures/<NNNN>-<name>.legend.png", legend_svg: "figures/<NNNN>-<name>.legend.svg",
@@ -87,7 +88,7 @@ integrity_signoff: false
 
 <Body markdown links are relative to `findings/`: a figure is `../figures/<name>.png`, another finding is `<id>-<slug>.md`. (Frontmatter paths stay project-root-relative — see `conventions/findings.md` §2.7.)>
 
-<**Show, don't tell.** Every claim here that *can* be shown carries a figure: ask "what figure shows this?" and commission it with the claim. Embed each one inline, right where it is discussed — the reader must never have to go find it. Every figure embedded here is also listed in the `figures` frontmatter (and vice-versa). Write each in **four parts**: the claim → the figure → its caption + provenance pointer → **the reading** (how to see the claim in the picture). The reading is required; a caption is a label, not an explanation. Keep the words here, not on the canvas (`conventions/visualization.md`, *The annotation budget*).>
+<**Show, don't tell.** Every claim here that *can* be shown carries a figure: ask "what figure shows this?" and commission it with the claim. Embed each one inline, right where it is discussed — the reader must never have to go find it — and embed its **legend image directly beneath it** whenever the figure has one (a legend is essential to reading the figure; never cite it as a path). Every figure and legend embedded here is also listed in the `figures` frontmatter (and vice-versa). Write each in **five parts**: the claim → the figure → its legend → its caption + provenance pointer → **the reading** (how to see the claim in the picture). The reading is required; a caption is a label, not an explanation. Keep the words here, not on the canvas (`conventions/visualization.md`, *The annotation budget*).>
 
 <!-- Example (delete if the finding has no figures):
 
@@ -95,7 +96,9 @@ integrity_signoff: false
 
 ![<caption — what each axis/series/color encodes, units, n>](../figures/<NNNN>-<name>.png)
 
-*Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`]. Legend: `figures/<NNNN>-<name>.legend.png`.*
+![Legend for Figure 1 — <what the key encodes>](../figures/<NNNN>-<name>.legend.png)
+
+*Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`].*
 
 <The reading — one or two sentences: what is plotted, where to look, and what that establishes for the claim.>
 -->

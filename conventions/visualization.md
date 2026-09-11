@@ -24,11 +24,13 @@ Every visualization is saved in **both**:
 - **SVG** — vector master, for editing and publication.
 - **PNG at 300 DPI** — raster, the review and embedding target.
 
-Both go to `figures/`. In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend image.
+Both go to `figures/`. In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend image, and the finding embeds the legend image directly beneath the figure (`conventions/findings.md` §9).
 
 ## Legends as separate images
 
 Render the **legend as its own image** (`figures/<name>.legend.svg` + `figures/<name>.legend.png`) alongside the figure rather than baking it into the plot. A legend drawn inside the axes routinely overlaps the data; rendering it as a standalone swatch key (categorical) or colorbar (continuous) keeps the figure clean and lets publication workflows place the legend separately. The figure's free-text caption lives in the finding's `figures[].caption`, so the legend artifact is purely the visual key. (`lib/figures/figure_io.save_figure` dual-exports a companion legend figure to `<name>.legend.{svg,png}`; `lib/figures/pca.save_pca` builds the swatch/colorbar legend.)
+
+**Separate is not optional-to-show.** A legend is essential to interpreting its figure, so wherever the figure is embedded — in a finding's body, in a report — its legend image is **embedded directly beneath it**, never cited as a path the reader must open (`conventions/findings.md` §2.4, §9). The separation is about *where the pixels are rendered*, not about whether the reader sees them. A figure that has no legend image (the on-axes exceptions below) lists no `legend_png` and embeds none.
 
 **Exception — a keyed legend that provably clears the data.** A few figures keep their legend *on-axes* where it cannot overlap the plot: the ROC curve's chance / mean / ±SD key in the empty lower-right corner (`lib/figures/classification.plot_roc`), the regression scatter's `y = x` / fit key in the upper-left (`lib/figures/regression.plot_predicted_vs_observed`), the Boruta importance plot's shadow-line / rejected key in its lower-right (`lib/figures/boruta_importance`), and value-scale colorbars placed beside the axes (the `sample-correlation` r-colorbar; the coefficient plots' selection-frequency bar; the Boruta plot's median-importance bar). These are the documented exceptions — the reviewer treats them as conforming, precisely because the key doesn't collide with the data the way an in-axes categorical legend would.
 
@@ -147,7 +149,8 @@ Every figure records — and the finding that uses it pins — the producing **s
 | Each embedded figure is explained in the prose (the reading: what is plotted, where to look, what it establishes) | **findings-manager** + **Report-reviewer** |
 | Annotation budget respected — no explanatory prose, duplicated caption, or baked-in legend on the canvas | **Figure-reviewer** |
 | Render reviewed (PNG), not just code | **Figure-reviewer** |
-| Dual export (SVG + 300 DPI PNG) + separate legend image present | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
+| Dual export (SVG + 300 DPI PNG) + separate legend image present, and the legend image itself reviewed as a render (complete key, colors match the plot, legible) | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
+| Wherever a figure is embedded, its legend image is embedded directly beneath it (a figure with an on-axes key lists and embeds none) | **findings-manager** + **Hook** (`guard_findings.py`: a listed `legend_png` must be embedded, an embedded `*.legend.png` must be listed) + **Report-reviewer** |
 | Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `okabe-ito-colors` reads/extends `state/color_registry.json`) |
 | ≤8 categorical colors; explicit strategy beyond | **Figure-reviewer** (+ `okabe-ito-colors` raises `CategoricalPaletteExceededError` past 8) |
 | Control samples rendered separately from experimental in QC/descriptive figures (exceptions: the `sample-correlation` heatmap, the `id-depth` bar chart, the `missingness` completeness curve, the `dynamic-range` per-class overlay, and the `pca-plot` sample-class coloring, which label them — a stripe / bar / curve / point color) | **Figure-reviewer** |

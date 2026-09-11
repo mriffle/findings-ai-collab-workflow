@@ -110,6 +110,7 @@ The "no bare p / effect + CI" rule (§2.3) governs *significance* tests; this se
 
 1. **Coverage — every claim that can be shown, is shown.** For each claim the finding makes about *this dataset* (in `Summary`, `Verdict`, `Evidence`, or `Caveats`), ask **“what figure shows this?”** If a figure can be made, it **is** made — commissioned from the figure-generator as part of recording the finding, not deferred. A claim is not illustrated by a figure of something adjacent: the figure must show *that claim*. (Interpretive/background claims in `Discussion` are exempt — they rest on `references` (§2.5), not on a plot of this data.)
 2. **Embedding — every figure the finding has is (a) listed in this `figures` block and (b) embedded inline in the body** (§9) as a markdown image, right where it is discussed. If a relevant figure exists but is not embedded, the finding is **incomplete**.
+3. **The legend travels with the figure.** A legend is essential to reading a figure, and it is a separate image (doc 06.3) — so wherever a figure that *has* a legend image is embedded, its legend image is **embedded directly beneath it**, never cited as a path the reader must open. A figure whose key sits on-axes by documented exception (`conventions/visualization.md`, *Legends as separate images*) has no legend image and simply lists no `legend_png`/`legend_svg`.
 
 **Every embedded figure is also explained in the prose** (§9) — a caption is a label, not an explanation.
 
@@ -121,7 +122,7 @@ Each entry carries the figure's artifacts, its caption, **and its own producing 
 figures:
   - png:        "figures/0042-volcano.png"        # 300 DPI raster; review + embed target
     svg:        "figures/0042-volcano.svg"        # vector master
-    legend_png: "figures/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3)
+    legend_png: "figures/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3); embedded beneath the figure. Omit when the key is on-axes
     legend_svg: "figures/0042-volcano.legend.svg" # legend vector master
     caption:    "Volcano plot of drug_A vs control."  # free-text caption
     # Per-figure provenance — the script + input that produced THIS figure.
@@ -131,12 +132,12 @@ figures:
     params:       {}                               # optional: figure params that change the render
 ```
 
-- **`png`/`svg`** — the dual-exported figure (doc 06); `legend_png`/`legend_svg` — the separate legend image (doc 06.3). The `png` is the inline-embed target.
+- **`png`/`svg`** — the dual-exported figure (doc 06); `legend_png`/`legend_svg` — the separate legend image (doc 06.3), **conditional**: present whenever the figure has a legend image, absent when its key is on-axes. The `png` and the `legend_png` are both inline-embed targets — the legend is shown beneath its figure.
 - **`caption`** — the free-text caption (what each axis/series/color encodes, units, n) shown with the inline image.
 - **`script`** — the **producing figure script** (path + commit). This is per-figure and may differ from the finding-level `provenance.script` (which pins the analysis that produced the *numbers*): the figure script is what re-renders the image. Follows the same promoted-script rule at `validated` (a validated finding's figures are re-rendered from `scripts/promoted/`).
 - **`data_version`** — the pinned data the figure was rendered from; **`result_id`** — set when the figure was rendered from a cached result (`conventions/results-cache.md`), so the figure re-renders from the exact cached result rather than a recompute; **`params`** — optional render params.
 
-Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`), and `guard_findings.py` enforces the correspondence **in both directions**: a listed figure must be embedded, and an embedded figure under `figures/` must be listed so it carries its provenance.
+Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`), and `guard_findings.py` enforces the correspondence **in both directions**: a listed figure must be embedded, and an embedded figure under `figures/` must be listed so it carries its provenance. It enforces the same pair for legends: a listed `legend_png` must be embedded, and an embedded `*.legend.png` must be some entry's `legend_png`.
 
 ### 2.5 `references`
 
@@ -313,12 +314,13 @@ The body is the human narrative. Section order:
 
 **Every mention of another finding is a link** (§2.7) — `[finding 0031](0031-slug.md)`, target relative to `findings/`. `## Related findings` is where the `relationships` edges are narrated, and every edge target is linked there.
 
-**Figures are embedded inline, not merely referenced — and every one is explained.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). The canonical pattern is **four parts, in order**:
+**Figures are embedded inline, not merely referenced — with their legends, and every one is explained.** Every figure listed in the `figures` frontmatter (§2.4) is shown as a markdown image in the body — normally in `Evidence`, next to the numbers it illustrates (a QC/design caveat figure may instead sit in `Caveats`). The canonical pattern is **five parts, in order**:
 
 1. **The claim**, in prose.
 2. **The figure**, as a markdown image.
-3. **The caption + a one-line provenance pointer** — the producing script + input, so the image is regenerable on its own.
-4. **The reading** — one or two sentences telling the reader *how to see the claim in the picture*: what is plotted, where to look, and what that establishes. **This is required.** A reader who looked only at the figures and their readings should come away with the finding's argument.
+3. **The legend**, as a markdown image directly beneath the figure — whenever the figure has a legend image (§2.4). The key sits where the eye needs it, so the reading can name what it encodes ("the orange points") without restating the key. A figure with an on-axes key has no legend image and skips this part.
+4. **The caption + a one-line provenance pointer** — the producing script + input, so the image is regenerable on its own.
+5. **The reading** — one or two sentences telling the reader *how to see the claim in the picture*: what is plotted, where to look, and what that establishes. **This is required.** A reader who looked only at the figures and their readings should come away with the finding's argument.
 
 ```markdown
 The drug_A response is a small, coherent set of proteins rather than a global shift:
@@ -326,7 +328,9 @@ The drug_A response is a small, coherent set of proteins rather than a global sh
 
 ![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](../figures/0042-volcano.png)
 
-*Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`). Legend: `figures/0042-volcano.legend.png`.*
+![Legend for Figure 1 — significance classes: up / down / not significant.](../figures/0042-volcano.legend.png)
+
+*Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`).*
 
 Each point is one protein, positioned by log2 fold change (x) against BH-corrected
 significance (y). The colored significant points sit almost entirely right of zero — a
@@ -334,4 +338,4 @@ coordinated up-regulation, not a symmetric scatter — while the bulk of the pro
 in the gray cloud at the center, which is what rules out a global abundance shift.
 ```
 
-The reader must never have to leave the finding to see a figure that exists, and never has to work out unaided what a figure is telling them. **The words live in the text, not on the canvas** — a figure carries only the annotation needed to read it (`conventions/visualization.md`, *The annotation budget*).
+The reader must never have to leave the finding to see a figure — or its legend — that exists, and never has to work out unaided what a figure is telling them. **The words live in the text, not on the canvas** — a figure carries only the annotation needed to read it (`conventions/visualization.md`, *The annotation budget*).

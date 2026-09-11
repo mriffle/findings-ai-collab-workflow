@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Findings Workflow hook — integrity-gate + promoted-script + figure-embed guard.
 
-Spec: docs 02.3, 03, 05, 06. Enforces five invariants when a finding file
+Spec: docs 02.3, 03, 05, 06. Enforces six invariants when a finding file
 (``findings/NNNN-*.md``) is written or edited:
   1. A finding may not claim ``integrity_signoff: true`` or ``status: validated``
      before the integrity gate has passed
@@ -18,8 +18,9 @@ Spec: docs 02.3, 03, 05, 06. Enforces five invariants when a finding file
      listed in the ``figures`` frontmatter, so a figure the finding *shows*
      always carries its own producing script + input (per-figure provenance;
      conventions/findings.md §2.4). Legend images (``<base>.legend.png``) are
-     exempt — they are a figure's key, carried by its entry's ``legend_png``.
-     Same fail-open scope as invariant 3.
+     handled by invariant 6, not here — they are a figure's key, carried by its
+     entry's ``legend_png``, not figures in their own right. Same fail-open
+     scope as invariant 3.
 
   5. Every mention of another finding in the body is a **link**: a ``finding NNNN``
      reference must sit inside a markdown link (conventions/findings.md §2.7), so
@@ -27,6 +28,15 @@ Spec: docs 02.3, 03, 05, 06. Enforces five invariants when a finding file
      4-digit id directly preceded by the word ``finding``/``findings`` counts, so
      a bare number (a year, an n) can never trigger it. A finding's own id is
      exempt (a document may name itself). Same fail-open scope as 3 and 4.
+
+  6. The legend travels with its figure, both ways: every ``legend_png`` listed in
+     the ``figures`` frontmatter must be embedded as an inline image in the body
+     (a legend is essential to reading the figure, so the reader must never have
+     to open it separately — conventions/findings.md §2.4, §9), and every inline
+     ``*.legend.png`` under ``figures/`` must be some entry's ``legend_png`` (so a
+     shown key belongs to a figure that carries provenance). A figure with no
+     legend image (its key sits on-axes by documented exception) simply lists no
+     ``legend_png``. Same fail-open scope as 3 and 4.
 
 Neither figure check can judge whether a *showable claim* was left unillustrated,
 or whether an embedded figure was actually explained in the prose — those are the
@@ -70,6 +80,9 @@ _SCRATCH_INLINE = re.compile(r"script:[ \t]*\{[^}]*scripts/scratch/")
 _OPEN_FM = re.compile(r"^\s*---[ \t]*\n")
 _CLOSE_FM = re.compile(r"\n---[ \t]*(?:\n|$)")
 _FIGURE_PNG = re.compile(r'(?<!\w)png:[ \t]*["\']?(figures/[^"\'\s,}\]]+\.png)')
+# A figure's legend image listed in the frontmatter (invariant 6): the key that
+# must be embedded beside its figure.
+_LEGEND_PNG = re.compile(r'(?<!\w)legend_png:[ \t]*["\']?(figures/[^"\'\s,}\]]+\.png)')
 # Inline image targets in the body: markdown `![alt](target)` and HTML `<img src=…>`.
 _MD_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 _HTML_IMG = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
@@ -143,9 +156,10 @@ def unlisted_figures(content: str) -> list[str]:
     (conventions/findings.md §2.4).
 
     Empty (no violation) unless ``content`` is a complete finding document with a
-    non-empty body. Legend images (``<base>.legend.png``) are excluded: they are a
-    figure's key, carried by its entry's ``legend_png``, not figures in their own
-    right. Matching is basename-lenient, mirroring ``unembedded_figures``.
+    non-empty body. Legend images (``<base>.legend.png``) are excluded here: they
+    are a figure's key, carried by its entry's ``legend_png``, and are checked by
+    ``unlisted_legends``. Matching is basename-lenient, mirroring
+    ``unembedded_figures``.
     """
     frontmatter, body = _split_frontmatter(content)
     if frontmatter is None or not body.strip():
@@ -158,6 +172,54 @@ def unlisted_figures(content: str) -> list[str]:
             continue
         base = norm.rsplit("/", 1)[-1]
         if ".legend." in base:
+            continue
+        if base not in listed_bases and target not in unlisted:
+            unlisted.append(target)
+    return unlisted
+
+
+def unembedded_legends(content: str) -> list[str]:
+    """Legend images listed as ``legend_png`` in the ``figures`` frontmatter that
+    are *not* embedded as an inline image in the body (invariant 6).
+
+    A legend is essential to reading its figure, so it is shown beside the figure
+    rather than cited as a path (conventions/findings.md §2.4, §9). Same
+    fail-open scope and basename-lenient matching as ``unembedded_figures``.
+    """
+    frontmatter, body = _split_frontmatter(content)
+    if frontmatter is None or not body.strip():
+        return []
+    listed = _LEGEND_PNG.findall(frontmatter)
+    if not listed:
+        return []
+    targets = _image_targets(body)
+    missing = []
+    for png in listed:
+        base = png.rsplit("/", 1)[-1]
+        if not any(png in t or base in t for t in targets):
+            missing.append(png)
+    return missing
+
+
+def unlisted_legends(content: str) -> list[str]:
+    """Inline ``*.legend.png`` images under ``figures/`` that no ``figures`` entry
+    lists as its ``legend_png`` (invariant 6, converse direction).
+
+    A shown key must belong to a listed figure, so it rides with that figure's
+    provenance. Same fail-open scope and basename-lenient matching as
+    ``unlisted_figures``.
+    """
+    frontmatter, body = _split_frontmatter(content)
+    if frontmatter is None or not body.strip():
+        return []
+    listed_bases = {p.rsplit("/", 1)[-1] for p in _LEGEND_PNG.findall(frontmatter)}
+    unlisted = []
+    for target in _image_targets(body):
+        norm = target.replace("\\", "/")
+        if "figures/" not in norm:
+            continue
+        base = norm.rsplit("/", 1)[-1]
+        if ".legend." not in base:
             continue
         if base not in listed_bases and target not in unlisted:
             unlisted.append(target)
@@ -283,6 +345,31 @@ def main() -> None:
             "listed: " + ", ".join(unlisted) + ". Add a `figures` entry for each "
             "(png/svg/legend_png + caption + script/data_version/result_id), or "
             "remove the image."
+        )
+
+    missing_legends = unembedded_legends(content)
+    if missing_legends:
+        block(
+            "Blocked: a finding must embed each figure's legend image inline beside "
+            "the figure — a legend is essential to reading it, so the reader never "
+            "opens it separately (conventions/findings.md §2.4, §9). Listed as "
+            "`legend_png` but not shown as an inline image in the body: "
+            + ", ".join(missing_legends)
+            + ". Add ![Legend for Figure N](<legend png>) directly under the figure "
+            "image, or drop `legend_png` from the entry if the figure has no legend "
+            "image (its key is on-axes)."
+        )
+
+    unlisted_legends_ = unlisted_legends(content)
+    if unlisted_legends_:
+        block(
+            "Blocked: a legend image a finding shows must be listed as the "
+            "`legend_png` of a `figures` entry, so the key belongs to a figure that "
+            "carries its own producing script + input (conventions/findings.md "
+            "§2.4). Embedded inline in the body but listed by no entry: "
+            + ", ".join(unlisted_legends_)
+            + ". Add `legend_png`/`legend_svg` to that figure's entry, or remove the "
+            "image."
         )
 
     unlinked = unlinked_mentions(content)

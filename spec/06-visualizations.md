@@ -31,7 +31,9 @@ Both are written to `figures/`. The PNG is the review and embedding target; the 
 
 ## 6.3 Legends
 
-Render **legends as separate documents** alongside each figure, rather than only baking them into the image. This keeps figures clean, supports publication workflows where legends are typeset separately, and makes the figure's encoding explicit and reviewable.
+Render **legends as separate images** alongside each figure (`<name>.legend.{svg,png}`), rather than baking them into the plot, where they routinely overlap the data. This keeps figures clean, supports publication workflows where legends are placed separately, and makes the figure's encoding explicit and reviewable. *(As implemented, by user decision: the legend is an image, not a `.legend.md` document — the free-text caption lives in the finding's `figures[].caption`.)*
+
+**Separate does not mean optional.** A legend is essential to interpreting its figure, so wherever a figure is embedded — a finding's body, a report — its legend image is **embedded directly beneath it** (doc 03, the show-don't-tell pattern), never cited as a path the reader must open. A few figures keep a small key on-axes where it provably clears the data (`conventions/visualization.md` lists the exceptions); those have no legend image and embed none.
 
 ## 6.4 Publication-ready defaults
 

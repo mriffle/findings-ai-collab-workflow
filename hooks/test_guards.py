@@ -122,15 +122,22 @@ def _find_edit(proj: str, fp: str, new_string: str) -> tuple[int, str]:
         "tool_input": {"file_path": fp, "new_string": new_string}})
 
 
-# Whole-finding fixtures for the figure-embed backstop.
+# Whole-finding fixtures for the figure-embed backstop. `_FIG_FM` lists a figure
+# with no legend image (its key on-axes); `_FIG_FM_LEG` lists one WITH a legend
+# image, which invariant 6 then requires beside the figure.
 _FIG_FM = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/0042-volcano.png", svg: "figures/0042-volcano.svg",'
+    ' caption: "V" }\n---\n'
+)
+_FIG_FM_LEG = (
     '---\nid: 42\nstatus: candidate\nfigures:\n'
     '  - { png: "figures/0042-volcano.png", svg: "figures/0042-volcano.svg",'
     ' legend_png: "figures/0042-volcano.legend.png", caption: "V" }\n---\n'
 )
 _FIG_EMBEDDED = _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
 _FIG_MISSING = _FIG_FM + "\n# T\n\n## Evidence\nNumbers, but no figure image.\n"
-_FIG_LEGEND_ONLY = _FIG_FM + "\n# T\n\n## Evidence\n![key](figures/0042-volcano.legend.png)\n"
+_FIG_LEGEND_ONLY = _FIG_FM_LEG + "\n# T\n\n## Evidence\n![key](figures/0042-volcano.legend.png)\n"
 _FIG_RELPATH = _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](./figures/0042-volcano.png)\n"
 _FIG_EMPTY_LIST = "---\nid: 42\nstatus: candidate\nfigures: []\n---\n\n# T\n\n## Evidence\nNo figures.\n"
 _FIG_FM_ONLY = _FIG_FM  # frontmatter, empty body → fail open (write in progress)
@@ -153,6 +160,24 @@ _FIG_WITH_LEGEND = (
     _FIG_FM + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
     "![key](figures/0042-volcano.legend.png)\n"
 )
+
+# Fixtures for the legend-travels-with-its-figure backstop (invariant 6): a
+# listed `legend_png` is embedded beside its figure, and an embedded legend is
+# listed by some entry.
+_LEG_BOTH = (
+    _FIG_FM_LEG + "\n# T\n\n## Evidence\n![Volcano](../figures/0042-volcano.png)\n"
+    "![Legend for Figure 1](../figures/0042-volcano.legend.png)\n"
+)
+_LEG_MISSING = _FIG_FM_LEG + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+_LEG_RELPATH = (
+    _FIG_FM_LEG + "\n# T\n\n## Evidence\n![Volcano](./figures/0042-volcano.png)\n"
+    "![key](./figures/0042-volcano.legend.png)\n"
+)
+_LEG_HTML = (
+    _FIG_FM_LEG + "\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png)\n"
+    '<img src="figures/0042-volcano.legend.png" alt="key">\n'
+)
+_LEG_FM_ONLY = _FIG_FM_LEG  # frontmatter, empty body → fail open
 _FIG_MD_TITLE = (
     _FIG_FM + '\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png "Volcano")\n'
 )
@@ -235,8 +260,8 @@ def test_findings() -> None:
           _find(open_proj, "findings/0042-v.md", _FIG_UNLISTED_HTML), 2, "but not listed")
     check("embedded figure with an empty figures list blocked",
           _find(open_proj, "findings/0042-v.md", _FIG_EMBED_NO_LIST), 2, "but not listed")
-    check("embedded legend image needs no figures entry",
-          _find(open_proj, "findings/0042-v.md", _FIG_WITH_LEGEND), 0)
+    check("embedded legend image no entry lists is blocked (invariant 6)",
+          _find(open_proj, "findings/0042-v.md", _FIG_WITH_LEGEND), 2, "listed by no entry")
     check("markdown image title stripped before matching",
           _find(open_proj, "findings/0042-v.md", _FIG_MD_TITLE), 0)
     check("image outside figures/ ignored",
@@ -246,6 +271,25 @@ def test_findings() -> None:
                      "![PCA](figures/0042-pca.png)\n"), 0)
     check("unlisted-figure block still fires after the gate passes",
           _find(passed_proj, "findings/0042-v.md", _FIG_UNLISTED), 2, "but not listed")
+
+    # Legend-travels-with-its-figure backstop (invariant 6).
+    check("listed legend embedded beside its figure allowed",
+          _find(open_proj, "findings/0042-v.md", _LEG_BOTH), 0)
+    check("listed legend not embedded blocked",
+          _find(open_proj, "findings/0042-v.md", _LEG_MISSING), 2, "legend")
+    check("legend embedded via ./ relative path allowed (basename match)",
+          _find(open_proj, "findings/0042-v.md", _LEG_RELPATH), 0)
+    check("legend embedded as HTML img allowed",
+          _find(open_proj, "findings/0042-v.md", _LEG_HTML), 0)
+    check("figure with no legend image needs none embedded",
+          _find(open_proj, "findings/0042-v.md", _FIG_EMBEDDED), 0)
+    check("legend frontmatter-only write (empty body) fails open",
+          _find(open_proj, "findings/0042-v.md", _LEG_FM_ONLY), 0)
+    check("Edit fragment with a legend_png line fails open",
+          _find_edit(open_proj, "findings/0042-v.md",
+                     '  legend_png: "figures/0042-volcano.legend.png"\n'), 0)
+    check("missing-legend block still fires after the gate passes",
+          _find(passed_proj, "findings/0042-v.md", _LEG_MISSING), 2, "legend")
 
     # Cross-reference link backstop (invariant 5).
     check("linked finding mention allowed",

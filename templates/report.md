@@ -39,8 +39,8 @@ not reinvented. Software/tools cited with versions.>
 
 ## Results
 <The selected findings rendered into narrative, in the chosen order, each claim carrying
-its finding id [F00NN]. Supporting evidence, figures (the findings' existing svg/png +
-legend), and tables. For a QC report: exhaustive and descriptive. For a research report:
+its finding id [F00NN]. Supporting evidence, figures (the findings' existing svg/png, each embedded with its
+legend image directly beneath it), and tables. For a QC report: exhaustive and descriptive. For a research report:
 selective and focused.>
 
 ## Discussion
