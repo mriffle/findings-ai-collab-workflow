@@ -18,15 +18,19 @@ Proteomics is the proving ground, but the design is discipline-agnostic. You bri
 
 The plugin installs from inside Claude Code using its built-in `/plugin` commands. Type these at the Claude Code prompt (they are slash commands, not shell commands).
 
+**First, open Claude Code in the folder where your study will live** (create an empty folder for it if needed) — the install is scoped to that folder, as explained below.
+
 ```text
 # 1. Add this repository as a plugin marketplace
 /plugin marketplace add mriffle/findings-ai-collab-workflow
 
-# 2. Install the plugin
+# 2. Install the plugin — when asked where, choose PROJECT scope
 /plugin install findings-workflow@findings-workflow
 
 # 3. Restart Claude Code so the plugin loads
 ```
+
+Step 2 opens the plugin's details and asks you to pick an installation scope. **Choose "Project scope."** See [Choosing an installation scope](#choosing-an-installation-scope-install-per-study-not-user-wide) for why.
 
 ### ⚠️ Restart Claude Code after installing
 
@@ -34,18 +38,21 @@ The plugin installs from inside Claude Code using its built-in `/plugin` command
 
 **Confirm it worked:** at the prompt, type `/findings-workflow:` and pause. Autocomplete should list the workflow commands (`init`, `setup-env`, `stage0-science`, and so on). If you see them, you're ready to go.
 
-### Choosing an installation scope: user-wide vs. project-specific
+### Choosing an installation scope: install per study, not user-wide
 
-When you install, Claude Code asks *where* to install the plugin. This matters, so here's the tradeoff:
+When you install, Claude Code asks *where* to install the plugin. **We recommend project scope** — install the plugin into each study folder, not once for your whole account.
 
-| Scope | Where it's active | Choose this if… |
+| Scope | Where it's active | What it means for you |
 |---|---|---|
-| **User** (global) | Every project you open in Claude Code | You want the workflow available everywhere, or you'll analyze several different studies. Simplest for most people. |
-| **Local** (project) | Only the one project directory you installed it from | You want the plugin tied to a single study, or pinned to a specific version per project. |
+| **Project** (recommended) | Only the study folder you installed it from; recorded in that folder's `.claude/settings.json`, so collaborators who open the same folder get the same engine | **Each study pins its own engine version.** You update one study when *that* study is at a good boundary, and other studies keep running on the version they started with. |
+| **Local** | Only the study folder you installed it from, for you alone (not shared with collaborators) | Same per-study pin as project scope, kept out of the folder's shared settings. Pick this if you don't want the plugin recorded in a repository others share. |
+| **User** | Every folder you open in Claude Code | One engine for everything. Convenient, but **updating it changes the plugin under every study at once**, including one mid-analysis. |
 
-The important gotcha: **a plugin installed at *local* scope only works in the exact project directory you installed it for.** If you install it while pointed at study A and then open study B, its commands won't appear in B — they'll read as "Unknown command" no matter how many times you reload. If that happens, either launch Claude Code from the directory you installed it in, or reinstall at **user** scope to make it available everywhere.
+**Why per-study matters.** A study's findings record the engine version they were produced with, and the workflow's provenance depends on the engine not changing between one stage and the next. With a project-scope install, updating the plugin is a decision you make *per study*, at a boundary you choose — before a study starts, or between stages. With a user-scope install there is no such choice: one update moves every study you have open, whether or not it was at a boundary.
 
-If you're unsure, **choose user scope** — it's the least surprising.
+The trade-off to know about: **a project- or local-scope install only works in the folder you installed it in.** Open a different study folder and the commands won't appear there ("Unknown command", no matter how many times you reload) — that folder needs its own install. That is the point, not a bug: repeat the three install steps in each study folder. A collaborator who clones a project-scope study also runs the install once (Claude Code tells them the command); the shared settings record *which* plugin, not the plugin files themselves.
+
+The three scopes are the standard Claude Code settings levels — see [Settings files](https://code.claude.com/docs/en/settings#where-settings-live) for the details.
 
 ---
 
@@ -53,7 +60,7 @@ If you're unsure, **choose user scope** — it's the least surprising.
 
 Once the plugin is installed and Claude Code has restarted:
 
-1. **Open Claude Code in the folder where your study will live** (create an empty folder for it if needed). This becomes your *project* — it holds your data, findings, results, and reports. (The plugin is the reusable engine; your project folder is your study's data and results. The plugin never stores your data, and your project never re-implements the engine.)
+1. **Open Claude Code in the folder where your study will live** — the same folder you installed the plugin into. This becomes your *project* — it holds your data, findings, results, and reports. (The plugin is the reusable engine; your project folder is your study's data and results. The plugin never stores your data, and your project never re-implements the engine.)
 
 2. **Run the init command** to scaffold the project:
 
@@ -133,17 +140,19 @@ claude plugin update findings-workflow@findings-workflow
 
 It refreshes this repository's marketplace catalog for you first, so no separate `/plugin marketplace update` step is needed. If you're already current it tells you so: `findings-workflow is already at the latest version (0.2.0)`.
 
-**If you installed at *local* or *project* scope**, note that this command targets your **user**-scope install by default. Pass the scope explicitly and run it from the project directory you installed into:
+**This command targets a *user*-scope install by default.** If you followed the recommendation and installed at project scope, pass the scope explicitly and run it **from the study folder** you are updating:
 
 ```bash
-claude plugin update findings-workflow@findings-workflow --scope local
+claude plugin update findings-workflow@findings-workflow --scope project
 ```
 
-(`claude plugin list` shows every install and its scope — handy if you're not sure which one you have.)
+(Use `--scope local` for a local-scope install. `claude plugin list` shows every install and its scope — handy if you're not sure which one you have.)
+
+Because the install is per study, this updates **only the study you ran it in**. Your other studies keep the version they have until you update each one at its own boundary — which is exactly why we recommend project scope.
 
 ### ⚠️ Update between studies, not in the middle of one
 
-Updating swaps out the engine your project is running on, so do it at a natural boundary — before you start a study, or between stages — rather than partway through an analysis. Claude Code leaves this to you: auto-update is **off by default** for marketplaces like this one, and we recommend leaving it off for exactly this reason.
+Updating swaps out the engine your project is running on, so do it at a natural boundary — before you start a study, or between stages — rather than partway through an analysis. Claude Code leaves this to you: auto-update is **off by default** for marketplaces like this one, and we recommend leaving it off for exactly this reason. A project-scope install makes this a per-study decision; a user-scope install would move every study at once.
 
 After updating, **quit and relaunch Claude Code** — the running session keeps using the version it loaded at launch. (`/reload-plugins` often applies it without a restart, but if anything looks stale, a full restart always fixes it.)
 
