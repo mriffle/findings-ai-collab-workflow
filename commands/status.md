@@ -14,7 +14,7 @@ Render a concise dashboard of the project's position. Read the state files direc
 3. **State files present** — note whether `state/PROJECT.md`, `state/METADATA.md`, `state/DATA_DESCRIPTION.md` exist.
 4. **Python environment** — read `state/workflow.json` `environment` (`mode`, `python_min`, `configured`, `declined`). For an accurate readout, quickly confirm the interpreter actually works (`./.venv/bin/python --version`, or system Python) rather than trusting the flag alone.
 
-If `state/workflow.json` is absent, tell the scientist the project isn't initialized and to run `init`.
+If `state/workflow.json` is absent, tell the scientist the project isn't initialized and to run `/findings-workflow:init`.
 
 ## Render
 
@@ -45,6 +45,6 @@ When the gate has passed, show it as passed with the signer/date/data_version, m
     phase: exploratory 14 · confirmatory 3
 ```
 
-End with the **single most useful next action** for the current position (e.g. "Next: run `stage3-loaders` to build and verify the loaders and pass the integrity gate").
+End with the **single most useful next action** for the current position — with the command spelled out in full, ready to paste (e.g. "Next: run `/findings-workflow:stage3-loaders` to build and verify the loaders and pass the integrity gate"; project `CLAUDE.md`, *Leave the scientist with a next step*).
 
-**In Stage 4, keep that next action inside the loop** — a matured candidate to validate (`stage5-validate <id>`, named from the manifest), a candidate whose figures or provenance are incomplete, a script awaiting promotion, or simply continuing exploration. **Do not render "next: write the report"**: the pipeline diagram may show Stage 6 as a position (it is a dashboard), but the recommended action never nudges the scientist out of exploration — closing Stage 4 is theirs to decide (project `CLAUDE.md`, *The Stage 4 exception*).
+**In Stage 4, keep that next action inside the loop** — a matured candidate to validate (`/findings-workflow:stage5-validate <id>`, the id named from the manifest), a candidate whose figures or provenance are incomplete, a script awaiting promotion, or simply continuing exploration. **Do not render "next: write the report"**: the pipeline diagram may show Stage 6 as a position (it is a dashboard), but the recommended action never nudges the scientist out of exploration — closing Stage 4 is theirs to decide (project `CLAUDE.md`, *The Stage 4 exception*).

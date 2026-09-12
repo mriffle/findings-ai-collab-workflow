@@ -5,7 +5,7 @@ description: "Stage 0 — State the science. Interview the scientist about the s
 
 # Stage 0 — State the science
 
-Capture the research framing before any data is touched. This is the first stage; it has no precondition beyond an initialized project (`state/workflow.json` exists — if not, run `init` first).
+Capture the research framing before any data is touched. This is the first stage; it has no precondition beyond an initialized project (`state/workflow.json` exists — if not, tell the scientist to run `/findings-workflow:init` first).
 
 ## Do this
 
@@ -33,6 +33,6 @@ Stating goals up front improves relevance but **invites motivated reasoning**. R
 ## Then
 
 - Update `state/workflow.json`: set `science_done: true`, `current_stage: 1`, bump `updated`.
-- Tell the scientist the next step: **Stage 1 — Understand the metadata** (`stage1-metadata`). You'll need to know where the metadata file is. Stage 1 is the first stage that runs code (validity checks, cohort characterization, confounding statistics), so it needs a working Python ≥ 3.11 — if the project environment isn't set up yet, run `setup-env` before (or at the start of) Stage 1.
+- Tell the scientist the next step, command spelled out in full: **Stage 1 — Understand the metadata** — run `/findings-workflow:stage1-metadata`. You'll need to know where the metadata file is. Stage 1 is the first stage that runs code (validity checks, cohort characterization, confounding statistics), so it needs a working Python ≥ 3.11 — if the project environment isn't set up yet, they run `/findings-workflow:setup-env` before (or at the start of) Stage 1.
 
 Do not proceed to examine data. Understanding precedes analysis. And do not start Stage 1 on your own — Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*).

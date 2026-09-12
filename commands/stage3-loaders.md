@@ -5,7 +5,7 @@ description: "Stage 3 — Loaders, pairing, QC [INTEGRITY GATE]. Build and verif
 
 # Stage 3 — Loaders, pairing, QC  **[INTEGRITY GATE]**
 
-**Precondition — prior stage:** `state/workflow.json` shows `data_done: true`. If not, run `stage2-data` first and say so.
+**Precondition — prior stage:** `state/workflow.json` shows `data_done: true`. If not, tell the scientist to run `/findings-workflow:stage2-data` first and say so.
 
 **Precondition — Python environment (re-verify).** Python execution began back at Stage 1 (`stage1-metadata`), so the environment hard gate lives there. But this is the **integrity gate** — too important to trust an inherited or stale environment — so **re-verify** a working Python ≥ 3.11 before any loader work (do not trust `state/workflow.json` `environment.configured` — check the interpreter): prefer the project venv (`./.venv/bin/python` on Unix, `.\.venv\Scripts\python.exe` on Windows), else a project-local/`PATH` `uv`, else a system `python3`/`python`/`py -3`, and confirm it reports ≥ 3.11. If none is usable, **stop and run `setup-env`** (which detects, transparently asks consent, and installs Python ≥ 3.11 *into the project* if approved). If the scientist previously declined the project-local install, tell them to install Python ≥ 3.11 themselves and re-run. Do not start loader work without a verified interpreter.
 
@@ -97,7 +97,7 @@ Set `current_stage: 4`, bump `updated`. Record the certified `data_version` — 
 
 **Settle the metadata caveats.** The caveat findings recorded in Stage 1 (`kind: caveat`) rest on the sample↔metadata pairing this gate just certified — dispatch the findings-manager to set their `integrity_signoff: true` for this `data_version`, so the cohort's imbalances and confounds carry into Stage 4 analysis and Stage 6 reporting as trustworthy, attachable caveats.
 
-Then tell the scientist: **the integrity gate has passed; Stage 4 exploration is now unlocked** (`stage4-explore`). Findings recorded from here may set `integrity_signoff: true` for this `data_version`.
+Then tell the scientist: **the integrity gate has passed; Stage 4 exploration is now unlocked** — run `/findings-workflow:stage4-explore` (give the command in full). Findings recorded from here may set `integrity_signoff: true` for this `data_version`.
 
 **Unlocked is not started.** **Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). The sign-off you just took was on the *loaders and QC* — it certified the data, it did not ask you to begin analyzing it.
 

@@ -5,7 +5,7 @@ description: "Stage 2 — Understand the data. Determine orientation, transforma
 
 # Stage 2 — Understand the data
 
-**Precondition:** `state/workflow.json` shows `metadata_done: true`. If not, run `stage1-metadata` first and say so.
+**Precondition:** `state/workflow.json` shows `metadata_done: true`. If not, tell the scientist to run `/findings-workflow:stage1-metadata` first and say so.
 
 The goal is a *verified* understanding of the sample-by-feature matrix itself — its structure and its semantics — before any loader is trusted or any analysis is run.
 
@@ -45,6 +45,6 @@ A verified description containing: orientation and shape; feature and sample ide
 ## Then
 
 - Update `state/workflow.json`: `data_done: true`, `current_stage: 3`, bump `updated`.
-- Next: **Stage 3 — Loaders, pairing, QC** (`stage3-loaders`) — the integrity gate. **No analysis may begin until that gate passes.**
+- Next: **Stage 3 — Loaders, pairing, QC** — run `/findings-workflow:stage3-loaders` (give the command in full) — the integrity gate. **No analysis may begin until that gate passes.**
 
 **Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*).

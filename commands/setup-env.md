@@ -43,7 +43,7 @@ Tell the scientist, in plain terms, before doing anything:
 
 Wait for an explicit answer.
 
-**If the scientist declines:** do **not** install anything. Record the decline (Step 6, `mode: "system"`, `declined: true`), and tell them: *"No problem — install Python ≥ 3.11 yourself (e.g. python.org, your OS package manager, pyenv, or conda), then re-run `setup-env`. Stage 1 stays blocked until a usable interpreter is available."* Stop here.
+**If the scientist declines:** do **not** install anything. Record the decline (Step 6, `mode: "system"`, `declined: true`), and tell them: *"No problem — install Python ≥ 3.11 yourself (e.g. python.org, your OS package manager, pyenv, or conda), then re-run `/findings-workflow:setup-env`. Stage 1 stays blocked until a usable interpreter is available."* Stop here.
 
 **If the scientist approves:** continue to Step 3.
 
@@ -186,4 +186,4 @@ Print a created-vs-kept summary and how to use the environment in this project:
 - **Change dependencies:** `UV_PYTHON_INSTALL_DIR="$PWD/.uv/python" ./.uv/bin/uv add|remove <pkg>` (re-locks automatically).
 - **The committed reproducibility artifacts** are `pyproject.toml`, `uv.lock`, and `.python-version`; `.uv/` and `.venv/` are git-ignored and rebuilt with `./.uv/bin/uv sync`.
 
-End by pointing to the next workflow step (e.g. *"Environment ready. Continue the workflow; Python execution begins at Stage 1 — run `stage1-metadata` when you reach it."*).
+End by pointing to the next workflow step (e.g. *"Environment ready. Continue the workflow; Python execution begins at Stage 1 — run `/findings-workflow:stage1-metadata` when you reach it."*).

@@ -48,7 +48,7 @@ The first time a report is compiled, raise `state/workflow.json` `current_stage`
 A report is a projection, not a terminus — close with the concrete next step (project `CLAUDE.md`, *Leave the scientist with a next step*):
 
 - **Revise the projection** — change the finding selection or the ordering, or re-run a section the reviewer flagged.
-- **Strengthen what the report had to caveat** — name the specific `exploratory` finding the prose had to hedge, and offer `stage5-validate <id>`; validating it upgrades the claim the next compile can make.
-- **Back to `stage4-explore`** — a gap the report exposed (a claim with no finding behind it, a caveat with no follow-up) is an exploration question, and the scientist is already here by choice, so returning to the loop is theirs to take up freely.
+- **Strengthen what the report had to caveat** — name the specific `exploratory` finding the prose had to hedge, and offer `/findings-workflow:stage5-validate <id>` (id filled in); validating it upgrades the claim the next compile can make.
+- **Back to exploration (`/findings-workflow:stage4-explore`)** — a gap the report exposed (a claim with no finding behind it, a caveat with no follow-up) is an exploration question, and the scientist is already here by choice, so returning to the loop is theirs to take up freely.
 
 **Then stop.** Naming the next stage is where your turn ends — the scientist starts it, by running the command or asking you to. Recording `current_stage` is bookkeeping, not permission (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*).

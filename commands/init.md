@@ -64,12 +64,12 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 ## Offer to set up the Python environment (optional)
 
-After scaffolding, briefly check whether this project has a usable Python (≥ 3.11) and offer `setup-env`: *"This workflow runs analysis in Python ≥ 3.11. I can set up a project-local environment now (or later) with `setup-env` — it detects an existing Python and, only if needed, asks before installing one **into this project**."* Do not run any installer here and do not block on this — `setup-env` owns the detection, the consent prompt, and the install. Python execution begins at **Stage 1** (the metadata examination runs validity checks, the cohort characterization, and confounding statistics in code), so the environment should be in place before Stage 1 — it can be set up now or any time before then.
+After scaffolding, briefly check whether this project has a usable Python (≥ 3.11) and offer `setup-env`: *"This workflow runs analysis in Python ≥ 3.11. I can set up a project-local environment now (or later) with `/findings-workflow:setup-env` — it detects an existing Python and, only if needed, asks before installing one **into this project**."* Do not run any installer here and do not block on this — `setup-env` owns the detection, the consent prompt, and the install. Python execution begins at **Stage 1** (the metadata examination runs validity checks, the cohort characterization, and confounding statistics in code), so the environment should be in place before Stage 1 — it can be set up now or any time before then.
 
 ## After scaffolding
 
-Report the created/kept summary, then tell the scientist the workflow's first step:
+Report the created/kept summary, then tell the scientist the workflow's first step — with the command spelled out in full, ready to run (project `CLAUDE.md`, *Leave the scientist with a next step*):
 
-> **Stage 0 — State the science.** Describe the study: the domain, what is being examined and why, the experimental design, and the scientific goals. I'll capture it to `state/PROJECT.md`, and that framing shapes everything that follows.
+> **Stage 0 — State the science.** Run `/findings-workflow:stage0-science`. Describe the study: the domain, what is being examined and why, the experimental design, and the scientific goals. I'll capture it to `state/PROJECT.md`, and that framing shapes everything that follows.
 
 Do **not** proceed to analyze any data. The ordering rule is absolute: understand before analyzing, verify the read before exploring.

@@ -5,7 +5,7 @@ description: "Stage 4 — Explore ⇄ record findings (the heart). Run boilerpla
 
 # Stage 4 — Explore ⇄ record findings  (the heart)
 
-**Precondition (hard):** `state/workflow.json` shows `integrity_gate.passed: true`. **If it is not true, refuse** — no analysis before the integrity gate passes (doc 02.3). Tell the scientist to complete `stage3-loaders`. (This ordering is enforced by *this precondition* + orchestrator behavior; `guard_findings.py` additionally blocks any finding that claims sign-off / `validated` before the gate.)
+**Precondition (hard):** `state/workflow.json` shows `integrity_gate.passed: true`. **If it is not true, refuse** — no analysis before the integrity gate passes (doc 02.3). Tell the scientist to complete Stage 3 — `/findings-workflow:stage3-loaders`. (This ordering is enforced by *this precondition* + orchestrator behavior; `guard_findings.py` additionally blocks any finding that claims sign-off / `validated` before the gate.)
 
 This is the open loop the whole system exists to capture. With understanding established and the read verified, explore the data *with* the scientist and turn insight into durable findings.
 
@@ -52,7 +52,7 @@ Every finding's numbers must be regenerable: pin `data_version`, the script (pat
 
 ## When candidates mature
 
-Run `stage5-validate` to put a finding through independent validation. Validation runs continuously as candidates mature — you don't have to finish exploring first.
+Suggest `/findings-workflow:stage5-validate <id>` to put a finding through independent validation. Validation runs continuously as candidates mature — you don't have to finish exploring first.
 
 ## Where to next — and where not
 
@@ -62,10 +62,10 @@ Stage 4 has no `## Then`, because it does not end on a command: it ends when the
 - the **next analysis** the result invites, or the **complementary method** (Boruta alongside the classifier; the tree model when a linear boundary underperforms; the both-ways batch check; enrichment on the hit list);
 - the **figure that would show a claim** the finding currently only asserts (*show, don't tell*);
 - a **finding to record**, or an existing one to update / relate / re-run against new params;
-- a **matured candidate to validate** — `stage5-validate <id>`, naming the id. This is a **within-loop** step, not an exit: validation runs continuously as candidates mature;
+- a **matured candidate to validate** — `/findings-workflow:stage5-validate <id>`, the command spelled out with the id filled in. This is a **within-loop** step, not an exit: validation runs continuously as candidates mature;
 - a **script to promote** (`scripts/scratch/` → `scripts/promoted/`) so a finding can be validated against it.
 
-**Suggest these; don't start them.** Offering `stage5-validate 42` is the job — running it unbidden is not (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). Within the exploration loop itself, keep working: the rule governs stage boundaries, not each analysis you run while exploring.
+**Suggest these; don't start them.** Offering `/findings-workflow:stage5-validate 42` is the job — running it unbidden is not (project `CLAUDE.md`, *Stages advance on the scientist's word, not yours*). Within the exploration loop itself, keep working: the rule governs stage boundaries, not each analysis you run while exploring.
 
 **Never suggest that exploration is over.** Do not raise `stage6-report`, do not observe that the findings look complete, do not ask whether they are ready to wrap up. Exploration has no end *you* can judge; nudging toward closure is exactly the motivated-reasoning pressure the skepticism gates exist to resist; and which findings a report is about is a **human checkpoint the scientist owns** (doc 02.8). If the scientist **asks** what comes after exploring, answer plainly; if they **signal** they are wrapping up, follow their lead. The rule forbids you raising it, not discussing it.
 
