@@ -138,7 +138,7 @@ This one is a **shell command**, typed in a terminal — not a slash command:
 claude plugin update findings-workflow@findings-workflow
 ```
 
-It refreshes this repository's marketplace catalog for you first, so no separate `/plugin marketplace update` step is needed. If you're already current it tells you so: `findings-workflow is already at the latest version (0.2.0)`.
+It refreshes this repository's marketplace catalog for you first, so no separate `/plugin marketplace update` step is needed. If you're already current it tells you so: `findings-workflow is already at the latest version (0.3.0)`.
 
 **This command targets a *user*-scope install by default.** If you followed the recommendation and installed at project scope, pass the scope explicitly and run it **from the study folder** you are updating:
 
