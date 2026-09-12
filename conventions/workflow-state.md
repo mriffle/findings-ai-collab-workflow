@@ -4,7 +4,7 @@
 
 ## Why this file exists
 
-The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather than infer progress from the incidental presence of files, the project records its position explicitly in `state/workflow.json`. `guard_findings.py` reads exactly one field from it (`integrity_gate.passed`) to block any finding that claims `integrity_signoff: true` / `status: validated` before the gate, so that side is enforced deterministically. The broader *no-Stage-4-analysis-before-the-gate* ordering is carried by the `stage4-explore` command precondition + orchestrator behavior — **not** a hook, because a single tool-use event can't cleanly tell exploratory analysis from legitimate Stage 3 loader/QC work (see `conventions/enforcement-map.md`).
+The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather than infer progress from the incidental presence of files, the project records its position explicitly in `state/workflow.json`. `guard_findings.py` reads two fields from it: `integrity_gate.passed`, to block any finding that claims `integrity_signoff: true` / `status: validated` before the gate, so that side is enforced deterministically; and `figures_layout`, to enforce the structured `figures/` layout only in projects that opted in. The broader *no-Stage-4-analysis-before-the-gate* ordering is carried by the `stage4-explore` command precondition + orchestrator behavior — **not** a hook, because a single tool-use event can't cleanly tell exploratory analysis from legitimate Stage 3 loader/QC work (see `conventions/enforcement-map.md`).
 
 ## Schema
 
@@ -15,6 +15,7 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
   "science_done": false,         // Stage 0 → state/PROJECT.md written
   "metadata_done": false,        // Stage 1 → state/METADATA.md written + scientist confirmed
   "data_done": false,            // Stage 2 → state/DATA_DESCRIPTION.md written
+  "figures_layout": "structured", // written by init for new projects; ABSENT in projects initialized before the layout existed (legacy flat figures/)
   "integrity_gate": {            // Stage 3 — the hard precondition for any analysis
     "passed": false,             // ← the field guard_findings.py checks (finding-write gate)
     "signed_off_by": null,       // who signed off (the scientist)
@@ -36,7 +37,8 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
 
 ## Rules
 
-- **Seeded by `init`** with everything false / null and `current_stage: 0`.
+- **Seeded by `init`** with everything false / null and `current_stage: 0`, plus `figures_layout: "structured"`.
+- **`figures_layout`** is written **only when `init` creates the file** and never by a stage command, so a project initialized before the structured `figures/` layout existed carries no key. `guard_findings.py` reads it: `"structured"` ⇒ a finding may list or embed a figure only under `figures/metadata/<family>/`, `figures/qc/<family>/`, or `figures/analysis/<family>/<label>/` (`conventions/visualization.md`, *Where figures live*); absent / unreadable ⇒ the check is skipped and a flat `figures/` keeps working. Existing projects are deliberately not retrofitted.
 - **Each stage command updates it** when its work advances: set the stage's `*_done` flag *if it has one* (Stages 0–2 do; Stage 3 flips `integrity_gate.passed`; Stages 4–6 are continuous loops with **no** `*_done` flag), **raise `current_stage`** to the stage's number (highest reached — monotonic, so the `status` dashboard advances through validation and reporting), and bump `updated`. A stage command must **refuse to run** if its preconditions (prior flags) are not met — defense in depth alongside the hooks.
 - **`integrity_gate.passed` flips to `true` only inside Stage 3**, and only after the full integrity-gate checklist passes (doc 05) *and* the scientist signs off. It records the certified `data_version`. If the dataset changes (a new `data_version`), the gate is no longer valid: reset `passed` to `false` and re-run Stage 3.
 - **`guard_findings.py`** blocks a finding write that claims `integrity_signoff: true` / `status: validated` when this file is absent or `integrity_gate.passed` is not `true` (absent ⇒ treated as not passed). It does **not** block analysis tool-calls; *no analysis before the gate* is carried by the `stage4-explore` command precondition + orchestrator behavior.
@@ -45,7 +47,7 @@ The workflow has a hard ordering rule and a load-bearing gate (doc 02). Rather t
 
 ## Hook read (illustrative — `guard_findings.py`, on a finding write)
 
-The guard reads exactly one field with stdlib `json` (no `jq`, no `bash` — so it runs identically on Windows/macOS/Linux):
+The guard reads its fields with stdlib `json` (no `jq`, no `bash` — so it runs identically on Windows/macOS/Linux):
 
 ```python
 import json, sys

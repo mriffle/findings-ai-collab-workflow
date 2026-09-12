@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Findings Workflow hook — integrity-gate + promoted-script + figure-embed guard.
 
-Spec: docs 02.3, 03, 05, 06. Enforces six invariants when a finding file
+Spec: docs 02.3, 03, 05, 06. Enforces seven invariants when a finding file
 (``findings/NNNN-*.md``) is written or edited:
   1. A finding may not claim ``integrity_signoff: true`` or ``status: validated``
      before the integrity gate has passed
@@ -11,9 +11,11 @@ Spec: docs 02.3, 03, 05, 06. Enforces six invariants when a finding file
   3. On a *complete* finding write (frontmatter + a non-empty body), every figure
      listed in the ``figures`` frontmatter must be embedded as an inline image in
      the body — a finding is a standalone artifact and the reader must never have
-     to track down a figure it lists (conventions/findings.md §2.4). This check
-     fails open on an Edit fragment that doesn't carry the whole document and on
-     an empty ``figures`` list.
+     to track down a figure it lists (conventions/findings.md §2.4). Paths are
+     compared **path-normalized** (``../figures/qc/pca/x.png`` ≡
+     ``figures/qc/pca/x.png``), never by basename, so same-stem files in different
+     directories are distinct. This check fails open on an Edit fragment that
+     doesn't carry the whole document and on an empty ``figures`` list.
   4. The converse: every inline body image pointing under ``figures/`` must be
      listed in the ``figures`` frontmatter, so a figure the finding *shows*
      always carries its own producing script + input (per-figure provenance;
@@ -38,6 +40,16 @@ Spec: docs 02.3, 03, 05, 06. Enforces six invariants when a finding file
      legend image (its key sits on-axes by documented exception) simply lists no
      ``legend_png``. Same fail-open scope as 3 and 4.
 
+  7. The structured figures layout, **legacy-safe**: when ``state/workflow.json``
+     carries ``"figures_layout": "structured"`` (written by ``init`` for new
+     projects — absent in projects initialized before the layout existed), every
+     figure path the finding lists or embeds must sit under
+     ``figures/metadata/<family>/``, ``figures/qc/<family>/`` (each with at most
+     one further level) or ``figures/analysis/<family>/<label>/`` — the layout of
+     conventions/visualization.md *Where figures live*. Without the marker the
+     check is skipped entirely, so an existing flat project is never blocked.
+     Same fail-open scope as 3 to 6.
+
 Neither figure check can judge whether a *showable claim* was left unillustrated,
 or whether an embedded figure was actually explained in the prose — those are the
 findings-manager's judgment calls ("show, don't tell", conventions/findings.md
@@ -55,7 +67,9 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
+import urllib.parse
 
 from _hooklib import block, load_event, project_cwd, require_initialized, tool_input
 
@@ -97,6 +111,18 @@ _MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 # The finding's own id, so a document may name itself without linking.
 _OWN_ID = re.compile(r"^[ \t]*id:[ \t]*[\"\']?([0-9]+)", _M)
 
+# Path normalization for figure matching: leading ./ and ../ runs are stripped so a
+# body link (findings/-relative) and a frontmatter path (project-root-relative)
+# compare equal once both are expressed from the project root.
+_LEADING_DOTS = re.compile(r"^(?:\.{1,2}/)+")
+# The structured figures layout (invariant 7): metadata/<family>/[sub/],
+# qc/<family>/[sub/], analysis/<family>/<label>/ — at most three levels under figures/.
+_STRUCTURED_OK = re.compile(
+    r"^figures/(?:metadata/[^/]+/(?:[^/]+/)?"
+    r"|qc/[^/]+/(?:[^/]+/)?"
+    r"|analysis/[^/]+/[^/]+/)[^/]+$"
+)
+
 
 def _split_frontmatter(content: str) -> tuple[str | None, str]:
     """Split a finding into (frontmatter, body), or (None, "") if it isn't a
@@ -127,27 +153,60 @@ def _image_targets(body: str) -> list[str]:
     return targets
 
 
-def unembedded_figures(content: str) -> list[str]:
-    """PNG paths listed in the `figures` frontmatter but not embedded inline in
-    the body. Empty (no violation) unless `content` is a complete finding
-    document with a non-empty body and a non-empty `figures` list.
+def _figures_relpath(target: str) -> str | None:
+    """The project-root-relative ``figures/...`` path a link target points at, or
+    ``None`` if it doesn't point under ``figures/``.
 
-    A listed path counts as embedded when it — or its basename — appears inside
-    any inline image target in the body (lenient over `./figures/…` vs `figures/…`
-    so only a genuinely missing figure blocks)."""
+    Backslashes become ``/``; URL-encoding, a ``?query`` and a ``#fragment`` are
+    dropped; any run of leading ``./`` / ``../`` is stripped (a body link is
+    ``findings/``-relative, a frontmatter path project-root-relative — both mean
+    the same file); an absolute or deeper prefix is cut at its ``/figures/``
+    segment; and the result is ``posixpath``-normalized. ``results/myfigures/x.png``
+    or ``figures_old/x.png`` yield ``None`` — no ``figures/`` segment.
+    """
+    norm = urllib.parse.unquote(target.replace("\\", "/"))
+    norm = norm.split("?", 1)[0].split("#", 1)[0]
+    norm = _LEADING_DOTS.sub("", norm)
+    if not norm.startswith("figures/"):
+        i = norm.find("/figures/")
+        if i < 0:
+            return None
+        norm = norm[i + 1 :]
+    norm = posixpath.normpath(norm)
+    return norm if norm.startswith("figures/") else None
+
+
+def _embedded(body: str) -> list[tuple[str, str]]:
+    """``(normalized figures/ path, raw target)`` for every inline image in the
+    body that points under ``figures/``."""
+    out: list[tuple[str, str]] = []
+    for raw in _image_targets(body):
+        rel = _figures_relpath(raw)
+        if rel is not None:
+            out.append((rel, raw))
+    return out
+
+
+def _is_legend(rel: str) -> bool:
+    return ".legend." in rel.rsplit("/", 1)[-1]
+
+
+def unembedded_figures(content: str) -> list[str]:
+    """Figures listed in the ``figures`` frontmatter that are *not* embedded as an
+    inline image in the body (conventions/findings.md §2.4).
+
+    Empty (no violation) unless ``content`` is a complete finding document with a
+    non-empty body and a non-empty ``figures`` list. Matching is path-normalized
+    (``_figures_relpath``): ``./figures/…``, ``../figures/…`` and ``figures/…``
+    are one path, but same-stem files in different directories are distinct."""
     frontmatter, body = _split_frontmatter(content)
     if frontmatter is None or not body.strip():
         return []
     listed = _FIGURE_PNG.findall(frontmatter)
     if not listed:
         return []
-    targets = _image_targets(body)
-    missing = []
-    for png in listed:
-        base = png.rsplit("/", 1)[-1]
-        if not any(png in t or base in t for t in targets):
-            missing.append(png)
-    return missing
+    shown = {rel for rel, _ in _embedded(body)}
+    return [png for png in listed if _figures_relpath(png) not in shown]
 
 
 def unlisted_figures(content: str) -> list[str]:
@@ -158,23 +217,19 @@ def unlisted_figures(content: str) -> list[str]:
     Empty (no violation) unless ``content`` is a complete finding document with a
     non-empty body. Legend images (``<base>.legend.png``) are excluded here: they
     are a figure's key, carried by its entry's ``legend_png``, and are checked by
-    ``unlisted_legends``. Matching is basename-lenient, mirroring
+    ``unlisted_legends``. Matching is path-normalized, mirroring
     ``unembedded_figures``.
     """
     frontmatter, body = _split_frontmatter(content)
     if frontmatter is None or not body.strip():
         return []
-    listed_bases = {p.rsplit("/", 1)[-1] for p in _FIGURE_PNG.findall(frontmatter)}
-    unlisted = []
-    for target in _image_targets(body):
-        norm = target.replace("\\", "/")
-        if "figures/" not in norm:
+    listed = {_figures_relpath(p) for p in _FIGURE_PNG.findall(frontmatter)}
+    unlisted: list[str] = []
+    for rel, raw in _embedded(body):
+        if _is_legend(rel):
             continue
-        base = norm.rsplit("/", 1)[-1]
-        if ".legend." in base:
-            continue
-        if base not in listed_bases and target not in unlisted:
-            unlisted.append(target)
+        if rel not in listed and raw not in unlisted:
+            unlisted.append(raw)
     return unlisted
 
 
@@ -184,7 +239,7 @@ def unembedded_legends(content: str) -> list[str]:
 
     A legend is essential to reading its figure, so it is shown beside the figure
     rather than cited as a path (conventions/findings.md §2.4, §9). Same
-    fail-open scope and basename-lenient matching as ``unembedded_figures``.
+    fail-open scope and path-normalized matching as ``unembedded_figures``.
     """
     frontmatter, body = _split_frontmatter(content)
     if frontmatter is None or not body.strip():
@@ -192,13 +247,8 @@ def unembedded_legends(content: str) -> list[str]:
     listed = _LEGEND_PNG.findall(frontmatter)
     if not listed:
         return []
-    targets = _image_targets(body)
-    missing = []
-    for png in listed:
-        base = png.rsplit("/", 1)[-1]
-        if not any(png in t or base in t for t in targets):
-            missing.append(png)
-    return missing
+    shown = {rel for rel, _ in _embedded(body)}
+    return [png for png in listed if _figures_relpath(png) not in shown]
 
 
 def unlisted_legends(content: str) -> list[str]:
@@ -206,24 +256,42 @@ def unlisted_legends(content: str) -> list[str]:
     lists as its ``legend_png`` (invariant 6, converse direction).
 
     A shown key must belong to a listed figure, so it rides with that figure's
-    provenance. Same fail-open scope and basename-lenient matching as
+    provenance. Same fail-open scope and path-normalized matching as
     ``unlisted_figures``.
     """
     frontmatter, body = _split_frontmatter(content)
     if frontmatter is None or not body.strip():
         return []
-    listed_bases = {p.rsplit("/", 1)[-1] for p in _LEGEND_PNG.findall(frontmatter)}
-    unlisted = []
-    for target in _image_targets(body):
-        norm = target.replace("\\", "/")
-        if "figures/" not in norm:
+    listed = {_figures_relpath(p) for p in _LEGEND_PNG.findall(frontmatter)}
+    unlisted: list[str] = []
+    for rel, raw in _embedded(body):
+        if not _is_legend(rel):
             continue
-        base = norm.rsplit("/", 1)[-1]
-        if ".legend." not in base:
-            continue
-        if base not in listed_bases and target not in unlisted:
-            unlisted.append(target)
+        if rel not in listed and raw not in unlisted:
+            unlisted.append(raw)
     return unlisted
+
+
+def misplaced_figures(content: str) -> list[str]:
+    """Figure paths (listed ``png``/``legend_png`` and inline body images under
+    ``figures/``) that do not fit the structured layout (invariant 7):
+    ``figures/metadata/<family>/``, ``figures/qc/<family>/`` (each plus at most
+    one sub-level) or ``figures/analysis/<family>/<label>/``.
+
+    Only meaningful when the project carries the ``figures_layout`` marker — the
+    caller checks that. Same fail-open scope as the other figure checks.
+    """
+    frontmatter, body = _split_frontmatter(content)
+    if frontmatter is None or not body.strip():
+        return []
+    raws = _FIGURE_PNG.findall(frontmatter) + _LEGEND_PNG.findall(frontmatter)
+    raws += _image_targets(body)
+    bad: list[str] = []
+    for raw in raws:
+        rel = _figures_relpath(raw)
+        if rel is not None and not _STRUCTURED_OK.match(rel) and rel not in bad:
+            bad.append(rel)
+    return bad
 
 
 def unlinked_mentions(content: str) -> list[str]:
@@ -266,6 +334,17 @@ def unlinked_mentions(content: str) -> list[str]:
     return missing
 
 
+def _read_state(cwd: str) -> dict[str, object]:
+    """``state/workflow.json`` as a dict, or ``{}`` on any read/parse failure or a
+    non-object document. Each caller decides what an empty state means."""
+    try:
+        with open(os.path.join(cwd, "state", "workflow.json"), encoding="utf-8") as fh:
+            obj = json.load(fh)
+    except Exception:
+        return {}
+    return obj if isinstance(obj, dict) else {}
+
+
 def gate_passed(cwd: str) -> bool:
     """Whether the integrity gate has passed per state/workflow.json.
 
@@ -273,12 +352,15 @@ def gate_passed(cwd: str) -> bool:
     guard's job is to prevent a premature sign-off, so an undeterminable state is
     the safe (blocking) side, mirroring the original bash guard.
     """
-    try:
-        with open(os.path.join(cwd, "state", "workflow.json"), encoding="utf-8") as fh:
-            state = json.load(fh)
-        return state.get("integrity_gate", {}).get("passed") is True
-    except Exception:
-        return False
+    gate = _read_state(cwd).get("integrity_gate")
+    return isinstance(gate, dict) and gate.get("passed") is True
+
+
+def structured_layout(cwd: str) -> bool:
+    """Whether the project opted into the structured figures layout
+    (``figures_layout: "structured"`` in state/workflow.json). Absent, unreadable
+    or malformed ⇒ False ⇒ the layout check is skipped (legacy-safe)."""
+    return _read_state(cwd).get("figures_layout") == "structured"
 
 
 def main() -> None:
@@ -382,6 +464,21 @@ def main() -> None:
             + ". Link each as [finding <NNNN>](<NNNN>-<slug>.md) — the target is the "
             "sibling filename, resolved from the manifest's ID + Slug columns."
         )
+
+    if structured_layout(cwd):
+        misplaced = misplaced_figures(content)
+        if misplaced:
+            block(
+                "Blocked: this project uses the structured figures layout "
+                "(state/workflow.json figures_layout: structured). Every figure path "
+                "must sit under figures/metadata/<family>/, figures/qc/<family>/ (each "
+                "with at most one further level) or figures/analysis/<family>/<label>/ "
+                "(conventions/visualization.md, Where figures live). Not in the "
+                "layout: "
+                + ", ".join(misplaced)
+                + ". Move the file into its phase/family directory and re-point the "
+                "entry's png/legend_png and the inline image."
+            )
 
 
 if __name__ == "__main__":

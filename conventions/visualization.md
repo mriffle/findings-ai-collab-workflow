@@ -24,11 +24,36 @@ Every visualization is saved in **both**:
 - **SVG** — vector master, for editing and publication.
 - **PNG at 300 DPI** — raster, the review and embedding target.
 
-Both go to `figures/`. In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend image, and the finding embeds the legend image directly beneath the figure (`conventions/findings.md` §9).
+Both go to the figure's directory under `figures/` (*Where figures live*, next). In matplotlib: `fig.savefig(base + ".svg")` and `fig.savefig(base + ".png", dpi=300)`. The finding's `figures` entry points at both plus the legend image, and the finding embeds the legend image directly beneath the figure (`conventions/findings.md` §9).
+
+## Where figures live
+
+`figures/` is **structured, not flat** — the directory path describes the figure, so a study's dozens-to-hundreds of image files stay navigable:
+
+```
+figures/
+  metadata/<family>/                 Stage 1 — cohort characterization: distributions/ crosstabs/ table1/ …
+  qc/<family>/                       Stage 3 — the QC report: id-depth/ missingness/ dynamic-range/ abundance-boxplot/
+                                     cv/ pca/ sample-correlation/ missingness-map/ …
+  analysis/<family>/<label>/         Stage 4+ — result figures: differential-abundance/ classification/
+                                     classification-xgboost/ regression/ boruta/ enrichment/ pca/ …
+                                     <label> = the contrast / outcome / result, e.g. genotype-vs-wt/
+```
+
+The rules:
+
+1. **The path is a function of known inputs, never taste.** Top level = **the stage that commissions the figure** (Stage 1 → `metadata`, Stage 3 → `qc`, Stage 4 onward → `analysis`). Second level = the **plot family** — the `lib/` template the script was seeded from, in kebab-case (`pca`, `cv`, `volcano` lives under its analysis family `differential-abundance`); a from-scratch figure takes a short kebab-case family name of its own. Third level, `analysis/` only = a free kebab-case **label** for the contrast / outcome / result. The stage rule is what settles the QC-vs-results collision: `pca-plot`, `sample-correlation`, and `dynamic-range` render in Stage 3 as QC *and* again in Stage 4 as results (colored by the biology, annotated with hits), so the same template lands in `qc/pca/` from Stage 3 and `analysis/pca/<label>/` from Stage 4 — decided by who commissioned it, not by the template.
+2. **Processing state and scale stay in the file stem, never a directory** (`cv-experimental-raw-normalized-corrected.png`, `pca-by-genotype-normalized.png`). Most QC figures compare states *inside* one figure, so a `normalized/` directory has nowhere to put them; the stem carries the state, as `results/qc_states/` carries it in its directory names.
+3. **A finding-attached figure keeps the finding-id prefix in the stem** (`0042-volcano.png`), so the verifier's blind rule and the id→figure association survive. QC figures, which belong to no finding, carry no prefix.
+4. **Depth cap: three directory levels under `figures/`** (`metadata/` and `qc/` may take one optional sub-level; `analysis/<family>/<label>/` is the full depth). No deeper.
+5. **The legend image sits beside its figure**, in the same directory (`<stem>.legend.{svg,png}`).
+6. **The dispatch names the directory.** The orchestrator hands every `figure-generator` its target directory (phase + family + label) — it knows the stage and the template it is asking for; the generator writes there and returns project-root-relative paths. In code the directory is `save_figure`'s `output_dir` (created if absent; the stem stays a bare name — separators in it are rejected), passed as a **script parameter with the conventional default**, which is how the layout and the code-reviewer's "no hard-coded paths" rule agree.
+
+**Enforced by** the figure-reviewer and code-reviewer (path derivable from stage + family + label; state in the stem, not a directory; id prefix present when a finding is named) and, as a deterministic backstop, `guard_findings.py` — in a project whose `state/workflow.json` carries `figures_layout: "structured"` (written by `init` for new projects), a finding may list or embed a figure only under one of the three shapes above. Projects initialized before the layout existed carry no marker and keep their flat `figures/` untouched; the layout is not retrofitted.
 
 ## Legends as separate images
 
-Render the **legend as its own image** (`figures/<name>.legend.svg` + `figures/<name>.legend.png`) alongside the figure rather than baking it into the plot. A legend drawn inside the axes routinely overlaps the data; rendering it as a standalone swatch key (categorical) or colorbar (continuous) keeps the figure clean and lets publication workflows place the legend separately. The figure's free-text caption lives in the finding's `figures[].caption`, so the legend artifact is purely the visual key. (`lib/figures/figure_io.save_figure` dual-exports a companion legend figure to `<name>.legend.{svg,png}`; `lib/figures/pca.save_pca` builds the swatch/colorbar legend.)
+Render the **legend as its own image** (`<dir>/<name>.legend.svg` + `<dir>/<name>.legend.png`, beside the figure in its directory) alongside the figure rather than baking it into the plot. A legend drawn inside the axes routinely overlaps the data; rendering it as a standalone swatch key (categorical) or colorbar (continuous) keeps the figure clean and lets publication workflows place the legend separately. The figure's free-text caption lives in the finding's `figures[].caption`, so the legend artifact is purely the visual key. (`lib/figures/figure_io.save_figure` dual-exports a companion legend figure to `<name>.legend.{svg,png}`; `lib/figures/pca.save_pca` builds the swatch/colorbar legend.)
 
 **Separate is not optional-to-show.** A legend is essential to interpreting its figure, so wherever the figure is embedded — in a finding's body, in a report — its legend image is **embedded directly beneath it**, never cited as a path the reader must open (`conventions/findings.md` §2.4, §9). The separation is about *where the pixels are rendered*, not about whether the reader sees them. A figure that has no legend image (the on-axes exceptions below) lists no `legend_png` and embeds none.
 
@@ -151,6 +176,7 @@ Every figure records — and the finding that uses it pins — the producing **s
 | Render reviewed (PNG), not just code | **Figure-reviewer** |
 | Dual export (SVG + 300 DPI PNG) + separate legend image present, and the legend image itself reviewed as a render (complete key, colors match the plot, legible) | **Figure-reviewer** (+ `figure-io.save_figure` dual-exports the figure and a companion `<name>.legend.{svg,png}` legend image) |
 | Wherever a figure is embedded, its legend image is embedded directly beneath it (a figure with an on-axes key lists and embeds none) | **findings-manager** + **Hook** (`guard_findings.py`: a listed `legend_png` must be embedded, an embedded `*.legend.png` must be listed) + **Report-reviewer** |
+| Figure saved under the structured layout — `figures/metadata/<family>/`, `figures/qc/<family>/`, or `figures/analysis/<family>/<label>/`; path derivable from stage + family (+ label); state in the stem, not a directory; finding-id prefix when a finding is named | **Figure-reviewer** + **code-reviewer** (the figure script's `output_dir` follows the layout) + **Hook** (`guard_findings.py` blocks a finding that lists or embeds a figure outside the layout — only in projects carrying `figures_layout: "structured"` in `state/workflow.json`; legacy projects are never blocked) |
 | Okabe–Ito; category colors from the registry; consistency | **Figure-reviewer** (+ `okabe-ito-colors` reads/extends `state/color_registry.json`) |
 | ≤8 categorical colors; explicit strategy beyond | **Figure-reviewer** (+ `okabe-ito-colors` raises `CategoricalPaletteExceededError` past 8) |
 | Control samples rendered separately from experimental in QC/descriptive figures (exceptions: the `sample-correlation` heatmap, the `id-depth` bar chart, the `missingness` completeness curve, the `dynamic-range` per-class overlay, and the `pca-plot` sample-class coloring, which label them — a stripe / bar / curve / point color) | **Figure-reviewer** |

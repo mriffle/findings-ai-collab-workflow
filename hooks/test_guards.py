@@ -52,12 +52,23 @@ def check(name: str, result: tuple[int, str], want_rc: int, want_sub: str = "") 
         print(f"  FAIL {name}: rc={got_rc} (want {want_rc}) stderr={stderr!r}")
 
 
-def init_project(initialized: bool = True, gate_passed: bool = False) -> str:
+def init_project(
+    initialized: bool = True,
+    gate_passed: bool = False,
+    figures_layout: str | None = None,
+    malformed: bool = False,
+) -> str:
     proj = tempfile.mkdtemp(prefix="fw_hook_test_")
     if initialized:
         os.makedirs(os.path.join(proj, "state"), exist_ok=True)
         with open(os.path.join(proj, "state", "workflow.json"), "w", encoding="utf-8") as fh:
-            json.dump({"integrity_gate": {"passed": gate_passed}}, fh)
+            if malformed:
+                fh.write("{not json")
+            else:
+                state: dict[str, object] = {"integrity_gate": {"passed": gate_passed}}
+                if figures_layout is not None:
+                    state["figures_layout"] = figures_layout
+                json.dump(state, fh)
     return proj
 
 
@@ -178,6 +189,54 @@ _LEG_HTML = (
     '<img src="figures/0042-volcano.legend.png" alt="key">\n'
 )
 _LEG_FM_ONLY = _FIG_FM_LEG  # frontmatter, empty body → fail open
+
+# Fixtures for path-normalized matching under the structured layout: same-stem
+# files in different directories are distinct figures; ./ ../ and absolute
+# spellings of one file are the same figure.
+_NEST_FM = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/qc/pca/0042-pca.png", svg: "figures/qc/pca/0042-pca.svg", caption: "P" }\n---\n'
+)
+_NEST_EMBEDDED = _NEST_FM + "\n# T\n\n## Evidence\n![PCA](../figures/qc/pca/0042-pca.png)\n"
+_NEST_BACKSLASH = _NEST_FM + "\n# T\n\n## Evidence\n![PCA](..\\figures\\qc\\pca\\0042-pca.png)\n"
+_NEST_ABS = _NEST_FM + "\n# T\n\n## Evidence\n![PCA](/abs/proj/figures/qc/pca/0042-pca.png)\n"
+_SAMESTEM_FM = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/qc/cv/summary.png", svg: "figures/qc/cv/summary.svg", caption: "C" }\n---\n'
+)
+_SAMESTEM_OTHER_DIR = _SAMESTEM_FM + "\n# T\n\n## Evidence\n![CV](../figures/qc/pca/summary.png)\n"
+_SAMESTEM_BOTH = (
+    _SAMESTEM_FM + "\n# T\n\n## Evidence\n![CV](../figures/qc/cv/summary.png)\n"
+    "![PCA](../figures/qc/pca/summary.png)\n"
+)
+_NEST_LEG_FM = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/analysis/differential-abundance/genotype-vs-wt/0042-volcano.png",'
+    ' legend_png: "figures/analysis/differential-abundance/genotype-vs-wt/0042-volcano.legend.png",'
+    ' caption: "V" }\n---\n'
+)
+_NEST_LEG_BOTH = (
+    _NEST_LEG_FM + "\n# T\n\n## Evidence\n"
+    "![Volcano](../figures/analysis/differential-abundance/genotype-vs-wt/0042-volcano.png)\n"
+    "![Legend](../figures/analysis/differential-abundance/genotype-vs-wt/0042-volcano.legend.png)\n"
+)
+
+# Fixtures for the structured-layout backstop (invariant 7).
+_LAYOUT_NO_FAMILY = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/qc/x.png", svg: "figures/qc/x.svg", caption: "X" }\n---\n'
+    "\n# T\n\n## Evidence\n![X](../figures/qc/x.png)\n"
+)
+_LAYOUT_TOO_DEEP = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/analysis/de/g/extra/x.png", svg: "figures/analysis/de/g/extra/x.svg", caption: "X" }\n---\n'
+    "\n# T\n\n## Evidence\n![X](../figures/analysis/de/g/extra/x.png)\n"
+)
+_LAYOUT_METADATA = (
+    '---\nid: 42\nstatus: candidate\nfigures:\n'
+    '  - { png: "figures/metadata/crosstabs/0007-sex-by-group.png", svg: "figures/metadata/crosstabs/0007-sex-by-group.svg", caption: "X" }\n---\n'
+    "\n# T\n\n## Evidence\n![X](../figures/metadata/crosstabs/0007-sex-by-group.png)\n"
+)
 _FIG_MD_TITLE = (
     _FIG_FM + '\n# T\n\n## Evidence\n![Volcano](figures/0042-volcano.png "Volcano")\n'
 )
@@ -241,7 +300,7 @@ def test_findings() -> None:
           _find(open_proj, "findings/0042-v.md", _FIG_EMBEDDED), 0)
     check("only the legend embedded still blocks (main png required)",
           _find(open_proj, "findings/0042-v.md", _FIG_LEGEND_ONLY), 2, "inline")
-    check("embedded via ./ relative path allowed (basename match)",
+    check("embedded via ./ relative path allowed (path-normalized)",
           _find(open_proj, "findings/0042-v.md", _FIG_RELPATH), 0)
     check("empty figures list allowed",
           _find(open_proj, "findings/0042-v.md", _FIG_EMPTY_LIST), 0)
@@ -277,7 +336,7 @@ def test_findings() -> None:
           _find(open_proj, "findings/0042-v.md", _LEG_BOTH), 0)
     check("listed legend not embedded blocked",
           _find(open_proj, "findings/0042-v.md", _LEG_MISSING), 2, "legend")
-    check("legend embedded via ./ relative path allowed (basename match)",
+    check("legend embedded via ./ relative path allowed (path-normalized)",
           _find(open_proj, "findings/0042-v.md", _LEG_RELPATH), 0)
     check("legend embedded as HTML img allowed",
           _find(open_proj, "findings/0042-v.md", _LEG_HTML), 0)
@@ -290,6 +349,45 @@ def test_findings() -> None:
                      '  legend_png: "figures/0042-volcano.legend.png"\n'), 0)
     check("missing-legend block still fires after the gate passes",
           _find(passed_proj, "findings/0042-v.md", _LEG_MISSING), 2, "legend")
+
+    # Path-normalized matching (structured layout): same stem, different directory.
+    check("nested figure embedded via ../ allowed",
+          _find(open_proj, "findings/0042-v.md", _NEST_EMBEDDED), 0)
+    check("nested figure embedded with backslashes allowed",
+          _find(open_proj, "findings/0042-v.md", _NEST_BACKSLASH), 0)
+    check("nested figure embedded via an absolute path allowed",
+          _find(open_proj, "findings/0042-v.md", _NEST_ABS), 0)
+    check("same stem in another directory does not count as embedded",
+          _find(open_proj, "findings/0042-v.md", _SAMESTEM_OTHER_DIR), 2, "inline")
+    check("same stem in another directory counts as unlisted",
+          _find(open_proj, "findings/0042-v.md", _SAMESTEM_BOTH), 2, "but not listed")
+    check("nested legend beside its figure allowed",
+          _find(open_proj, "findings/0042-v.md", _NEST_LEG_BOTH), 0)
+
+    # Structured-layout backstop (invariant 7) — only in projects with the marker.
+    structured_proj = init_project(figures_layout="structured")
+    broken_proj = init_project(malformed=True)
+    check("structured project: flat figures/ path blocked",
+          _find(structured_proj, "findings/0042-v.md", _FIG_EMBEDDED), 2, "figures/metadata/<family>/")
+    check("structured project: qc/<family>/ path allowed",
+          _find(structured_proj, "findings/0042-v.md", _NEST_EMBEDDED), 0)
+    check("structured project: analysis/<family>/<label>/ + legend allowed",
+          _find(structured_proj, "findings/0042-v.md", _NEST_LEG_BOTH), 0)
+    check("structured project: metadata/<family>/ path allowed",
+          _find(structured_proj, "findings/0042-v.md", _LAYOUT_METADATA), 0)
+    check("structured project: qc/ without a family directory blocked",
+          _find(structured_proj, "findings/0042-v.md", _LAYOUT_NO_FAMILY), 2, "figures/qc/x.png")
+    check("structured project: four levels under analysis/ blocked",
+          _find(structured_proj, "findings/0042-v.md", _LAYOUT_TOO_DEEP), 2, "extra/x.png")
+    check("legacy project (no marker): flat path still allowed",
+          _find(open_proj, "findings/0042-v.md", _FIG_EMBEDDED), 0)
+    check("malformed workflow.json: layout check skipped",
+          _find(broken_proj, "findings/0042-v.md", _FIG_EMBEDDED), 0)
+    check("structured project: Edit fragment fails open",
+          _find_edit(structured_proj, "findings/0042-v.md",
+                     "![V](figures/0042-volcano.png)\n"), 0)
+    check("structured project: frontmatter-only write fails open",
+          _find(structured_proj, "findings/0042-v.md", _FIG_FM_ONLY), 0)
 
     # Cross-reference link backstop (invariant 5).
     check("linked finding mention allowed",

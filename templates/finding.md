@@ -53,8 +53,10 @@ evidence:
 # (per-figure provenance) so that figure is regenerable on its own. legend_png/legend_svg
 # are present whenever the figure has a legend image; omit them when its key is on-axes.
 figures: []
-  # - { png: "figures/<NNNN>-<name>.png", svg: "figures/<NNNN>-<name>.svg",
-  #     legend_png: "figures/<NNNN>-<name>.legend.png", legend_svg: "figures/<NNNN>-<name>.legend.svg",
+  # Paths follow the structured figures/ layout: figures/<phase>/<family>[/<label>]/<stem>.* — a Stage-4 result
+  # figure is figures/analysis/<family>/<label>/…, a Stage-1 cohort figure figures/metadata/<family>/… (conventions/visualization.md).
+  # - { png: "figures/analysis/<family>/<label>/<NNNN>-<name>.png", svg: "figures/analysis/<family>/<label>/<NNNN>-<name>.svg",
+  #     legend_png: "figures/analysis/<family>/<label>/<NNNN>-<name>.legend.png", legend_svg: "figures/analysis/<family>/<label>/<NNNN>-<name>.legend.svg",
   #     caption: "<free-text caption>",
   #     script: { path: "scripts/promoted/<figure_script>.py", commit: "<short-sha>" },
   #     data_version: "<sha256:... or version stamp>",
@@ -86,7 +88,7 @@ integrity_signoff: false
 ## Evidence
 <The numbers behind the claim — effect sizes, intervals, corrected p-values — shown with inline figures/tables. Mirrors the `evidence` frontmatter in narrative form.>
 
-<Body markdown links are relative to `findings/`: a figure is `../figures/<name>.png`, another finding is `<id>-<slug>.md`. (Frontmatter paths stay project-root-relative — see `conventions/findings.md` §2.7.)>
+<Body markdown links are relative to `findings/`: a figure is `../figures/<phase>/<family>[/<label>]/<name>.png`, another finding is `<id>-<slug>.md`. (Frontmatter paths stay project-root-relative — see `conventions/findings.md` §2.7.)>
 
 <**Show, don't tell.** Every claim here that *can* be shown carries a figure: ask "what figure shows this?" and commission it with the claim. Embed each one inline, right where it is discussed — the reader must never have to go find it — and embed its **legend image directly beneath it** whenever the figure has one (a legend is essential to reading the figure; never cite it as a path). Every figure and legend embedded here is also listed in the `figures` frontmatter (and vice-versa). Write each in **five parts**: the claim → the figure → its legend → its caption + provenance pointer → **the reading** (how to see the claim in the picture). The reading is required; a caption is a label, not an explanation. Keep the words here, not on the canvas (`conventions/visualization.md`, *The annotation budget*).>
 
@@ -94,9 +96,9 @@ integrity_signoff: false
 
 <The claim, in prose — what the figure below is being shown to establish.>
 
-![<caption — what each axis/series/color encodes, units, n>](../figures/<NNNN>-<name>.png)
+![<caption — what each axis/series/color encodes, units, n>](../figures/analysis/<family>/<label>/<NNNN>-<name>.png)
 
-![Legend for Figure 1 — <what the key encodes>](../figures/<NNNN>-<name>.legend.png)
+![Legend for Figure 1 — <what the key encodes>](../figures/analysis/<family>/<label>/<NNNN>-<name>.legend.png)
 
 *Figure 1. <caption>. Produced by `scripts/promoted/<figure_script>.py` (<commit>) from data `<data_version>`[, result `<result_id>`].*
 

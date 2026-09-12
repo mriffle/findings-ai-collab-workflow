@@ -42,15 +42,18 @@ Color encodes **at most eight** categories. If you're about to exceed eight, do 
 
 ## Dual export + separate legend image
 
-Write the figure and its legend to `figures/` with a shared base name. Render the **legend as its own figure** — a swatch key (categorical) or a colorbar (continuous) — and keep it **out of the plot**, because a legend baked into the axes routinely overlaps the data:
+**Where it goes.** `figures/` is structured (`conventions/visualization.md`, *Where figures live*): the dispatch names your **target directory** — `figures/metadata/<family>/` (Stage 1), `figures/qc/<family>/` (Stage 3), or `figures/analysis/<family>/<label>/` (Stage 4 onward) — where `<family>` is the kebab-case name of the template you seed from and `<label>` the contrast / outcome / result. If a dispatch omits it, derive the phase from the stage and the family from the template, and say so in your contract. Make the directory a **script parameter defaulting to that conventional path** (never a bare hard-coded string), and keep the **stem** bare: processing state and scale go *in the stem* (`cv-experimental-raw-normalized-corrected`), never as a directory; a figure attached to a finding starts with the finding id (`0042-volcano`); `save_figure` rejects a separator in the stem. Never go deeper than three levels under `figures/`.
+
+Write the figure and its legend to that directory with a shared base name. Render the **legend as its own figure** — a swatch key (categorical) or a colorbar (continuous) — and keep it **out of the plot**, because a legend baked into the axes routinely overlaps the data:
 
 ```python
-fig.savefig(f"figures/{base}.svg")                   # vector master
-fig.savefig(f"figures/{base}.png", dpi=300)          # review + embed target
-legend_fig.savefig(f"figures/{base}.legend.svg")     # legend vector master
-legend_fig.savefig(f"figures/{base}.legend.png", dpi=300)  # legend image
+out = "figures/qc/pca"                                    # the target directory the dispatch named
+fig.savefig(f"{out}/{base}.svg")                          # vector master
+fig.savefig(f"{out}/{base}.png", dpi=300)                 # review + embed target
+legend_fig.savefig(f"{out}/{base}.legend.svg")            # legend vector master
+legend_fig.savefig(f"{out}/{base}.legend.png", dpi=300)   # legend image
 ```
-The `lib/figures/figure_io.save_figure` helper does both exports (pass `legend_fig=`). The figure's textual caption — what each axis/series/color encodes, units, n, and any grouping/strategy applied — goes in the finding's `figures[].caption`, not a separate document.
+The `lib/figures/figure_io.save_figure(fig, out, base, legend_fig=…)` helper does both exports and creates the directory. The figure's textual caption — what each axis/series/color encodes, units, n, and any grouping/strategy applied — goes in the finding's `figures[].caption`, not a separate document.
 
 ## Provenance
 

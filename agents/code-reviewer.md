@@ -27,7 +27,7 @@ Review against `conventions/coding.md` and `conventions/correctness.md`. A scrip
    - orientation assumed rather than confirmed; identifier truncation/reformatting;
    - missing-value tokens conflated (`0` vs `NA` vs `"Filtered"`);
    - leakage (preprocessing fit outside CV folds) — flag for the stats-reviewer too if present.
-3. **Check reproducibility hygiene** — parameterized (no hard-coded paths), seeds set/recorded, logging not print, fails loud, writes only to `results/`/`figures/` (never `data/`).
+3. **Check reproducibility hygiene** — parameterized (no hard-coded paths), seeds set/recorded, logging not print, fails loud, writes only under `results/`/`figures/` (never `data/`). A figure script's output directory is a **parameter defaulting to its conventional path** under the structured layout — `figures/metadata/<family>/`, `figures/qc/<family>/`, or `figures/analysis/<family>/<label>/` (`conventions/visualization.md`, *Where figures live*) — so "no hard-coded paths" and the layout agree; flag a flat `figures/` write or a processing state used as a directory.
 4. **Check reuse & single-source** (`conventions/script-registry.md`) — **no duplicate task** (no second script doing what an existing one does; variations belong as parameters); **no reimplementation** of a symbol already in a module's `provides` (it must be imported); shared logic factored into a `module`; the **promoted-imports-only** invariant holds (a promoted script imports only promoted modules); and the `scripts/manifest.md` row matches the script's `__script_meta__` header. A duplicate or copy-pasted function is **not promotable**.
 
 ## Output contract

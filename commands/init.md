@@ -18,8 +18,11 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
    ```
    data/                  scripts/scratch/      results/      findings/
    state/                 scripts/promoted/     figures/      research/
-                                                              reports/
+                                                figures/metadata/     reports/
+                                                figures/qc/
+                                                figures/analysis/
    ```
+   `figures/` is **structured** (`conventions/visualization.md`, *Where figures live*): Stage-1 cohort figures under `metadata/<family>/`, Stage-3 QC under `qc/<family>/`, Stage-4+ results under `analysis/<family>/<label>/`. If `figures/README.md` is absent, write it — a short note stating those three shapes, that the family is the plot/analysis template name, that processing state goes in the file stem (never a directory), that a finding-attached figure's stem starts with the finding id, and that the tree never goes deeper than three levels.
 
 2. **Seed `state/color_registry.json`** — if absent, copy `${CLAUDE_PLUGIN_ROOT}/templates/color_registry.json`. This carries the universal Okabe–Ito defaults; project-specific categories are added later, once `state/METADATA.md` exists. If present, keep it.
 
@@ -53,9 +56,9 @@ Plugin templates are referenced under `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 5. **Initialize the workflow state** — if `state/workflow.json` is absent, create it (schema: `conventions/workflow-state.md`):
    ```json
-   { "schema_version": "1", "current_stage": 0, "science_done": false, "metadata_done": false, "data_done": false, "integrity_gate": { "passed": false, "signed_off_by": null, "date": null, "data_version": null, "qc_report": null }, "environment": { "mode": null, "python_min": "3.11", "interpreter": null, "configured": false, "declined": false, "updated": null }, "updated": "<today's date, YYYY-MM-DD>" }
+   { "schema_version": "1", "current_stage": 0, "science_done": false, "metadata_done": false, "data_done": false, "integrity_gate": { "passed": false, "signed_off_by": null, "date": null, "data_version": null, "qc_report": null }, "figures_layout": "structured", "environment": { "mode": null, "python_min": "3.11", "interpreter": null, "configured": false, "declined": false, "updated": null }, "updated": "<today's date, YYYY-MM-DD>" }
    ```
-   This is the single source of truth for pipeline position; the stage commands update it, and `guard_findings.py` reads `integrity_gate.passed` from it to gate finding writes (analysis ordering itself is enforced by the `stage4-explore` command precondition + orchestrator behavior).
+   This is the single source of truth for pipeline position; the stage commands update it, and `guard_findings.py` reads `integrity_gate.passed` from it to gate finding writes and `figures_layout` to enforce the structured `figures/` layout (only in projects that carry the marker — a project initialized before the layout existed keeps its flat `figures/`, which is why this key is written only when the file is created) (analysis ordering itself is enforced by the `stage4-explore` command precondition + orchestrator behavior).
 
 6. **Mark `data/` read-only by convention** — if `data/README.md` is absent, create it stating: raw data here is immutable and read-only (a hook blocks writes); place the dataset and its metadata file here; everything in `results/` and `figures/` is regenerated from this plus a script.
 

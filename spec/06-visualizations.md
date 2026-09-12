@@ -27,7 +27,9 @@ Every visualization is saved in **both**:
 - **SVG** (vector, for editing and publication), and
 - **PNG at 300 DPI** (raster, for review and embedding).
 
-Both are written to `figures/`. The PNG is the review and embedding target; the SVG is the editable master.
+Both are written under `figures/`. The PNG is the review and embedding target; the SVG is the editable master.
+
+**`figures/` is structured, not flat** *(added after implementation, by user decision)*. A study renders dozens to hundreds of image files, so the directory path describes the figure: `figures/metadata/<family>/` (Stage 1 cohort characterization), `figures/qc/<family>/` (the Stage 3 QC report), `figures/analysis/<family>/<label>/` (Stage 4 onward — `<label>` the contrast / outcome / result). The top level is decided by **the stage that commissions the figure** (so a PCA rendered as QC in Stage 3 lands in `qc/pca/`, and the same template re-rendered for biology in Stage 4 lands in `analysis/pca/<label>/`), the family is the plot/analysis template, processing state stays in the file stem (most QC figures compare states inside one figure), a finding-attached figure's stem starts with its finding id, and the tree never exceeds three levels. The legend image sits beside its figure. The orchestrator names the target directory in every figure dispatch; the reviewers check it, and the findings guard backstops it in projects that opted in via `state/workflow.json` (`figures_layout`), leaving projects initialized before the layout untouched (`conventions/visualization.md`, *Where figures live*).
 
 ## 6.3 Legends
 

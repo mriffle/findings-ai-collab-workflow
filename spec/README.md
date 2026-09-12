@@ -68,7 +68,10 @@ my-study/
 │   ├── scratch/               # exploratory, disposable
 │   └── promoted/              # reviewed, reproducible; findings link here
 ├── results/                   # regenerable CSVs
-├── figures/                   # regenerable SVG + 300 DPI PNG + legend docs
+├── figures/                   # regenerable SVG + 300 DPI PNG + legend images, structured:
+│   ├── metadata/<family>/     #   stage 1 cohort characterization
+│   ├── qc/<family>/           #   stage 3 QC report
+│   └── analysis/<family>/<label>/  # stage 4+ results (doc 06)
 ├── findings/
 │   ├── manifest.md            # findings graph index (Markdown — see conventions/manifest.md)
 │   └── NNNN-slug.md           # individual finding documents

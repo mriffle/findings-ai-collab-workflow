@@ -23,7 +23,7 @@ Each agent has a defined job, inputs, outputs, and isolation rationale. Outputs 
 | **Code reviewer** | Review scripts for correctness, reproducibility hygiene, data-handling bugs | A script | Pass/fail against coding + correctness conventions |
 | **Statistician** | Perform statistical analysis | A question, data | Results + the analysis script |
 | **Stats reviewer** | Review analysis against statistical conventions | An analysis | Pass/fail against statistical conventions (doc 05) |
-| **Figure generator** | Produce publication-ready figures | A spec, data, color registry | SVG + 300 DPI PNG + legend doc (doc 06) |
+| **Figure generator** | Produce publication-ready figures | A spec, data, color registry, target directory | SVG + 300 DPI PNG + legend image (doc 06) |
 | **Figure reviewer** | Review the rendered PNG for accuracy and standards | The rendered figure | Pass/fail; required corrections |
 | **Writer(s)** | Draft report sections from findings | Selected findings, outline | A report section |
 | **Report reviewer / editor** | Claim-source check + coherence pass | Draft sections | Verified, coherent report (doc 07) |

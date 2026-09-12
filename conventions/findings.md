@@ -120,10 +120,12 @@ Each entry carries the figure's artifacts, its caption, **and its own producing 
 
 ```yaml
 figures:
-  - png:        "figures/0042-volcano.png"        # 300 DPI raster; review + embed target
-    svg:        "figures/0042-volcano.svg"        # vector master
-    legend_png: "figures/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3); embedded beneath the figure. Omit when the key is on-axes
-    legend_svg: "figures/0042-volcano.legend.svg" # legend vector master
+  # Paths follow the structured figures/ layout (conventions/visualization.md, Where figures live):
+  # figures/<phase>/<family>[/<label>]/<stem>.*, the finding id prefixed on the stem.
+  - png:        "figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.png"        # 300 DPI raster; review + embed target
+    svg:        "figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.svg"        # vector master
+    legend_png: "figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.legend.png" # legend as a separate IMAGE (doc 06.3); embedded beneath the figure. Omit when the key is on-axes
+    legend_svg: "figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.legend.svg" # legend vector master
     caption:    "Volcano plot of drug_A vs control."  # free-text caption
     # Per-figure provenance — the script + input that produced THIS figure.
     script:       { path: "scripts/promoted/volcano_treatment.py", commit: "abc1234" }
@@ -137,7 +139,7 @@ figures:
 - **`script`** — the **producing figure script** (path + commit). This is per-figure and may differ from the finding-level `provenance.script` (which pins the analysis that produced the *numbers*): the figure script is what re-renders the image. Follows the same promoted-script rule at `validated` (a validated finding's figures are re-rendered from `scripts/promoted/`).
 - **`data_version`** — the pinned data the figure was rendered from; **`result_id`** — set when the figure was rendered from a cached result (`conventions/results-cache.md`), so the figure re-renders from the exact cached result rather than a recompute; **`params`** — optional render params.
 
-Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`), and `guard_findings.py` enforces the correspondence **in both directions**: a listed figure must be embedded, and an embedded figure under `figures/` must be listed so it carries its provenance. It enforces the same pair for legends: a listed `legend_png` must be embedded, and an embedded `*.legend.png` must be some entry's `legend_png`.
+Figures are caches of a script (doc 06). They are covered by the staleness machinery: if `data_version`, the producing script's commit, or a linked `result_id` changes, figures built on the old version are flagged. The **inline images in the body and this `figures` list must correspond** — the findings-manager keeps them in lockstep (§7; `agents/findings-manager.md`), and `guard_findings.py` enforces the correspondence **in both directions**: a listed figure must be embedded, and an embedded figure under `figures/` must be listed so it carries its provenance. It enforces the same pair for legends: a listed `legend_png` must be embedded, and an embedded `*.legend.png` must be some entry's `legend_png`. Matching is path-normalized (`../figures/qc/pca/x.png` ≡ `figures/qc/pca/x.png`), never by basename — same-stem files in different directories are distinct figures. In a project carrying `figures_layout: "structured"` in `state/workflow.json` it also blocks a figure path outside the structured layout (`conventions/visualization.md`, *Where figures live*).
 
 ### 2.5 `references`
 
@@ -179,7 +181,7 @@ The effect survives correction, unlike [the batch caveat (0007)](0007-batch-skew
 
 Both are legal; the phrasing is yours, the id and the target are not. Resolve the filename from the manifest's `ID` + `Slug` columns — that is what `Slug` is for (`conventions/manifest.md`) — never by scanning the directory.
 
-**Two path conventions, deliberately different.** Frontmatter paths (`figures[]`, `provenance.script.path`) are **project-root-relative**, because scripts run from the project root. Markdown links in the **body** — both finding cross-references and inline figure images — are **relative to `findings/`**, because that is where the document lives: a figure is `../figures/<name>.png`, a sibling finding is `<id>-<slug>.md`. Getting this wrong renders a broken image or a dead link.
+**Two path conventions, deliberately different.** Frontmatter paths (`figures[]`, `provenance.script.path`) are **project-root-relative**, because scripts run from the project root. Markdown links in the **body** — both finding cross-references and inline figure images — are **relative to `findings/`**, because that is where the document lives: a figure is `../figures/<phase>/<family>[/<label>]/<name>.png` (the structured layout, `conventions/visualization.md`), a sibling finding is `<id>-<slug>.md`. Getting this wrong renders a broken image or a dead link.
 
 **Where it applies:** anywhere in the body — `Summary`, `Evidence`, `Caveats`, `Discussion`, `Follow-ups`, `Related findings`. Not the frontmatter: `relationships` carries machine-readable ids, not links.
 
@@ -326,9 +328,9 @@ The body is the human narrative. Section order:
 The drug_A response is a small, coherent set of proteins rather than a global shift:
 37 of 4,812 proteins clear BH q < 0.05, and the largest effects share a direction.
 
-![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](../figures/0042-volcano.png)
+![Volcano plot of drug_A vs control — log2FC (x) vs −log10(BH q) (y); n=24.](../figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.png)
 
-![Legend for Figure 1 — significance classes: up / down / not significant.](../figures/0042-volcano.legend.png)
+![Legend for Figure 1 — significance classes: up / down / not significant.](../figures/analysis/differential-abundance/drug-a-vs-control/0042-volcano.legend.png)
 
 *Figure 1. Volcano of drug_A vs control. Produced by `scripts/promoted/volcano_treatment.py` (abc1234) from data `sha256:9f86d08…` (result `fp-a1b2c3…`).*
 

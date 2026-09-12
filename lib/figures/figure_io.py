@@ -20,8 +20,9 @@ every figure starts compliant instead of relying on each script to remember:
     renders *inside* this context so its defaults are set centrally, not re-specified.
 
 The set each plot produces — ``<base>.svg`` + ``<base>.png`` (+ ``<base>.legend.svg`` /
-``<base>.legend.png`` when a legend figure is supplied) in ``figures/`` — is what the
-figure-reviewer checks for.
+``<base>.legend.png`` when a legend figure is supplied) in the figure's directory under
+``figures/`` (``figures/<phase>/<family>[/<label>]/`` — conventions/visualization.md,
+*Where figures live*) — is what the figure-reviewer checks for.
 """
 
 from __future__ import annotations
@@ -114,7 +115,7 @@ def publication_style() -> Iterator[None]:
 
         with publication_style():
             fig = make_figure(...)
-        save_figure(fig, "figures", "pca_by_genotype", legend_fig=legend)
+        save_figure(fig, "figures/qc/pca", "pca_by_genotype", legend_fig=legend)
     """
     # rc_context() with no argument snapshots the current rcParams and restores them on
     # exit; we mutate inside it so the override is scoped and exception-safe.
@@ -141,7 +142,9 @@ def save_figure(
     fig:
         The main figure to save.
     output_dir:
-        Destination directory (created if absent). In a project this is ``figures/``.
+        Destination directory (created if absent). In a project this is the figure's
+        directory under the structured layout, e.g. ``figures/qc/pca`` or
+        ``figures/analysis/differential-abundance/genotype-vs-wt``.
     base_name:
         Filename stem (no extension), e.g. ``"pca_experimental_by_genotype"``. Must be a
         bare name, not a path — a stem with a path separator is rejected so the figure
