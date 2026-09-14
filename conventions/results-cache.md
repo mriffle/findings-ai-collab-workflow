@@ -19,6 +19,8 @@ Split the Stage-4 work for a heavy analysis into two scripts:
 
 A cached result is keyed by `result_fingerprint(analysis, data_version, params, seed)`, a deterministic 12-hex id. **Identical inputs → the same fingerprint** (a re-run maps to the same cache entry); **any change** — `outcome`, `binarize`, `covariates`, `feature_list`, `run_null`, method, `seed`, or the dataset's `data_version` — → a **new** result. So `params` must capture *every* knob that affects the numbers. An optional human **label** rides alongside for readability; the fingerprint is the identity.
 
+**A reload may carry defaulted fields.** `load_result` applies a field's dataclass default when the on-disk manifest predates it (a result cached by an older template version) and emits a `ResultSchemaWarning` naming the defaulted fields — expected across a template version bump (e.g. `plateau_start_c is None` on a pre-0.2 SVM result), suspicious for a manifest written by the current version. A figure rendered from such a result may lack a caveat that field carries (e.g. the feature-list title note), so heed the warning.
+
 **Canonicalize set-like params.** A value that is semantically a *set* — notably a `feature_list` (all four predictive templates accept one; `conventions/statistics.md`) — must be recorded in `params` in a **canonical form: sorted and de-duplicated**. The fingerprint hashes list *order* literally, so `["A","B"]` and `["B","A"]` would otherwise mint two entries for an identical model. Canonicalizing means two independent runs requesting the same feature set reliably hit one cache slot.
 
 ## The registry — `results/manifest.md`

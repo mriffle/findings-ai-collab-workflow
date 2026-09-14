@@ -346,7 +346,11 @@ def test_defaulted_field_missing_from_old_cache_loads(tmp_path: Path) -> None:
         del manifest["fields"][name]
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (fold_dir / "test_indices.npy").unlink()
-    out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
+    pattern = r"fold_predictions\[\]\.repeat"
+    with pytest.warns(rio.ResultSchemaWarning, match=pattern) as rec:
+        out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
+    # one warning for the whole reload, not one per nested fold record
+    assert sum(issubclass(w.category, rio.ResultSchemaWarning) for w in rec) == 1
     old_fold = out.fold_predictions[0]
     assert (old_fold.repeat, old_fold.fold) == (-1, -1)
     assert old_fold.test_indices.size == 0

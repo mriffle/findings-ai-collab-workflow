@@ -1,9 +1,9 @@
 """Tests for the Dataset on-disk round-trip (common/dataset_io.py).
 
-  * round-trip — save then load must reproduce the Dataset exactly (values, dtypes,
-    index, feature names, and the scale tag);
-  * fail-loud — a missing artifact, unknown format version, invalid scale, or any
-    shape/pairing mismatch must raise, never yield a malformed Dataset.
+* round-trip — save then load must reproduce the Dataset exactly (values, dtypes,
+  index, feature names, and the scale tag);
+* fail-loud — a missing artifact, unknown format version, invalid scale, or any
+  shape/pairing mismatch must raise, never yield a malformed Dataset.
 """
 
 from __future__ import annotations

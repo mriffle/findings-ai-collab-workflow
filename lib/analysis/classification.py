@@ -50,6 +50,7 @@ Requires scikit-learn.
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -595,6 +596,13 @@ def _nested_performance(
     accs: list[float] = []
     aps: list[float] = []
     for i, (train, test) in enumerate(_split(outer, x, y, groups)):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"outer test fold {i} holds a single class (n={len(test)}), so its "
+                f"AUC is undefined. With grouped CV this happens when a unit carries "
+                f"most of one class — use more units per fold (lower n_splits) or "
+                f"row-level CV."
+            )
         search = GridSearchCV(
             _build_pipeline(
                 None, cfg.l1_grid[0], cfg.max_iter, cfg.tol, cfg.random_state
@@ -707,11 +715,33 @@ def _permute_labels(
     if groups is None:
         return np.asarray(rng.permutation(y), dtype=int)
     units, inverse = np.unique(groups, return_inverse=True)
-    unit_label = np.array(
-        [round(float(y[groups == u].mean())) for u in units], dtype=int
-    )
+    unit_label = _unit_labels(y, groups, units)
     shuffled = rng.permutation(unit_label)
     return np.asarray(shuffled[inverse], dtype=int)
+
+
+def _unit_labels(y: np.ndarray, groups: np.ndarray, units: np.ndarray) -> np.ndarray:
+    """One label per unit — raises if any unit carries both classes.
+
+    A group-level null permutes *unit* labels, which is only defined when each unit has
+    one label; a mixed unit means ``groups`` is not the unit of the outcome (rounding
+    a mixed unit would silently change the class balance of the permuted labels).
+    Consequence: a **batch-grouped design** (``generalization_target="batches"``, each
+    batch holding both classes) has **no label-shuffle null** in this template and
+    its finding stays ``exploratory``; the grouped CV itself still runs
+    (``run_null=False``).
+    """
+    out = np.empty(len(units), dtype=int)
+    for i, u in enumerate(units):
+        labels = np.unique(y[groups == u])
+        if len(labels) != 1:
+            raise ValueError(
+                f"groups unit {u!r} carries both classes; a group-level label-shuffle "
+                f"null needs one label per unit. Use a groups column that is the unit "
+                f"of the outcome, or run without groups."
+            )
+        out[i] = int(labels[0])
+    return out
 
 
 def _null_distribution(
@@ -845,6 +875,10 @@ def classify(
     groups:
         Metadata column naming the independent unit (subject/animal/batch). Used for
         group-aware CV **only if it has repeats**; all-singletons -> row-level CV.
+        The label-shuffle null permutes labels at the unit level, so with
+        ``run_null=True`` every unit must carry one class (a subject/animal); a
+        batch-grouped design, whose units hold both classes, is refused for the null
+        (run it with ``run_null=False`` and report the finding as exploratory).
     generalization_target:
         The performance question — ``"samples"``, ``"individuals"``, or ``"batches"``.
         Recorded; report performance as "on unseen <target>". With no repeats, unseen
@@ -936,9 +970,13 @@ def classify(
         raise ValueError(
             f"Need >=2 samples per class; got positive={n_pos}, negative={n_neg}."
         )
+    _check_class_sizes_for_nested_cv(n_pos, n_neg, n_splits)
 
     groups_kept = _resolve_grouping(groups, metadata, keep)
     grouped = groups_kept is not None
+    if run_null and groups_kept is not None:
+        # Fail before the expensive CV: a group-level null needs one label per unit.
+        _unit_labels(y, groups_kept, np.unique(groups_kept))
 
     cfg = _Config(
         c_grid=c_grid_t,
@@ -1014,4 +1052,26 @@ def _check_scale(scale: str) -> None:
             f"specific reason not to.",
             ClassificationScaleWarning,
             stacklevel=3,
+        )
+
+
+def _check_class_sizes_for_nested_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
+    """Each class must keep >= n_splits samples inside every outer *training* fold.
+
+    The inner ``StratifiedKFold(n_splits)`` runs on the outer training fold, which has
+    lost up to ``ceil(min_class / n_splits)`` minority samples to the outer test fold;
+    guarding only ``min_class >= n_splits`` lets the inner CV fail deep inside with an
+    all-NaN tuning surface. The bound is exact for row-level stratified folds; under
+    grouped CV a whole minority unit can leave with the test fold, so the inner CV can
+    still fail — loudly (``_select_c`` refuses an all-NaN surface), never silently.
+    """
+    min_class = min(n_pos, n_neg)
+    inner_min = min_class - math.ceil(min_class / n_splits)
+    if inner_min < n_splits:
+        raise ValueError(
+            f"Nested CV needs each class to keep >= n_splits ({n_splits}) samples "
+            f"inside every outer training fold (min class >= n_splits + "
+            f"ceil(min class / n_splits)); got positive={n_pos}, negative={n_neg}, "
+            f"leaving only {inner_min} of the minority class for the inner CV. Lower "
+            f"n_splits to proceed."
         )

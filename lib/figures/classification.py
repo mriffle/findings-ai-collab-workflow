@@ -150,7 +150,11 @@ def _roc_annotation(ax: Axes, result: ClassificationResult) -> None:
     if result.null_p is None:
         text += "\nnull not run — exploratory"
     else:
-        text += f"\nvs shuffle null: p = {result.null_p:.4f}"
+        obs = result.observed_auc
+        obs_txt = (
+            f" (fixed-hyperparameter observed AUC {obs:.3f})" if obs is not None else ""
+        )
+        text += f"\nvs shuffle null: p = {result.null_p:.4f}{obs_txt}"
     ax.text(
         0.97,
         0.30,

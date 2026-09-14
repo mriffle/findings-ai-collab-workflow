@@ -55,7 +55,12 @@ from the estimator, not from a different philosophy):
      the plateau begins scales roughly with ``1 / n_features`` (the kernel scale of
      standardized data is ~p), so the default grid reaches down to ``1e-5``, and a
      :class:`CGridEdgeWarning` fires when the selected ``C`` is a grid edge (the grid
-     did not bracket the optimum — the C-curve figure shows it).
+     did not bracket the optimum — the C-curve figure shows it). A wide grid has a
+     cost on tiny data: inner folds cannot resolve its low-``C`` end and sometimes
+     tune below the plateau, so the result records the **plateau start** and the
+     number of outer folds that tuned below it (a :class:`TuningNoiseWarning` past
+     25 %), and the C-curve figure draws the per-fold picks — narrow the grid when
+     that happens.
   4. **Fold identity is recorded** (``repeat``, ``fold``, ``test_indices`` on every
      fold record) and **per-repeat AUCs** are reported — the mean of a repeat's fold
      AUCs (primary) and the AUC of that repeat's *pooled* out-of-fold scores
@@ -90,6 +95,7 @@ Requires scikit-learn.
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -153,8 +159,12 @@ DEFAULT_C_GRID: tuple[float, ...] = (
 # genuinely identical solutions (e.g. every C above the hard-margin threshold).
 _TIE_TOL = 1e-6
 
+# Fraction of outer folds that may tune C *below* the all-data plateau start before the
+# template warns that the grid extends further than the inner folds can resolve.
+_SUB_PLATEAU_WARN_FRACTION = 0.25
+
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm", "version": "0.1"},
+    "template": {"name": "classification-svm", "version": "0.2"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
@@ -166,6 +176,7 @@ __script_meta__: dict[str, object] = {
         "SingletonGroupsWarning",
         "FeatureListWarning",
         "CGridEdgeWarning",
+        "TuningNoiseWarning",
         "FoldPrediction",
         "SVMClassificationResult",
         "classify_svm",
@@ -221,6 +232,17 @@ class CGridEdgeWarning(UserWarning):
     (extend ``c_grid`` downward; the knee scales roughly with ``1 / n_features``). At
     the **upper** edge the curve was still rising — extend it upward. Either way the
     grid did not bracket the optimum, and the C-curve figure will show it.
+    """
+
+
+class TuningNoiseWarning(UserWarning):
+    """Many outer folds tuned ``C`` below the all-data plateau start.
+
+    On small data the inner folds cannot resolve the low-``C`` end of the grid (their
+    AUC is too coarse), so the tuner sometimes picks an over-regularized ``C`` that the
+    all-data curve places below the plateau. The nested estimate stays honest (it is
+    what a new sample would experience) but it is being lowered by tuning noise, not by
+    the data: narrow ``c_grid`` to bracket the knee (see the C-curve figure) and re-run.
     """
 
 
@@ -360,6 +382,17 @@ class SVMClassificationResult:
         folds; the hyperparameter-curve figure reads these.
     top_k:
         The ``k`` defining ``top_k_frequency``.
+    plateau_start_c, n_folds_sub_plateau:
+        The tuning-stability diagnostic: the smallest ``C`` whose all-data inner-CV
+        score is within tolerance of the maximum (where the plateau starts on the
+        unsmoothed curve), and how many outer folds tuned a ``C`` strictly below it. A
+        large count means the grid extends below what the inner folds can resolve
+        (:class:`TuningNoiseWarning` past 25 %); the C-curve figure draws the per-fold
+        picks as ticks. ``plateau_start_c`` is always taken from the **unsmoothed**
+        curve, so under ``select="best"`` it equals ``best_c``, while under
+        ``select="smoothed"`` the per-fold picks follow the smoothed rule and the
+        count mixes the two (a smoothed pick can sit below the unsmoothed start).
+        ``None`` only on a result cached before v0.2.
     n_support_vectors, n_support_negative, n_support_positive:
         Support vectors of the all-data fit (total, and per class). With balanced class
         weights and a small ``C`` nearly every sample is a bounded support vector — a
@@ -368,8 +401,12 @@ class SVMClassificationResult:
     null_aucs, observed_auc, null_p:
         The label-shuffle null (fixed-``C`` procedure): the permutation AUC
         distribution, the observed AUC computed by the *same* procedure, and the
-        empirical p ``(#{null >= observed} + 1) / (n_perm + 1)``. All ``None`` when
-        ``run_null`` was ``False`` — the finding is then capped at ``exploratory``.
+        empirical p ``(#{null >= observed} + 1) / (n_perm + 1)``. ``C`` is **fixed at
+        the all-data-tuned value** for the observed run and every permutation (the
+        elastic-net convention): the test does not include tuning variance, and
+        ``observed_auc`` (the fixed-``C`` procedure) is what ``null_p`` belongs to —
+        it is not ``cv_auc``. All ``None`` when ``run_null`` was ``False`` — the
+        finding is then capped at ``exploratory``.
     validated_eligible:
         ``True`` iff the null was run (the weight report is licensed).
     outcome, positive_label, negative_label:
@@ -423,6 +460,8 @@ class SVMClassificationResult:
     null_p: float | None = None
     n_features_requested: int | None = None
     n_features_matched: int | None = None
+    plateau_start_c: float | None = None
+    n_folds_sub_plateau: int | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
 
     @property
@@ -688,6 +727,9 @@ def _select_c(
     is strictly increasing) is the deterministic, most-regularized choice.
     """
     surface = _smooth_1d(scores) if select == "smoothed" else scores
+    # A C whose own inner fit failed (NaN score) is never a candidate, even if
+    # smoothing gave it a finite neighbour-mean.
+    surface = np.where(np.isfinite(scores), surface, np.nan)
     if not np.any(np.isfinite(surface)):
         raise ValueError("inner-CV scores are all non-finite; cannot select C.")
     best = float(np.nanmax(surface))
@@ -758,6 +800,13 @@ def _nested_performance(
     accs: list[float] = []
     aps: list[float] = []
     for i, (train, test) in enumerate(_split(outer, x, y, groups)):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"outer test fold {i} holds a single class (n={len(test)}), so its "
+                f"AUC is undefined. With grouped CV this happens when a unit carries "
+                f"most of one class — use more units per fold (lower n_splits) or "
+                f"row-level CV."
+            )
         best_c, _, _ = _tune_c(x[train], y[train], cfg)
         model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
         model.fit(x[train], y[train])
@@ -806,6 +855,7 @@ def _per_repeat_aucs(
 @dataclass(frozen=True)
 class _AllDataFit:
     best_c: float
+    plateau_start_c: float
     coef: np.ndarray
     grid_scores: np.ndarray
     grid_scores_sd: np.ndarray
@@ -817,6 +867,7 @@ def _all_data_fit(x: np.ndarray, y: np.ndarray, cfg: _Config) -> _AllDataFit:
     """Tune C on all data + refit -> best C, standardized weights, curve, SV counts."""
     best_c, means, sds = _tune_c(x, y, cfg)
     _warn_if_grid_edge(best_c, cfg.c_grid)
+    plateau_start = _select_c(means, cfg.c_grid, "best")  # unsmoothed, smallest-C
     final = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     final.fit(x, y)
     svm = final.named_steps["svm"]
@@ -827,6 +878,7 @@ def _all_data_fit(x: np.ndarray, y: np.ndarray, cfg: _Config) -> _AllDataFit:
     n_support = np.asarray(svm.n_support_, dtype=int)  # in classes_ order: [0, 1]
     return _AllDataFit(
         best_c=best_c,
+        plateau_start_c=plateau_start,
         coef=coef,
         grid_scores=means,
         grid_scores_sd=sds,
@@ -855,6 +907,38 @@ def _warn_if_grid_edge(best_c: float, c_grid: tuple[float, ...]) -> None:
             CGridEdgeWarning,
             stacklevel=4,
         )
+
+
+def _count_sub_plateau(folds: list[FoldPrediction], plateau_start_c: float) -> int:
+    """Outer folds whose tuned C is strictly below the all-data plateau start."""
+    return int(sum(f.best_c < plateau_start_c for f in folds))
+
+
+def _should_warn_tuning_noise(
+    plateau_start_c: float, c_grid: tuple[float, ...]
+) -> bool:
+    """The sub-plateau count is meaningful only when a plateau exists below the top.
+
+    When the (unsmoothed) plateau start *is* the upper grid edge the curve was still
+    rising, every fold is trivially "below" it, and the relevant advice is
+    :class:`CGridEdgeWarning`'s "extend upward" — not "narrow the grid". Keyed on the
+    plateau start, not ``best_c``, so it is right under ``select="smoothed"`` too.
+    """
+    return len(c_grid) > 1 and plateau_start_c != c_grid[-1]
+
+
+def _warn_if_tuning_noisy(n_sub_plateau: int, n_folds: int) -> None:
+    """Warn when more than ``_SUB_PLATEAU_WARN_FRACTION`` of outer folds under-tuned."""
+    if n_folds == 0 or n_sub_plateau <= _SUB_PLATEAU_WARN_FRACTION * n_folds:
+        return
+    warnings.warn(
+        f"{n_sub_plateau} of {n_folds} outer folds tuned C below the all-data plateau "
+        f"start: the inner folds cannot resolve the low-C end of c_grid, so tuning "
+        f"noise (not the data) is lowering the nested estimate. Narrow c_grid to "
+        f"bracket the knee shown in the C-curve figure and re-run.",
+        TuningNoiseWarning,
+        stacklevel=3,
+    )
 
 
 def _stability(
@@ -916,11 +1000,33 @@ def _permute_labels(
     if groups is None:
         return np.asarray(rng.permutation(y), dtype=int)
     units, inverse = np.unique(groups, return_inverse=True)
-    unit_label = np.array(
-        [round(float(y[groups == u].mean())) for u in units], dtype=int
-    )
+    unit_label = _unit_labels(y, groups, units)
     shuffled = rng.permutation(unit_label)
     return np.asarray(shuffled[inverse], dtype=int)
+
+
+def _unit_labels(y: np.ndarray, groups: np.ndarray, units: np.ndarray) -> np.ndarray:
+    """One label per unit — raises if any unit carries both classes.
+
+    A group-level null permutes *unit* labels, which is only defined when each unit has
+    one label; a mixed unit means ``groups`` is not the unit of the outcome (rounding
+    a mixed unit would silently change the class balance of the permuted labels).
+    Consequence: a **batch-grouped design** (``generalization_target="batches"``, each
+    batch holding both classes) has **no label-shuffle null** in this template and
+    its finding stays ``exploratory``; the grouped CV itself still runs
+    (``run_null=False``).
+    """
+    out = np.empty(len(units), dtype=int)
+    for i, u in enumerate(units):
+        labels = np.unique(y[groups == u])
+        if len(labels) != 1:
+            raise ValueError(
+                f"groups unit {u!r} carries both classes; a group-level label-shuffle "
+                f"null needs one label per unit. Use a groups column that is the unit "
+                f"of the outcome, or run without groups."
+            )
+        out[i] = int(labels[0])
+    return out
 
 
 def _null_distribution(
@@ -951,14 +1057,15 @@ def _null_distribution(
 def _top_k_membership(resample_coef: np.ndarray, top_k: int) -> np.ndarray:
     """(n_resamples, n_features) bool — is the feature in the resample's top-k |w|?
 
-    Ranked per resample by ``argsort(-|w|, kind="stable")`` so an exact tie at the k-th
-    rank resolves deterministically by feature order.
+    Membership is ``|w| >= the k-th largest |w|`` of that resample, so features **tied**
+    with the k-th weight are all members (a duplicated / perfectly collinear protein
+    row gets the same frequency as its twin, never an arbitrary 1.0 vs 0.0 split); a
+    resample with ties at rank k therefore has more than ``top_k`` members, and the
+    frequencies sum to at least ``top_k``.
     """
-    n_resamples, n_features = resample_coef.shape
-    member = np.zeros((n_resamples, n_features), dtype=bool)
-    for i in range(n_resamples):
-        top = np.argsort(-np.abs(resample_coef[i]), kind="stable")[:top_k]
-        member[i, top] = True
+    mag = np.abs(resample_coef)
+    kth = np.sort(mag, axis=1)[:, ::-1][:, top_k - 1]
+    member: np.ndarray = mag >= kth[:, None]
     return member
 
 
@@ -1060,6 +1167,10 @@ def classify_svm(
     groups:
         Metadata column naming the independent unit (subject/animal/batch). Used for
         group-aware CV **only if it has repeats**; all-singletons -> row-level CV.
+        The label-shuffle null permutes labels at the unit level, so with
+        ``run_null=True`` every unit must carry one class (a subject/animal); a
+        batch-grouped design, whose units hold both classes, is refused for the null
+        (run it with ``run_null=False`` and report the finding as exploratory).
     generalization_target:
         The performance question — ``"samples"``, ``"individuals"``, or ``"batches"``.
         Recorded; report performance as "on unseen <target>". With no repeats, unseen
@@ -1073,8 +1184,9 @@ def classify_svm(
     c_grid:
         The soft-margin ``C`` grid: strictly increasing, all ``> 0``. Broad and
         log-spaced by default (``1e-5`` .. ``100``); the hard-margin SVM is its
-        large-``C`` limit (a single-element grid such as ``(1e6,)`` pins it and skips
-        tuning). Where the inner-CV curve reaches its plateau scales roughly with
+        large-``C`` limit (a single-element grid such as ``(1e6,)`` pins it; the inner
+        search still runs over that one value, so the nested class-size guard still
+        applies). Where the inner-CV curve reaches its plateau scales roughly with
         ``1 / n_features``, so a much smaller or larger feature set may need the grid
         shifted; a :class:`CGridEdgeWarning` says when the selected ``C`` sits at a
         grid edge (the grid did not bracket the optimum).
@@ -1105,6 +1217,7 @@ def classify_svm(
         with no cap there is no convergence warning to silence).
     n_jobs:
         Parallelism for the inner grid search / fixed-CV scoring (``-1`` = all cores).
+        The grouped null path fits serially (its per-fold loop ignores ``n_jobs``).
     random_state:
         Recorded seed for every stochastic step (the CV shuffles and the null's
         permutations; the SVM solver itself is deterministic).
@@ -1125,6 +1238,8 @@ def classify_svm(
         )
     if top_k < 1:
         raise ValueError(f"top_k must be >= 1; got {top_k}.")
+    if select not in ("best", "smoothed"):
+        raise ValueError(f"select must be 'best' or 'smoothed'; got {select!r}.")
     if max_iter != -1 and max_iter < 1:
         raise ValueError(f"max_iter must be -1 (no cap) or >= 1; got {max_iter}.")
 
@@ -1172,11 +1287,7 @@ def classify_svm(
         raise ValueError(
             f"Need >=2 samples per class; got positive={n_pos}, negative={n_neg}."
         )
-    if min(n_pos, n_neg) < n_splits:
-        raise ValueError(
-            f"Each class needs >= n_splits ({n_splits}) samples for stratified folds; "
-            f"got positive={n_pos}, negative={n_neg}. Lower n_splits to proceed."
-        )
+    _check_class_sizes_for_nested_cv(n_pos, n_neg, n_splits)
     if top_k > x.shape[1]:
         raise ValueError(
             f"top_k ({top_k}) exceeds the {x.shape[1]} analyzed features; a top-k "
@@ -1185,6 +1296,9 @@ def classify_svm(
 
     groups_kept = _resolve_grouping(groups, metadata, keep)
     grouped = groups_kept is not None
+    if run_null and groups_kept is not None:
+        # Fail before the expensive CV: a group-level null needs one label per unit.
+        _unit_labels(y, groups_kept, np.unique(groups_kept))
 
     cfg = _Config(
         c_grid=c_grid_t,
@@ -1204,6 +1318,9 @@ def classify_svm(
 
     perf = _nested_performance(x, y, groups_kept, cfg)
     fit = _all_data_fit(x, y, cfg)
+    n_sub_plateau = _count_sub_plateau(perf.folds, fit.plateau_start_c)
+    if _should_warn_tuning_noise(fit.plateau_start_c, c_grid_t):
+        _warn_if_tuning_noisy(n_sub_plateau, len(perf.folds))
     resample_coef = _stability(x, y, groups_kept, fit.best_c, cfg)
     coeff_table = _coefficient_table(fit.coef, resample_coef, kept_features, top_k)
 
@@ -1250,6 +1367,8 @@ def classify_svm(
         null_p=null_p,
         n_features_requested=n_requested,
         n_features_matched=n_matched,
+        plateau_start_c=fit.plateau_start_c,
+        n_folds_sub_plateau=n_sub_plateau,
         feature_names=kept_features,
     )
 
@@ -1263,4 +1382,26 @@ def _check_scale(scale: str) -> None:
             f"specific reason not to.",
             ClassificationScaleWarning,
             stacklevel=3,
+        )
+
+
+def _check_class_sizes_for_nested_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
+    """Each class must keep >= n_splits samples inside every outer *training* fold.
+
+    The inner ``StratifiedKFold(n_splits)`` runs on the outer training fold, which has
+    lost up to ``ceil(min_class / n_splits)`` minority samples to the outer test fold;
+    guarding only ``min_class >= n_splits`` lets the inner CV fail deep inside with an
+    all-NaN tuning surface. The bound is exact for row-level stratified folds; under
+    grouped CV a whole minority unit can leave with the test fold, so the inner CV can
+    still fail — loudly (``_select_c`` refuses an all-NaN surface), never silently.
+    """
+    min_class = min(n_pos, n_neg)
+    inner_min = min_class - math.ceil(min_class / n_splits)
+    if inner_min < n_splits:
+        raise ValueError(
+            f"Nested CV needs each class to keep >= n_splits ({n_splits}) samples "
+            f"inside every outer training fold (min class >= n_splits + "
+            f"ceil(min class / n_splits)); got positive={n_pos}, negative={n_neg}, "
+            f"leaving only {inner_min} of the minority class for the inner CV. Lower "
+            f"n_splits to proceed."
         )

@@ -51,7 +51,7 @@ from sklearn.metrics import auc, roc_curve
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm-figures", "version": "0.1"},
+    "template": {"name": "classification-svm-figures", "version": "0.2"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -167,7 +167,9 @@ def _roc_annotation(ax: Axes, result: SVMClassificationResult) -> None:
     if result.null_p is None:
         text += "\nnull not run — exploratory"
     else:
-        text += f"\nvs shuffle null: p = {result.null_p:.4f}"
+        obs = result.observed_auc
+        obs_txt = f" (fixed-C observed AUC {obs:.3f})" if obs is not None else ""
+        text += f"\nvs shuffle null: p = {result.null_p:.4f}{obs_txt}"
     ax.text(
         0.97,
         0.30,
@@ -317,7 +319,12 @@ def plot_coefficients(
 def plot_hyperparameter_curve(
     result: SVMClassificationResult, *, title: str | None = None
 ) -> Figure:
-    """The all-data tuning curve (mean inner-CV AUC ± SD vs C) with the selected C."""
+    """The all-data tuning curve (mean inner-CV AUC ± SD vs C) with the selected C.
+
+    The per-outer-fold tuned ``C`` values are drawn as ticks along the bottom (the
+    tuning-stability read): picks left of the plateau start are folds the inner CV
+    under-tuned; many of them means the grid should be narrowed.
+    """
     means = np.asarray(result.grid_scores, dtype=float)
     sds = np.asarray(result.grid_scores_sd, dtype=float)
     c_grid = np.asarray(result.c_grid, dtype=float)
@@ -367,10 +374,12 @@ def plot_hyperparameter_curve(
             finite = np.isfinite(means)
             lo = float(np.min((means - sds)[finite])) if finite.any() else 0.5
             hi = float(np.max((means + sds)[finite])) if finite.any() else 1.0
-            ax.set_ylim(max(0.0, min(0.5, lo - 0.02)), min(1.02, max(1.0, hi + 0.02)))
+            y0, y1 = max(0.0, min(0.5, lo - 0.02)), min(1.02, max(1.0, hi + 0.02))
+            ax.set_ylim(y0, y1)
+            _draw_fold_picks(ax, result, y0, y1)
             ax.set_xlabel("C (soft-margin penalty; hard margin = large C)")
             ax.set_ylabel("mean inner-CV AUC")
-            ax.legend(loc="lower right", fontsize=9)
+            ax.legend(loc="best", fontsize=9)
             _apply_title(
                 fig, title, "Hyperparameter search (all-data, C curve)", result
             )
@@ -378,6 +387,50 @@ def plot_hyperparameter_curve(
             plt.close(fig)
             raise
     return fig
+
+
+def _draw_fold_picks(
+    ax: Axes, result: SVMClassificationResult, y0: float, y1: float
+) -> None:
+    """Rug of the per-outer-fold tuned C along the bottom, plus the plateau start."""
+    picks = np.asarray([f.best_c for f in result.fold_predictions], dtype=float)
+    if picks.size == 0:
+        return
+    n_sub = result.n_folds_sub_plateau
+    plateau = result.plateau_start_c
+    label = f"per-fold tuned C ({picks.size} folds"
+    if n_sub is not None and plateau is not None and plateau != result.c_grid[-1]:
+        # At the upper edge every fold is trivially "below": the count says nothing.
+        label += f"; {n_sub} below plateau start"
+    label += ")"
+    # Stack repeated picks vertically so the count at each C reads as a small bar.
+    xs: list[float] = []
+    ys: list[float] = []
+    for c in np.unique(picks):
+        n = int((picks == c).sum())
+        xs.extend([float(c)] * n)
+        step = min(0.012, 0.25 / max(picks.size, 1))  # never overrun the curve
+        ys.extend(y0 + (0.015 + step * i) * (y1 - y0) for i in range(n))
+    ax.scatter(
+        xs,
+        ys,
+        marker="|",
+        s=90,
+        color="black",
+        alpha=0.8,
+        linewidths=1.0,
+        zorder=5,
+        label=label,
+    )
+    if result.plateau_start_c is not None and result.plateau_start_c != result.best_c:
+        ax.axvline(
+            result.plateau_start_c,
+            color="gray",
+            ls=":",
+            lw=1.0,
+            zorder=1,
+            label=f"plateau start C = {result.plateau_start_c:g}",
+        )
 
 
 # --------------------------------------------------------------------------- #

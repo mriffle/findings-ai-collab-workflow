@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections.abc import Mapping
 from dataclasses import MISSING, dataclass, fields, is_dataclass
 from pathlib import Path
@@ -47,6 +48,7 @@ __script_meta__: dict[str, object] = {
     "template": {"name": "result-io", "version": "0.2"},
     "kind": "module",
     "provides": [
+        "ResultSchemaWarning",
         "save_result",
         "load_result",
         "result_fingerprint",
@@ -69,6 +71,12 @@ __script_meta__: dict[str, object] = {
 }
 
 _FORMAT_VERSION = 1
+
+
+class ResultSchemaWarning(UserWarning):
+    """A reloaded result lacked field(s) the class now has; defaults were applied."""
+
+
 _MANIFEST = "_result.json"
 _META = "meta.json"
 
@@ -173,9 +181,28 @@ def load_result(path: str | Path, cls: type[T]) -> T:
 
     Type-directed: field kinds come from the on-disk manifest, but nested dataclass
     types are resolved from ``cls``'s annotations (so no arbitrary class is imported).
-    Fails loud on a missing manifest, an unknown format version, or a missing field.
+    Fails loud on a missing manifest, an unknown format version, or a missing field
+    that has no dataclass default. A missing field *with* a default (one added to the
+    result class after this result was cached) takes the default, and a single
+    :class:`ResultSchemaWarning` names every such field (nested ones as dotted paths,
+    e.g. ``fold_predictions[].repeat``).
     """
-    directory = Path(path)
+    defaulted: list[str] = []
+    result = _load(Path(path), cls, defaulted, prefix="")
+    if defaulted:
+        names = sorted(set(defaulted))
+        warnings.warn(
+            f"Result at {path} predates field(s) {names} of {cls.__qualname__}; "
+            f"their dataclass defaults were applied. Expected for a result cached by "
+            f"an older template version — if this manifest was written by the current "
+            f"version, it is incomplete.",
+            ResultSchemaWarning,
+            stacklevel=2,
+        )
+    return result
+
+
+def _load(directory: Path, cls: type[T], defaulted: list[str], prefix: str) -> T:
     manifest_path = directory / _MANIFEST
     if not manifest_path.is_file():
         raise FileNotFoundError(
@@ -198,18 +225,29 @@ def load_result(path: str | Path, cls: type[T]) -> T:
             ):
                 # A field added to the result class after this result was cached:
                 # the dataclass default applies (forward-compatible reload).
+                defaulted.append(f"{prefix}{field_info.name}")
                 continue
             raise ValueError(
                 f"Result at {directory} is missing field {field_info.name!r} "
                 f"expected by {cls.__qualname__}."
             )
         kwargs[field_info.name] = _load_value(
-            entries[field_info.name], directory, hints.get(field_info.name)
+            entries[field_info.name],
+            directory,
+            hints.get(field_info.name),
+            defaulted,
+            f"{prefix}{field_info.name}",
         )
     return cls(**kwargs)
 
 
-def _load_value(entry: dict[str, Any], directory: Path, field_type: object) -> object:
+def _load_value(
+    entry: dict[str, Any],
+    directory: Path,
+    field_type: object,
+    defaulted: list[str],
+    path: str,
+) -> object:
     kind = entry["kind"]
     if kind == "none":
         return None
@@ -228,11 +266,15 @@ def _load_value(entry: dict[str, Any], directory: Path, field_type: object) -> o
         payload = json.loads((directory / entry["file"]).read_text(encoding="utf-8"))
         return np.asarray(payload["values"], dtype=object)
     if kind == "dataclass":
-        return load_result(directory / entry["dir"], _dataclass_type(field_type))
+        return _load(
+            directory / entry["dir"], _dataclass_type(field_type), defaulted, f"{path}."
+        )
     if kind == "list_dataclass":
         element_cls = _dataclass_type(field_type)
         items: list[object] = [
-            load_result(directory / entry["dir"] / str(i), element_cls)
+            _load(
+                directory / entry["dir"] / str(i), element_cls, defaulted, f"{path}[]."
+            )
             for i in range(entry["count"])
         ]
         return tuple(items) if entry["container"] == "tuple" else items

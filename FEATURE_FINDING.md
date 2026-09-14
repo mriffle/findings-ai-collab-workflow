@@ -356,7 +356,7 @@ probability calibration — `roc_auc_scorer` resolves to `decision_function` for
 in the installed sklearn); per-fold AUC summarized across repeats, plus a **repeat-level pooled-OOF AUC**;
 and **identical outer splits across classifier types** so comparisons are **paired**. Four user decisions
 (2026-09-14): **soft-margin with `C` tuned** (a true hard-margin SVM has no slack — it is the
-**large-`C` limit** of the grid; `c_grid=(1e6,)` pins it and skips tuning); the stability read is the
+**large-`C` limit** of the grid; `c_grid=(1e6,)` pins it; the inner search still runs over the one value); the stability read is the
 **top-k membership frequency** (fraction of stability resamples in which the feature ranks in the top *k*
 by |weight|; `top_k=20`) because every weight of a dense model is non-zero and *selection frequency* is
 meaningless; **fold identity recorded + verified** — every classifier fold record now carries
@@ -412,6 +412,64 @@ estimate a signed weight read through top-k frequency (`conventions/findings.md`
 `lib/manifest.md`, `conventions/{statistics,visualization,findings,results-cache,enforcement-map}.md`,
 `commands/stage4-explore.md` (offered *beside* the elastic net; compare paired), `agents/{statistician,
 figure-generator}.md`, `templates/{project-CLAUDE,finding}.md`, `lib/README.md`.
+
+**v0.2 (2026-09-14) — the tuning-stability diagnostic, from a second real-data check.** On a second
+dataset (MagNet-EV plasma proteomics, ADD vs HCN+PDCN+PDD, **40 samples x 2,343 proteins**, git-ignored
+`testdata/MagNet-EV-ADD/` with `compare_classifiers.py`) the verdict **reversed**: SVM nested-CV AUC
+**0.963 ± 0.067** vs elastic net **0.870 ± 0.180**, the SVM better on 11 / 25 shared folds and never
+worse (Wilcoxon p = 0.003), both clearing the null (p = 0.002 / 0.006). The user's own nested-CV SVM
+script reported 0.977 on the same files; reproducing it verbatim and ablating one difference at a time
+showed the gap is **the C-grid floor** (their grid's smallest value, 2^-10 ≈ 1e-3, sits exactly at this
+dataset's plateau start, so it cannot under-tune; the template's 1e-5 floor lets ~30-sample inner folds,
+whose AUC is coarse and ties in most folds, pick a sub-plateau `C` in a share of outer folds: 0.977 →
+0.950 from the grid alone) plus **seed noise** (their protocol at seed 0 x 5 repeats: 0.950; the
+template at seed 1: elastic net 0.927, SVM 0.970). `class_weight` and the inner fold count are neutral.
+A largest-C (hard-margin) tie-break was tried and is **not** a consistent fix (+0.02 at one seed, −0.01
+at another), so the smallest-C rule and the 1e-5 floor stand (user decisions, 2026-09-14, with `top_k=20`
+and the sibling v0.2 edits). What shipped instead is a **diagnostic**: the result records the all-data
+**plateau start** `C` (`plateau_start_c`, the unsmoothed smallest-C-within-tolerance) and
+**`n_folds_sub_plateau`**, the outer folds that tuned strictly below it; a **`TuningNoiseWarning`** fires
+past 25 % of folds (5xFAD: 11 / 25 → warns; MagNet: 4 / 25 → quiet), and the C-curve figure draws the
+**per-fold picks as stacked ticks** with a dotted plateau-start line. Both fields are defaulted, so v0.1
+caches reload with `None`. +2 tests. Also recorded for any finding on MagNet: the **cohort confound**
+(all ADD are Kerchner, all PDCN are Poston) and the coarse per-fold AUC (two positives per test fold).
+A four-seed sweep settles the seed question: nested AUC over seeds 1–4 averages **elastic net 0.933**
+(0.917–0.950) vs **SVM 0.967** (0.960–0.973) — seed 0's elastic-net 0.870 was an unlucky draw, the
+user's 0.92 sits at the multi-seed mean, and the paired SVM advantage holds at every seed.
+**Independent review (Fable subagent, 2026-09-14) → all findings fixed before release:** (B1) the
+class-size guard was one fold too lenient — the inner CV runs on the outer *training* fold, so a
+minority class of 5–6 at `n_splits=5` passed the guard and crashed deep inside with an all-NaN
+tuning surface; now `min_class − ceil(min_class/n_splits) >= n_splits` with a message that says so, in
+**all three** classifier templates (the elastic net had no such guard and silently refit on a NaN
+grid); (B2) `select="smoothed"` could pick a `C` whose own inner fit failed (NaN smoothed into a
+neighbour mean) — non-finite raw scores are never candidates now; (R1) the edge and noise warnings
+could both fire when the curve was still rising at the top of the grid — the noise warning is
+suppressed at the upper edge; (R2) the group-level null silently *rounded* a unit carrying both
+labels (changing the permuted class balance) — a mixed unit now raises, up-front when `run_null` is
+grouped, in all three templates; (R3) the fixed-`C` null is now stated in the result docstring and
+every classifier ROC annotates the p with the fixed-hyperparameter observed AUC it belongs to (not
+the nested AUC beside it); (R4) the default-aware loader now emits a `ResultSchemaWarning` naming the
+defaulted fields, so a manifest missing the feature-list counts can no longer silently drop the
+mandatory title caveat (`conventions/results-cache.md`); (R5) exact ties at rank *k* are all members
+of the top-k (a duplicated protein row no longer gets an arbitrary 1.0 vs 0.0 split). Nits: `select`
+is validated, the fold-pick ticks are height-capped and the legend uses `loc="best"`, the
+`plateau_start_c`-under-smoothing semantics and the serial grouped-null path are documented, and the
+"null ≈3.5× the run" claim in four docs now reads 3.5× (elastic net) / ≈9× (SVM). +7 tests (45 in
+the SVM file: the nested class-size boundary, failed-fit selection, upper-edge-only warning, `select`
+validation, a hand-built sub-plateau count under smoothing, tie membership, and grouped-fold
+integrity + the mixed-unit refusal).
+**Second Fable round (same day) — nothing blocking; all nine fixes verified; six risks + five doc
+inaccuracies, all addressed:** the edge suppression now keys on the unsmoothed plateau start (a helper,
+`_should_warn_tuning_noise`, unit-tested in place of a seed-pinned integration test); a single-class
+outer test fold now **raises** in all three classifier templates instead of yielding a silent
+`cv_auc = nan`; the loader's `ResultSchemaWarning` fires **once** per reload with dotted paths
+(`fold_predictions[].repeat`), not once per fold record; the nested class-size guard documents its
+leniency under grouping (still fail-loud); the cost figures use one convention (null ≈3.5× an
+elastic-net run, ≈9× an SVM run; the stability loop ≈1% / ≈3%); "skips tuning" corrected (the
+inner search still runs over a single-element grid). **User decision:** the group-level null's
+one-label-per-unit requirement is **documented as a limitation** — a batch-grouped design
+(`generalization_target="batches"`) has no label-shuffle null and stays `exploratory`; a within-unit
+permutation option is deferred. 46 tests in the SVM file.
 
 **The reframing (the key decision, the user's call).** Elastic net tuned for prediction yields
 the **minimal-optimal** feature set — the smallest sufficient predictive basis — *not* the

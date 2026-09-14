@@ -18,9 +18,9 @@ This is the open loop the whole system exists to capture. With understanding est
 
 ## Results first, null second (classifiers and regressors)
 
-The shuffle null roughly **3.5×'s** a `classify` / `classify_svm` / `classify_xgboost` / `regress` run at default settings (≈15,000 extra fits against the nested CV's ≈6,000), so **do not run it on the first pass.** The order is deliberate:
+The shuffle null roughly **3.5×'s** a `classify` / `classify_xgboost` / `regress` run at default settings (≈15,000 extra fits against the nested CV's ≈6,000) and **≈9×'s** a `classify_svm` run (its first pass is only ≈1,900 fits), so **do not run it on the first pass.** The order is deliberate:
 
-1. **First pass — `run_null=False` (the default).** Fit, nested-CV performance, and the coefficients/importances with their **stability read** (the stability loop stays: under 1% of the run, and it carries the selection-frequency + resample-IQR the conventions require beside every per-feature estimate). Render the ROC / predicted-vs-observed, coefficient, and hyperparameter figures — **not** `plot_null`, which raises without a null. Show the scientist the result.
+1. **First pass — `run_null=False` (the default).** Fit, nested-CV performance, and the coefficients/importances with their **stability read** (the stability loop stays: ≈1% of an elastic-net run, ≈3% of an SVM run, and it carries the selection-frequency + resample-IQR the conventions require beside every per-feature estimate). Render the ROC / predicted-vs-observed, coefficient, and hyperparameter figures — **not** `plot_null`, which raises without a null. Show the scientist the result.
 2. **Say what it does and doesn't license.** Performance is **not yet tested against a null**, so the finding is capped at **`exploratory`** and the coefficients are flagged *"not tested against a null."*
 3. **Propose the null as the immediate next step** — `run_null=True` on the same params, which reuses nothing but the settled hyperparameters and yields the null distribution + empirical p. It is **required before any strong claim, not optional garnish**: it is also the **leakage detector** (if performance doesn't collapse under a permuted target, there is leakage or there is no real signal), and it is what lets the finding reach `validated`.
 

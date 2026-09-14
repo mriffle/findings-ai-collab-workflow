@@ -141,7 +141,8 @@ def test_stability_metrics_in_range(
     assert bool((coef["coef_q25"] <= coef["coef_median"]).all())
     assert bool((coef["coef_median"] <= coef["coef_q75"]).all())
     # exactly top_k features per resample -> the frequencies sum to top_k
-    assert coef["top_k_frequency"].sum() == pytest.approx(planted_result.top_k)
+    assert coef["top_k_frequency"].sum() >= planted_result.top_k - 1e-9  # ties add
+    assert coef["top_k_frequency"].sum() <= planted_result.n_features
     # planted features are perfectly stable
     planted = coef[coef["feature"].isin({f"F{i}" for i in range(6)})]
     assert bool((planted["top_k_frequency"] == 1.0).all())
@@ -198,6 +199,118 @@ def test_repeat_aucs(planted_result: svm.SVMClassificationResult) -> None:
     # mean-of-fold per repeat averages back to the overall nested-CV AUC
     assert float(np.mean(res.repeat_aucs)) == pytest.approx(res.cv_auc)
     assert min(res.repeat_pooled_aucs) > 0.9  # strong planted signal
+
+
+def test_tuning_noise_diagnostic_recorded(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    res = planted_result
+    assert res.plateau_start_c in res.c_grid
+    # the plateau start is the smallest C within tolerance of the all-data maximum
+    assert res.plateau_start_c == svm._select_c(res.grid_scores, res.c_grid, "best")
+    assert res.n_folds_sub_plateau is not None
+    expected = sum(f.best_c < res.plateau_start_c for f in res.fold_predictions)
+    assert res.n_folds_sub_plateau == expected
+    assert 0 <= res.n_folds_sub_plateau <= len(res.fold_predictions)
+    fig = svmfig.plot_hyperparameter_curve(res)
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    labels = [t.get_text() for t in legend.get_texts()]
+    assert any(lab.startswith("per-fold tuned C") for lab in labels)
+    plt.close(fig)
+
+
+def test_tuning_noise_warning_threshold() -> None:
+    with pytest.warns(svm.TuningNoiseWarning, match="6 of 10"):
+        svm._warn_if_tuning_noisy(6, 10)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", category=svm.TuningNoiseWarning)
+        svm._warn_if_tuning_noisy(2, 10)  # 20 % is under the 25 % threshold
+        svm._warn_if_tuning_noisy(0, 0)
+
+
+def test_class_size_guard_accounts_for_inner_cv() -> None:
+    """The inner CV runs on the outer training fold, with fewer minority samples."""
+    fast: dict[str, Any] = {
+        "c_grid": [1.0],
+        "n_repeats": 1,
+        "stability_repeats": 1,
+        "n_jobs": 1,
+    }
+    for n_pos in (5, 6):  # pass the naive >= n_splits check, fail the nested one
+        ds = _planted(n=40, p=30, n_signal=3, seed=0)
+        ds.metadata["grp"] = ["B"] * n_pos + ["A"] * (40 - n_pos)
+        with pytest.raises(ValueError, match="inside every outer training fold"):
+            svm.classify_svm(ds, "grp", n_splits=5, **fast)
+    ds = _planted(n=40, p=30, n_signal=3, seed=0)
+    ds.metadata["grp"] = ["B"] * 7 + ["A"] * 33  # 7 - ceil(7/5) = 5 >= 5 -> runs
+    res = svm.classify_svm(ds, "grp", n_splits=5, **fast)
+    assert res.n_positive == 7
+
+
+def test_select_c_ignores_failed_fits() -> None:
+    grid = (0.1, 1.0, 10.0)
+    scores = np.array([np.nan, 0.9, 0.9])  # the C=0.1 fit failed
+    assert svm._select_c(scores, grid, "best") == 1.0
+    assert svm._select_c(scores, grid, "smoothed") == 1.0  # not the NaN C
+
+
+def test_tuning_noise_gate_skips_upper_edge() -> None:
+    grid = (1e-3, 1e-2, 1e-1)
+    # a plateau below the top edge: the sub-plateau count is meaningful
+    assert svm._should_warn_tuning_noise(1e-2, grid)
+    assert svm._should_warn_tuning_noise(1e-3, grid)
+    # the plateau start is the upper edge: the curve was still rising -> no noise
+    # warning (CGridEdgeWarning's "extend upward" is the relevant advice)
+    assert not svm._should_warn_tuning_noise(1e-1, grid)
+    # a single-element grid (a deliberate pin) never warns
+    assert not svm._should_warn_tuning_noise(1e6, (1e6,))
+    # under select="smoothed" the gate keys on the unsmoothed plateau start, so a
+    # raw curve that peaks only at the top edge is recognised even when the smoothed
+    # pick lands one step lower
+    raw = np.array([0.80, 0.85, 0.95])
+    assert svm._select_c(raw, grid, "best") == 1e-1
+    assert svm._select_c(raw, grid, "smoothed") == 1e-1
+    assert not svm._should_warn_tuning_noise(svm._select_c(raw, grid, "best"), grid)
+
+
+def test_bad_select_raises() -> None:
+    ds = _planted(n=40, p=30, seed=0)
+    with pytest.raises(ValueError, match="select"):
+        svm.classify_svm(ds, "grp", select="bogus", **_FAST)  # type: ignore[arg-type]
+
+
+def test_sub_plateau_count_hand_built() -> None:
+    grid = (0.01, 0.1, 1.0, 10.0)
+    scores = np.array([0.80, 0.90, 0.90, 0.90])
+    plateau_start = svm._select_c(scores, grid, "best")
+    assert plateau_start == 0.1
+    # smoothed curve [0.85, 0.867, 0.9, 0.9] -> a smoothed pick can sit above it
+    assert svm._select_c(scores, grid, "smoothed") == 1.0
+    folds = [
+        svm.FoldPrediction(
+            y_true=np.array([0, 1]),
+            y_score=np.array([-1.0, 1.0]),
+            repeat=0,
+            fold=i,
+            test_indices=np.array([i]),
+            best_c=c,
+        )
+        for i, c in enumerate((0.01, 0.01, 0.1, 1.0, 10.0))
+    ]
+    assert svm._count_sub_plateau(folds, plateau_start) == 2  # strictly below 0.1
+
+
+def test_top_k_ties_are_all_members() -> None:
+    resample = np.array([[3.0, 2.0, 2.0, 1.0], [3.0, 2.0, 2.0, 1.0]])
+    member = svm._top_k_membership(resample, top_k=2)
+    # rank-2 weight is tied between features 1 and 2: both are members
+    np.testing.assert_array_equal(member[0], [True, True, True, False])
+    final = np.array([3.0, 2.0, 2.0, 1.0])
+    table = svm._coefficient_table(final, resample, np.array(list("ABCD")), 2)
+    freq = table.set_index("feature")["top_k_frequency"]
+    assert freq["B"] == freq["C"] == 1.0
+    assert freq["D"] == 0.0
 
 
 def test_support_vector_counts(planted_result: svm.SVMClassificationResult) -> None:
@@ -467,6 +580,64 @@ def test_grouping_engaged_with_repeats() -> None:
     assert res.groups_column == "subject"
     assert res.generalization_target == "individuals"
     assert res.null_p is not None  # the grouped null path (explicit margins) ran
+    # fold integrity: no subject straddles an outer train/test split
+    subject = ds.metadata["subject"].to_numpy()
+    for f in res.fold_predictions:
+        test_subjects = set(subject[f.test_indices])
+        train_mask = np.ones(len(subject), dtype=bool)
+        train_mask[f.test_indices] = False
+        assert not (test_subjects & set(subject[train_mask]))
+
+
+def test_single_class_outer_fold_raises() -> None:
+    # two units, each carrying one class: grouped 2-fold CV puts one class per test
+    # fold, so the fold AUC is undefined -> fail loud, never a silent NaN cv_auc
+    ds = _planted(n=40, p=30, n_signal=3, seed=0)
+    y = np.array([0] * 20 + [1] * 20)
+    rng = np.random.default_rng(3)
+    ds.abundances[:, :3] = rng.normal(size=(40, 3)) + y[:, None] * 2.0
+    ds.metadata["grp"] = np.where(y == 1, "B", "A")
+    ds.metadata["subject"] = np.where(y == 1, "u1", "u0")
+    with pytest.raises(ValueError, match="single class"):
+        svm.classify_svm(
+            ds,
+            "grp",
+            groups="subject",
+            n_splits=2,
+            c_grid=[1.0],
+            n_repeats=1,
+            stability_repeats=1,
+            n_jobs=1,
+        )
+
+
+def test_grouped_null_rejects_mixed_label_unit() -> None:
+    ds = _planted(n=60, p=40, n_signal=4, seed=0)
+    # _planted alternates labels within each consecutive pair -> every unit is mixed
+    ds.metadata["subject"] = [f"s{i // 2}" for i in range(60)]
+    with pytest.raises(ValueError, match="both classes"):
+        svm.classify_svm(
+            ds,
+            "grp",
+            groups="subject",
+            run_null=True,
+            n_permutations=2,
+            n_splits=3,
+            c_grid=[1.0],
+            n_repeats=1,
+            stability_repeats=1,
+            n_jobs=1,
+        )
+    # the permutation helper itself refuses too
+    y = np.array([0, 1, 1, 1])
+    g = np.array(["a", "a", "b", "b"])
+    with pytest.raises(ValueError, match="both classes"):
+        svm._permute_labels(y, g, np.random.default_rng(0))
+    # and preserves class counts on clean units
+    y2 = np.array([0, 0, 1, 1, 1, 1])
+    g2 = np.array(["a", "a", "b", "b", "c", "c"])
+    perm = svm._permute_labels(y2, g2, np.random.default_rng(0))
+    assert perm.sum() == 4
 
 
 def test_singleton_groups_fall_back_to_rowlevel() -> None:

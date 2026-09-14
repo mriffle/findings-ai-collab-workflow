@@ -37,6 +37,15 @@ study data and never enters a user's project.
   Abundances are **log2** (not linear like 5xFAD); the experimental dose-labeled subset is the
   492 samples with a numeric `Dose_cGy` (412 T&E "Skin Punch" + 80 UW reference).
 
+- `MagNet-EV-ADD/` — plasma extracellular-vesicle (MagNet) proteomics, ADD / HCN / PDCN / PDD
+  (10 each) plus 8 control rows. **Git-ignored.** Added 2026-09-14 as a second real-data check of
+  the linear-SVM vs elastic-net comparison (`compare_classifiers.py` in the directory).
+
+  | File | Shape | Notes |
+  |------|-------|-------|
+  | `proteins.txt` | 2,343 proteins × 40 sample cols | **comma**-separated despite `.txt`; rows=features, unnamed first column = `sp\|ACC\|GENE_HUMAN`; already **normalized + batch-corrected, log2** (values ~20–25); no missing values |
+  | `metadata.txt` | 48 samples × 19 vars | comma-separated; join key `SampleID`; `Condition` is the group; the 8 control rows (`Plasma Reference`, `TPAD plasma pooled reference`) have **no data column** and `na` fields — the script derives `metadata.experimental.csv` (40 rows) before loading |
+
 ## Why git-ignored, and what ships
 
 For now the loader template is exercised **locally** against this real data (per the project
