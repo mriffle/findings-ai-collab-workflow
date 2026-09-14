@@ -4,7 +4,7 @@
 
 ## The problem
 
-The heavy analysis templates (`classification`, `classification-xgboost`, `regression`, `boruta`) return a rich result object — fold predictions, the tuning grid, and the opt-in **label/target-shuffle null** (the expensive part) — that the figure templates read via `plot_*(result)`. Held only in memory, tweaking a figure title re-runs the whole analysis. So the **result is cached to disk** and figures render from the cache.
+The heavy analysis templates (`classification`, `classification-svm`, `classification-xgboost`, `regression`, `boruta`) return a rich result object — fold predictions, the tuning grid, and the opt-in **label/target-shuffle null** (the expensive part) — that the figure templates read via `plot_*(result)`. Held only in memory, tweaking a figure title re-runs the whole analysis. So the **result is cached to disk** and figures render from the cache.
 
 ## Compute once, render many
 
@@ -19,7 +19,7 @@ Split the Stage-4 work for a heavy analysis into two scripts:
 
 A cached result is keyed by `result_fingerprint(analysis, data_version, params, seed)`, a deterministic 12-hex id. **Identical inputs → the same fingerprint** (a re-run maps to the same cache entry); **any change** — `outcome`, `binarize`, `covariates`, `feature_list`, `run_null`, method, `seed`, or the dataset's `data_version` — → a **new** result. So `params` must capture *every* knob that affects the numbers. An optional human **label** rides alongside for readability; the fingerprint is the identity.
 
-**Canonicalize set-like params.** A value that is semantically a *set* — notably a `feature_list` (all three predictive templates accept one; `conventions/statistics.md`) — must be recorded in `params` in a **canonical form: sorted and de-duplicated**. The fingerprint hashes list *order* literally, so `["A","B"]` and `["B","A"]` would otherwise mint two entries for an identical model. Canonicalizing means two independent runs requesting the same feature set reliably hit one cache slot.
+**Canonicalize set-like params.** A value that is semantically a *set* — notably a `feature_list` (all four predictive templates accept one; `conventions/statistics.md`) — must be recorded in `params` in a **canonical form: sorted and de-duplicated**. The fingerprint hashes list *order* literally, so `["A","B"]` and `["B","A"]` would otherwise mint two entries for an identical model. Canonicalizing means two independent runs requesting the same feature set reliably hit one cache slot.
 
 ## The registry — `results/manifest.md`
 

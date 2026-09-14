@@ -116,6 +116,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
 | **XGBoost** (gradient-boosted-tree) **classification** | multivariate / classification | `te-phase2a-pelt/src/classification_xgboost.py` + `classification_xgboost_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification-xgboost` (`classify_xgboost`) + `lib/figures/classification_xgboost` |
+| **Linear SVM** (soft-margin `SVC(kernel="linear")`, `C` tuned; hard margin = the large-`C` limit) **classification** | multivariate / classification | — (fresh design; `lib/analysis/classification` is the shape oracle — no SVM in the source project) | ✅ **Shipped** (v0.1, 2026-09-14) | `lib/analysis/classification-svm` (`classify_svm`) + `lib/figures/classification_svm` |
 | Elastic-net linear regression | multivariate | `te-phase2a-pelt/src/regression.py` + `regression_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/regression` (`regress`) + `lib/figures/regression` |
 | Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
@@ -341,6 +342,76 @@ hits, with the correlated APP neighbour APLP2 surfacing lower down. The 5xFAD pr
 (§8), with the per-feature estimate an **unsigned importance** rather than a signed coefficient
 (`conventions/findings.md` amended). Wired into `lib/manifest.md`, `conventions/{statistics,
 visualization,findings}.md`, and `commands/stage4-explore.md` (offered *alongside* the linear model).
+
+**➕ Second linear sibling — linear-SVM classification — ✅ SHIPPED (v0.1, 2026-09-14).** A
+**parallel template** `lib/analysis/classification-svm` (`classify_svm`) + `lib/figures/classification_svm`,
+built as a **self-contained sibling** of the elastic-net classifier (the XGBoost precedent — own
+`SVMClassificationResult`, own figure module, the label/CV/null/stability scaffolding duplicated so the
+seed stands alone) because a max-margin linear classifier is inherently interpretable (signed weights,
+support vectors) and suits separable small-*n*/high-*p* proteomics. The user's protocol, verbatim in
+the code: `Pipeline(StandardScaler → SVC(kernel="linear", class_weight="balanced"))` so scaling is
+learned only in the training fold; `RepeatedStratifiedKFold` outer / `StratifiedKFold` + `GridSearchCV`
+inner on **ROC AUC**; the outer test fold scored only by **`decision_function`** margins (no
+probability calibration — `roc_auc_scorer` resolves to `decision_function` for an SVC pipeline, verified
+in the installed sklearn); per-fold AUC summarized across repeats, plus a **repeat-level pooled-OOF AUC**;
+and **identical outer splits across classifier types** so comparisons are **paired**. Four user decisions
+(2026-09-14): **soft-margin with `C` tuned** (a true hard-margin SVM has no slack — it is the
+**large-`C` limit** of the grid; `c_grid=(1e6,)` pins it and skips tuning); the stability read is the
+**top-k membership frequency** (fraction of stability resamples in which the feature ranks in the top *k*
+by |weight|; `top_k=20`) because every weight of a dense model is non-zero and *selection frequency* is
+meaningless; **fold identity recorded + verified** — every classifier fold record now carries
+`repeat`/`fold`/`test_indices` (`classification` and `classification-xgboost` bumped to **v0.2** with
+back-compatible defaults; `result-io` **0.2** now applies a dataclass default for a field missing from an
+older cache instead of raising, so pre-0.2 cached results still load — +2 tests) and
+`lib/tests/test_classification_splits.py` asserts the three templates' `_make_cv`/`_split` copies and
+their public entry points produce identical `(repeat, fold, test_indices)` sequences for one seed;
+real data re-copied from the source project into git-ignored `testdata/5xFAD/`. **Five deliberate
+divergences from the elastic-net classifier**, documented in-code: (1) **dense, not sparse** — top-k
+frequency, the table holds *every* feature, ridge-like weight sharing across correlated features;
+(2) **scores are margins** — `y_score` not `y_prob`, balanced accuracy at margin 0, no
+`probability=True`; (3) **a 1-D `C` grid → a tuning curve, not a heatmap**, with a **tolerance-aware
+smallest-`C` tie-break** (separable data plateau above the hard-margin threshold, so ties are the normal
+case) applied by **one rule in both the outer loop (`GridSearchCV(refit=False)` + `_select_c`) and the
+all-data fit** — the elastic net lets GridSearchCV's own argmax pick inside the outer loop and applies
+`select` only to the all-data fit, a latent inconsistency not inherited; (4) **per-repeat AUCs** — the
+mean of a repeat's fold AUCs (primary; averages back to `cv_auc`) and the pooled-OOF AUC (supplementary,
+with the caveat that fold models share no score scale, after Forman & Scholz 2010); plus the per-fold
+tuned `C` on each fold record (a tuning-stability read); (5) **support-vector counts** (total + per
+class). `SVC` needs no `random_state` (libsvm's SMO is deterministic; the seed only feeds unused Platt
+scaling) — a determinism test pins it. **The C-grid finding (from the preview):** on the 8,828-protein
+5xFAD matrix the inner-CV curve was **flat across the whole first-draft grid (1e-3 … 100)** — the
+kernel scale of standardized data is ~p, so the hard-margin plateau begins around `C ≈ 1e-3` here and
+the knee scales roughly with **1/n_features**; a low-C probe showed the soft-margin regime at
+1e-5 … 1e-3 (AUC 0.70 → 0.89, monotone into the plateau; 47/52 samples are support vectors on it). The
+default grid now reaches **1e-5 … 100** (14 half-decades) and a new **`CGridEdgeWarning`** fires when
+the selected `C` is a grid edge (the grid did not bracket the optimum — extend it, don't report the
+edge as "tuned"); the C-curve figure shows the knee. **No new shipping dep** (scikit-learn). **38
+tests** (planted-truth incl. the dense-table/top-k invariants, determinism, margins-not-probabilities,
+fold identity + per-repeat AUCs, single-C hard-margin pin, tie-break, hand-computed top-k semantics,
+grid-edge warning, guards incl. class < n_splits and bad grids, grouping incl. the grouped null path,
+four figures, feature-list restriction + title note, a real-5xFAD smoke) + 2 splits + 2 result-io.
+**Validated on the 5xFAD genotype contrast (defaults, seed 0):** nested-CV AUC **0.796 ± 0.174**
+(per-repeat 0.74–0.89), all-data `C = 1e-3` (the plateau start), 47 support vectors, observed 0.802 vs
+shuffle-null mean 0.492 (**p = 0.005**, 200 permutations), and the top weights are the canonical AD
+proteins — **APOE**, TICN1, **APP/A4 + the 5xFAD human APP transgene**, midkine, clusterin, TICN2,
+cystatin F, GPC1 (top-20 frequency ≥ 0.86, sign consistency 1.0), with PLGT2 (+) and LAG3 (−) beside
+them — **10 of the elastic net's top 15**. **The paired comparison is the honest headline:** on the *same 25 outer folds* the
+elastic net (reduced grid) scores **0.905 ± 0.139** and beats the SVM on **17 / 25 folds** (tied 4,
+SVM better 4; mean paired difference −0.11, Wilcoxon p = 0.002) — on this contrast the sparse model
+wins, which is exactly the kind of statement the shared splits exist to license. Two more preview
+reads (from the same protocol run on the source project's *current*, post-FASTA-update 8,809-protein
+snapshot, archived under the preview's `newdata/`): with the first-draft grid floor at 1e-3 the SVM
+scored 0.820 ± 0.156 vs 0.772 ± 0.176 on the wide grid, so **widening the grid downward cost ~0.05
+AUC** — 4 of 25 outer folds tuned to `C ≤ 1e-4` (fold AUC 0.39–0.75) because ~33-sample inner folds
+are noisy over 14 grid points; `select="smoothed"` (plateau-seeking) recovers part of it (0.786) and
+is the setting to prefer when the curve has a long plateau. Preview under
+`testdata/5xFAD/_classification_svm_preview/` (`summary.md` + `paired_fold_auc.csv` on the
+documented 8,829-protein testdata snapshot; `newdata/` the current-snapshot runs incl. the
+first-grid `summary.grid1e-3.md`). Evidence reuses the classification/selection kind (§8) with the per-feature
+estimate a signed weight read through top-k frequency (`conventions/findings.md` amended). Wired into
+`lib/manifest.md`, `conventions/{statistics,visualization,findings,results-cache,enforcement-map}.md`,
+`commands/stage4-explore.md` (offered *beside* the elastic net; compare paired), `agents/{statistician,
+figure-generator}.md`, `templates/{project-CLAUDE,finding}.md`, `lib/README.md`.
 
 **The reframing (the key decision, the user's call).** Elastic net tuned for prediction yields
 the **minimal-optimal** feature set — the smallest sufficient predictive basis — *not* the

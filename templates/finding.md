@@ -31,7 +31,7 @@ provenance:
   environment: "<lockfile ref, e.g. env/uv.lock@commit>"
   seeded_from: null                     # { template: "<lib template>", version: "<ver>" } if adapted from a lib/ template (e.g. wide-data-loader, normalize, batch-correct-combat); null if from scratch
   seed: null                            # required where anything stochastic ran
-  result_id: null                       # for a finding built on a cached CPU-heavy result (classification/xgboost/regression/boruta): the result-io fingerprint it was rendered from (conventions/results-cache.md). Pins the exact cached result; null otherwise.
+  result_id: null                       # for a finding built on a cached CPU-heavy result (classification/svm/xgboost/regression/boruta): the result-io fingerprint it was rendered from (conventions/results-cache.md). Pins the exact cached result; null otherwise.
 
 # (required) The numbers. No bare p-values: effect size + CI + corrected p with the correction named.
 evidence:
@@ -60,7 +60,7 @@ figures: []
   #     caption: "<free-text caption>",
   #     script: { path: "scripts/promoted/<figure_script>.py", commit: "<short-sha>" },
   #     data_version: "<sha256:... or version stamp>",
-  #     result_id: null,          # the result-io fingerprint if rendered from a cached result (classification/xgboost/regression/boruta); null otherwise
+  #     result_id: null,          # the result-io fingerprint if rendered from a cached result (classification/svm/xgboost/regression/boruta); null otherwise
   #     params: {} }              # optional render params
 
 # Required for any background/interpretive claim. Each is fact-checked by the research-reviewer.

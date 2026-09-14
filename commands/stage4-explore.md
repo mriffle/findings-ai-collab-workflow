@@ -18,7 +18,7 @@ This is the open loop the whole system exists to capture. With understanding est
 
 ## Results first, null second (classifiers and regressors)
 
-The shuffle null roughly **3.5×'s** a `classify` / `classify_xgboost` / `regress` run at default settings (≈15,000 extra fits against the nested CV's ≈6,000), so **do not run it on the first pass.** The order is deliberate:
+The shuffle null roughly **3.5×'s** a `classify` / `classify_svm` / `classify_xgboost` / `regress` run at default settings (≈15,000 extra fits against the nested CV's ≈6,000), so **do not run it on the first pass.** The order is deliberate:
 
 1. **First pass — `run_null=False` (the default).** Fit, nested-CV performance, and the coefficients/importances with their **stability read** (the stability loop stays: under 1% of the run, and it carries the selection-frequency + resample-IQR the conventions require beside every per-feature estimate). Render the ROC / predicted-vs-observed, coefficient, and hyperparameter figures — **not** `plot_null`, which raises without a null. Show the scientist the result.
 2. **Say what it does and doesn't license.** Performance is **not yet tested against a null**, so the finding is capped at **`exploratory`** and the coefficients are flagged *"not tested against a null."*
@@ -28,7 +28,7 @@ Because the null is a *different* `params` (`run_null`), it is a **new cached re
 
 ## Caching heavy results (compute once, re-render figures)
 
-The CPU-heavy analyses — `classification`, `classification-xgboost`, `regression`, `boruta` (nested CV + the permutation **null**) — must not be re-run just to tweak a figure. Split them into a **compute script** and **figure scripts** (`conventions/results-cache.md`; substrate `lib/analysis/result-io`):
+The CPU-heavy analyses — `classification`, `classification-svm`, `classification-xgboost`, `regression`, `boruta` (nested CV + the permutation **null**) — must not be re-run just to tweak a figure. Split them into a **compute script** and **figure scripts** (`conventions/results-cache.md`; substrate `lib/analysis/result-io`):
 
 - **Before running, check the cache.** Fingerprint the requested analysis + `data_version` + params + seed (`result_fingerprint`) against `results/manifest.md`. **If that exact result already exists, reuse it** — don't silently recompute. Tell the scientist it exists; recompute only if they ask.
 - **Compute → persist → register.** The compute script calls `save_cached_result(result, cache_root="results", analysis=…, data_version=…, params=…, seed=…, label=…)` (`params` must capture *every* knob that changes the numbers — `outcome`/`binarize`/`covariates`/`feature_list`/`run_null`/method/seed); dispatch the **findings-manager** to register the returned `ResultMeta` in `results/manifest.md`.
@@ -59,7 +59,7 @@ Suggest `/findings-workflow:stage5-validate <id>` to put a finding through indep
 Stage 4 has no `## Then`, because it does not end on a command: it ends when the **scientist** decides the science is answered. But never leave them without a next step. After each exchange, suggest the concrete thing to do next **within the loop** — one primary suggestion, named specifically (project `CLAUDE.md`, *Leave the scientist with a next step*):
 
 - **the shuffle null on a first-pass classifier/regressor** — the canonical follow-up, and the one to offer first while the result is fresh (*Results first, null second*); it lifts the finding out of "not tested against a null";
-- the **next analysis** the result invites, or the **complementary method** (Boruta alongside the classifier; the tree model when a linear boundary underperforms; the both-ways batch check; enrichment on the hit list);
+- the **next analysis** the result invites, or the **complementary method** (Boruta alongside the classifier; the **linear SVM** beside the elastic net when sparsity is undesirable or correlated features share the signal — and compare the two **paired per fold**, since same-seed runs share the outer splits; the tree model when a linear boundary underperforms; the both-ways batch check; enrichment on the hit list);
 - the **figure that would show a claim** the finding currently only asserts (*show, don't tell*);
 - a **finding to record**, or an existing one to update / relate / re-run against new params;
 - a **matured candidate to validate** — `/findings-workflow:stage5-validate <id>`, the command spelled out with the id filled in. This is a **within-loop** step, not an exit: validation runs continuously as candidates mature;

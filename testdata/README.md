@@ -9,7 +9,10 @@ study data and never enters a user's project.
 - `5xFAD/` — proteomics data from the Johnson 5xFAD / lecanemab mouse AD study, copied verbatim
   from `/home/mriffle/vscode/johnson-5xFAD-lecanemab-mice-AD`. **Git-ignored** (see root
   `.gitignore`): the precursor TSV is ~100 MB and these are real study data, so they are not
-  committed. Re-copy from the source project if missing.
+  committed. Re-copy from the source project if missing — **from its `data.pre_lec_fasta.bak/`**
+  (2026-09-14): the source's live `data/` has since been re-searched against an updated FASTA
+  (8,809 proteins) and the real-data smoke tests pin the *documented* 8,829-protein snapshot
+  (e.g. `test_pca` asserts the `(61, 8829)` shape), so copying the live files fails 12 smokes.
 
   | File | Shape | Notes |
   |------|-------|-------|

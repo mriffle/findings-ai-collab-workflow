@@ -4,9 +4,12 @@
   numeric + object ndarray, nested dataclass, list of dataclasses, dict, tuple,
   optional-set + optional-None, scalars) must reload identically;
 * edge-case arrays — NaN/inf, an empty object array, a 2-D object array round-trip;
-* real end-to-end — each of the four CPU-heavy results (classification, regression,
-  xgboost, boruta) is run on tiny data, round-tripped, and its **figures render from
-  the reloaded result** (the reason the cache exists);
+* real end-to-end — each of the five CPU-heavy results (classification, regression,
+  xgboost, svm, boruta) is run on tiny data, round-tripped, and its **figures render
+  from the reloaded result** (the reason the cache exists);
+* forward-compatible reload — a cached result that predates a defaulted field (the
+  v0.2 fold identity on ``FoldPrediction``) still loads with the dataclass default; a
+  missing *required* field still raises;
 * identity — result_fingerprint is deterministic, input-sensitive, and stable across
   invocations (a pinned golden value); two independent runs of the same operation hit
   the same cache slot, and a different operation does not;
@@ -30,12 +33,14 @@ import pandas as pd
 import pytest
 from analysis import boruta as bor
 from analysis import classification as clf
+from analysis import classification_svm as svm
 from analysis import classification_xgboost as xgb
 from analysis import regression as reg
 from analysis import result_io as rio
 from common import data_loading as dl
 from figures import boruta_importance as borfig
 from figures import classification as clffig
+from figures import classification_svm as svmfig
 from figures import classification_xgboost as xgbfig
 from figures import regression as regfig
 from matplotlib.figure import Figure
@@ -279,6 +284,80 @@ def test_regression_result_cache_then_figures(tmp_path: Path) -> None:
         regfig.plot_coefficients(out),
         regfig.plot_hyperparameter_heatmap(out),
     )
+
+
+def test_svm_result_cache_then_figures(tmp_path: Path) -> None:
+    result = svm.classify_svm(
+        _planted(),
+        "grp",
+        run_null=True,
+        n_permutations=8,
+        null_repeats=1,
+        random_state=0,
+        c_grid=[0.1, 1.0],
+        top_k=5,
+        n_repeats=2,
+        stability_repeats=3,
+        n_jobs=1,
+    )
+    rio.save_result(result, tmp_path / "svm")
+    out = rio.load_result(tmp_path / "svm", svm.SVMClassificationResult)
+    assert out.cv_auc == result.cv_auc
+    assert out.best_c == result.best_c
+    assert out.null_p == result.null_p
+    assert out.repeat_aucs == result.repeat_aucs  # tuple[float, ...] round-trip
+    assert out.repeat_pooled_aucs == result.repeat_pooled_aucs
+    assert out.n_support_vectors == result.n_support_vectors
+    pd.testing.assert_frame_equal(out.coefficients, result.coefficients)
+    np.testing.assert_allclose(out.grid_scores, result.grid_scores)
+    np.testing.assert_allclose(out.grid_scores_sd, result.grid_scores_sd)
+    assert len(out.fold_predictions) == len(result.fold_predictions)
+    first_in, first_out = result.fold_predictions[0], out.fold_predictions[0]
+    assert (first_out.repeat, first_out.fold) == (first_in.repeat, first_in.fold)
+    np.testing.assert_array_equal(first_out.test_indices, first_in.test_indices)
+    _assert_renders(
+        svmfig.plot_roc(out),
+        svmfig.plot_null(out),
+        svmfig.plot_coefficients(out),
+        svmfig.plot_hyperparameter_curve(out),
+    )
+
+
+def test_defaulted_field_missing_from_old_cache_loads(tmp_path: Path) -> None:
+    """A result cached before a defaulted field existed reloads with the default."""
+    result = clf.classify(
+        _planted(),
+        "grp",
+        random_state=0,
+        c_grid=[1.0],
+        l1_ratios=[0.5],
+        n_repeats=1,
+        stability_repeats=1,
+        n_jobs=1,
+        max_iter=2000,
+        tol=1e-3,
+    )
+    rio.save_result(result, tmp_path / "old")
+    # Simulate a pre-v0.2 cache: strip the fold-identity fields from one fold record.
+    fold_dir = tmp_path / "old" / "fold_predictions" / "0"
+    manifest_path = fold_dir / "_result.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for name in ("repeat", "fold", "test_indices"):
+        del manifest["fields"][name]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (fold_dir / "test_indices.npy").unlink()
+    out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
+    old_fold = out.fold_predictions[0]
+    assert (old_fold.repeat, old_fold.fold) == (-1, -1)
+    assert old_fold.test_indices.size == 0
+    np.testing.assert_array_equal(old_fold.y_true, result.fold_predictions[0].y_true)
+    # the untouched folds keep their identity
+    assert out.fold_predictions[1].repeat == result.fold_predictions[1].repeat
+    # a missing *required* field still fails loud
+    del manifest["fields"]["y_true"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing field 'y_true'"):
+        rio.load_result(tmp_path / "old", clf.ClassificationResult)
 
 
 def test_xgboost_result_cache_then_figures(tmp_path: Path) -> None:

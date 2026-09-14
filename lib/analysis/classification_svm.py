@@ -1,4 +1,4 @@
-"""Multivariable classification for feature finding — leakage-safe elastic-net logistic.
+"""Linear-SVM classification for feature finding — leakage-safe soft-margin SVM.
 
 TEMPLATE (lib/) — a *seed* for a project's classification script, not a finished
 analysis. Copy it into the project's ``scripts/`` and adapt the call site per study
@@ -6,29 +6,68 @@ analysis. Copy it into the project's ``scripts/`` and adapt the call site per st
 unit). Held to the correctness charter (conventions/correctness.md) and the statistics
 convention (conventions/statistics.md): assume nothing, verify everything, fail loud.
 
-**What this answers.** *Can the proteome predict the class, and how well?* — an
-elastic-net logistic classifier whose coefficients are reported as a caveated
-interpretation of the classifier, **not** an all-relevant feature selection (that is
-Boruta's job; the two complement each other — FEATURE_FINDING.md §B). Elastic net tuned
-for prediction yields the *minimal-optimal* set (the smallest sufficient predictive
-basis); with correlated features L1 keeps one of a cluster and zeros its neighbours,
-so a **low selection frequency does not mean a feature is unimportant** — it may be
-redundant with a selected neighbour. State that in the finding.
+**What this answers.** *Can the proteome predict the class, and how well?* — a
+**linear support-vector machine** (``SVC(kernel="linear")``): the maximum-margin
+separating hyperplane, the *second linear model* beside the elastic-net classifier
+(``analysis.classification``). Its signed standardized weights are reported as a
+caveated interpretation of the classifier, **not** an all-relevant feature selection
+(that is Boruta's job — FEATURE_FINDING.md §B). A max-margin weight vector is
+**dense**: with correlated features the weight is *shared* across a cluster (ridge-like)
+rather than concentrated on one member (as L1 does), so the ranking tends to be denser
+around a co-regulated module. State that in the finding. Small-*n*/high-*p* proteomics
+is typically linearly separable, which is the regime the max-margin geometry suits.
 
-**The three coupled deliverables** (all in :class:`ClassificationResult`):
+**The three coupled deliverables** (all in :class:`SVMClassificationResult`), the *same
+shape as the elastic-net classifier* so the readouts line up:
 
-  * **Performance vs a label-shuffle null** — leakage-safe **nested CV** (tune
-    ``(C, l1_ratio)`` in inner folds, estimate on outer folds), in-fold
-    ``StandardScaler``, ``class_weight="balanced"``. The null is **opt-in**
-    (``run_null=True``): the gate that licenses trusting the coefficients; it maps to
-    the exploratory/validated distinction — run it to be eligible for ``validated``,
-    skip it and the finding is capped at ``exploratory`` (coefficients flagged "not
-    tested against a null").
-  * **All-data coefficients** — tune on all data, refit on all data; the reported
-    **standardized** signed coefficients (magnitude = importance, sign = direction).
-  * **Cross-fold stability** — a dedicated fixed-hyperparameter resampling loop giving
-    each feature a **selection frequency**, **sign consistency**, and coefficient
+  * **Performance vs a label-shuffle null** — leakage-safe **nested CV** (tune ``C`` in
+    inner folds, estimate on outer folds), in-fold ``StandardScaler``,
+    ``class_weight="balanced"``. The null is **opt-in** (``run_null=True``): the gate
+    that licenses trusting the weights; it maps to the exploratory/validated
+    distinction — run it to be eligible for ``validated``, skip it and the finding is
+    capped at ``exploratory`` (weights flagged "not tested against a null").
+  * **All-data weights** — tune on all data, refit on all data; the reported
+    **standardized** signed weights (magnitude = importance, sign = direction) plus the
+    support-vector counts.
+  * **Cross-fold stability** — a dedicated fixed-``C`` resampling loop giving each
+    feature a **top-k membership frequency**, **sign consistency**, and weight
     distribution.
+
+**Divergences from the elastic-net classifier** (documented, deliberate — each follows
+from the estimator, not from a different philosophy):
+
+  1. **Dense, not sparse.** Every feature carries a non-zero weight, so *selection
+     frequency* (fraction of resamples non-zero) is meaningless. The stability read is
+     the **top-k membership frequency** — the fraction of stability resamples in which
+     the feature ranks in the top ``top_k`` by |weight| — and the coefficient table
+     holds **every** feature (sorted by |weight|), not a selected subset.
+  2. **Scores are signed margins, not probabilities.** Every AUC is computed from
+     ``decision_function`` (the signed distance to the hyperplane); no Platt scaling /
+     ``probability=True`` anywhere (calibration is neither needed for a rank metric nor
+     free — it would add an inner CV per fit). Balanced accuracy thresholds the margin
+     at ``0``. The fold record carries ``y_score``, not ``y_prob``.
+  3. **A 1-D ``C`` grid → a tuning *curve*, not a heatmap.** On separable data the
+     inner-CV curve **plateaus** for every ``C`` above the hard-margin threshold (the
+     solutions coincide), so ties are the normal case: the **smallest ``C`` on the
+     plateau** (most regularized among the maxima) is chosen, deterministically, and the
+     same rule governs both the outer loop and the all-data fit. The **hard-margin SVM
+     is the large-``C`` limit** of this grid; pass ``c_grid=(1e6,)`` to pin it. Where
+     the plateau begins scales roughly with ``1 / n_features`` (the kernel scale of
+     standardized data is ~p), so the default grid reaches down to ``1e-5``, and a
+     :class:`CGridEdgeWarning` fires when the selected ``C`` is a grid edge (the grid
+     did not bracket the optimum — the C-curve figure shows it).
+  4. **Fold identity is recorded** (``repeat``, ``fold``, ``test_indices`` on every
+     fold record) and **per-repeat AUCs** are reported — the mean of a repeat's fold
+     AUCs (primary) and the AUC of that repeat's *pooled* out-of-fold scores
+     (supplementary; see :class:`SVMClassificationResult`) — so a comparison against
+     another classifier run with the same seed is a **paired** per-fold comparison.
+  5. **Support-vector counts** (total and per class) are reported: the number of
+     samples that define the boundary is part of what makes the SVM interpretable.
+
+``class_weight="balanced"`` scales the per-class box constraint to ``C · n / (2 n_c)``,
+recomputed **inside each training fold**; the grid is the *base* ``C``. ``SVC`` with a
+linear kernel is deterministic (libsvm's SMO; the ``random_state`` of ``SVC`` only
+seeds Platt scaling, which is not used), so no seed is passed to the estimator.
 
 **Generalization target & grouping.** Choose the CV scheme to answer a stated question:
 name the target (``"samples"`` / ``"individuals"`` / ``"batches"``) and hold out
@@ -41,9 +80,10 @@ at the group level.
 Scale / missing / sample set: the input should be the **experimental subset** on a
 **log2-like** scale with **missing values already resolved upstream** (Stage-2). This
 template **never silently imputes or zeros** — it **raises** on any ``NaN`` — warns on a
-non-log scale, and drops constant / all-zero features (they carry no signal). Covariate
-confounding is **not** handled here: it is a Stage-1 caveat surfaced collaboratively in
-Stage 4 (conventions/statistics.md), gated by consequence.
+non-log scale (a linear model on standardized features, like the elastic net), and
+drops constant / all-zero features (they carry no signal). Covariate confounding is
+**not** handled here: it is a Stage-1 caveat surfaced collaboratively in Stage 4
+(conventions/statistics.md), gated by consequence.
 
 Requires scikit-learn.
 """
@@ -53,12 +93,12 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 from common.data_loading import Dataset
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     balanced_accuracy_score,
@@ -73,6 +113,7 @@ from sklearn.model_selection import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 GeneralizationTarget = Literal["samples", "individuals", "batches"]
 Selection = Literal["best", "smoothed"]
@@ -82,17 +123,38 @@ Selection = Literal["best", "smoothed"]
 # model is sensitive to; outside this set the classifier warns (see _check_scale).
 _LOG2_LIKE: frozenset[str] = frozenset({"log2", "glog2", "log10", "ln", "zscore"})
 
-# Default hyperparameter grid: C log-spaced from strong to weak regularization; l1_ratio
-# spanning the ridge-like grouping regime (0.25) to fully sparse (1.0). Exposed as
-# arguments; these are the defaults (mirroring the source oracle's search space).
-DEFAULT_C_GRID: tuple[float, ...] = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0)
-DEFAULT_L1_RATIOS: tuple[float, ...] = (0.25, 0.5, 0.75, 0.9, 0.99, 1.0)
+# Default C grid: broad, log-spaced (half decades) from strong regularization to the
+# hard-margin regime. Where the plateau begins scales roughly with 1/n_features (the
+# kernel scale of standardized data is ~p): on a ~9,000-protein matrix the soft-margin
+# regime sits around 1e-5..1e-3 and everything above is the hard margin; a 100-feature
+# panel shifts the knee ~100x higher. So the grid reaches far down. Must be strictly
+# increasing (the smallest-C tie-break depends on it). Exposed as an argument; this is
+# the default — the C-curve figure shows whether it bracketed the optimum, and
+# CGridEdgeWarning fires when it did not.
+DEFAULT_C_GRID: tuple[float, ...] = (
+    1e-5,
+    3e-5,
+    1e-4,
+    3e-4,
+    1e-3,
+    3e-3,
+    1e-2,
+    3e-2,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    100.0,
+)
 
-# |coef| at or below this counts as "selected out" (numerically zero).
-_ZERO_COEF = 1e-10
+# Inner-CV scores within this distance of the maximum count as tied (a plateau). Far
+# below the AUC granularity 1/(n_pos*n_neg) of any inner fold, so it only merges
+# genuinely identical solutions (e.g. every C above the hard-margin threshold).
+_TIE_TOL = 1e-6
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification", "version": "0.2"},
+    "template": {"name": "classification-svm", "version": "0.1"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
@@ -103,22 +165,28 @@ __script_meta__: dict[str, object] = {
         "ClassificationScaleWarning",
         "SingletonGroupsWarning",
         "FeatureListWarning",
+        "CGridEdgeWarning",
         "FoldPrediction",
-        "ClassificationResult",
-        "classify",
+        "SVMClassificationResult",
+        "classify_svm",
     ],
     "uses": ["common.data_loading"],
     "seeded_from": None,
     "description": (
-        "Leakage-safe elastic-net logistic CLASSIFICATION over a Dataset: nested CV "
-        "performance vs an opt-in label-shuffle null (the exploratory/validated gate), "
-        "all-data standardized coefficients, and a fixed-hyperparameter stability loop "
-        "(selection frequency + sign consistency) — reported together. Study-agnostic "
-        "outcome + binarize API (binary direct; a non-binary outcome needs an explicit "
-        "rule); group-aware CV only when the groups column has repeats; four result "
-        "figures; fold identity (repeat/fold/test_indices) recorded on every fold for "
-        "paired comparison across classifier templates. Warns on non-log scale, raises "
-        "on NaN (missing handling upstream), "
+        "Leakage-safe linear-SVM CLASSIFICATION (soft-margin SVC(kernel='linear'), C "
+        "tuned; hard-margin is the large-C limit) over a Dataset — the second linear "
+        "model beside analysis.classification, the same readouts. Nested CV "
+        "performance (tune C in inner folds on ROC AUC from decision_function "
+        "scores — no probability calibration) vs an opt-in label-shuffle null (the "
+        "exploratory/validated gate); all-data standardized signed weights + "
+        "support-vector counts; and a fixed-C stability loop (top-k membership "
+        "frequency + sign consistency — the dense-model replacement for selection "
+        "frequency) — reported together. Fold identity (repeat/fold/test_indices) and "
+        "per-repeat AUCs recorded so a same-seed comparison with another classifier "
+        "is paired per fold. Smallest-C tie-break on the inner-CV plateau. "
+        "Study-agnostic outcome + binarize API (binary direct; a non-binary outcome "
+        "needs an explicit rule); group-aware CV only when the groups column has "
+        "repeats. Warns on non-log scale, raises on NaN (missing handling upstream), "
         "drops constant features. Binary outcomes only (v0.1). Requires scikit-learn."
     ),
 }
@@ -126,6 +194,7 @@ __script_meta__: dict[str, object] = {
 
 # --------------------------------------------------------------------------- #
 # Warnings
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
 # --------------------------------------------------------------------------- #
 class ClassificationScaleWarning(UserWarning):
     """The abundances are not on a log-like scale (standardization leaves skew)."""
@@ -143,6 +212,18 @@ class FeatureListWarning(UserWarning):
     """The ``feature_list`` matched few (or a small fraction) of the data's features."""
 
 
+class CGridEdgeWarning(UserWarning):
+    """The all-data-selected ``C`` sits at an edge of ``c_grid``.
+
+    At the **lower** edge the inner-CV curve is still on its plateau at the smallest
+    ``C`` tried — the grid never reached the soft-margin regime, so "the most
+    regularized point on the plateau" is only the most regularized point *tried*
+    (extend ``c_grid`` downward; the knee scales roughly with ``1 / n_features``). At
+    the **upper** edge the curve was still rising — extend it upward. Either way the
+    grid did not bracket the optimum, and the C-curve figure will show it.
+    """
+
+
 _FEATURE_LIST_WARN_FRACTION = 0.5
 
 
@@ -154,7 +235,8 @@ def _resolve_feature_list(
     An all-True mask is returned when no list is given (with ``None`` counts). Raises
     when a list matches nothing; warns on a poor match. Restricting to a prior /
     curated list is applied to the whole matrix **before** the CV — leakage-safe only
-    because such a list is defined **independent of the outcome** (see ``classify``).
+    because such a list is defined **independent of the outcome** (see
+    :func:`classify_svm`).
     """
     if feature_list is None:
         return np.ones(len(feature_names), dtype=bool), None, None
@@ -181,6 +263,7 @@ def _resolve_feature_list(
 
 # --------------------------------------------------------------------------- #
 # Outcome binarization spec — the caller's rule reducing an outcome to two classes
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Threshold:
@@ -219,55 +302,78 @@ BinarizeSpec = Threshold | LevelMap
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class FoldPrediction:
-    """Held-out predictions from one outer CV fold (feeds the ROC curve).
+    """Held-out margins from one outer CV fold (feeds the ROC curve).
 
-    ``repeat`` / ``fold`` locate the fold in the repeated outer CV and ``test_indices``
-    are the held-out sample positions **in the analyzed sample set** (after the
-    binarize drop mask), so a same-seed run of another classifier template can be
-    compared fold-by-fold (a *paired* comparison). Defaulted for back-compatibility
-    with results cached before v0.2 (they load with ``repeat == fold == -1`` and an
-    empty ``test_indices``).
+    ``y_score`` is the SVM **decision function** (signed distance to the hyperplane,
+    positive toward the positive class) — a score, not a probability. ``repeat`` /
+    ``fold`` locate the fold in the repeated outer CV and ``test_indices`` are the
+    held-out sample positions **in the analyzed sample set** (after the binarize drop
+    mask), so a same-seed run of another classifier can be compared fold-by-fold.
+    ``best_c`` is the ``C`` the inner CV chose on this fold's training data — read
+    across folds it shows how stable the tuning is (a fold that picked a soft margin
+    while the all-data fit sits on the hard-margin plateau is tuning noise).
     """
 
     y_true: np.ndarray
-    y_prob: np.ndarray
-    repeat: int = -1
-    fold: int = -1
-    test_indices: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
+    y_score: np.ndarray
+    repeat: int
+    fold: int
+    test_indices: np.ndarray
+    best_c: float
 
 
 @dataclass(frozen=True)
-class ClassificationResult:
+class SVMClassificationResult:
     """Everything the four figures and the finding read.
 
     Attributes
     ----------
     coefficients:
-        Per-feature table, one row per feature that is **non-zero in the final model**
-        (the selected set), sorted by ``abs_coef`` descending. Columns: ``feature``,
-        ``coef`` (all-data standardized), ``abs_coef``, ``selection_frequency``
-        (fraction of stability resamples non-zero), ``sign_consistency`` (fraction of
-        selecting resamples agreeing on sign), ``coef_median``, ``coef_q25``,
-        ``coef_q75`` (over the non-zero resamples). The trust annotation on estimates.
+        Per-feature table, one row per analyzed feature (the model is **dense**), sorted
+        by ``abs_coef`` descending. Columns: ``feature``, ``coef`` (all-data
+        standardized weight), ``abs_coef``, ``top_k_frequency`` (fraction of stability
+        resamples in which the feature ranks in the top ``top_k`` by |weight|),
+        ``sign_consistency`` (``|sum(sign)| / n_resamples`` over all resamples; an exact
+        zero counts as disagreement), ``coef_median``, ``coef_q25``, ``coef_q75`` (over
+        all resamples), ``n_resamples``. The trust annotation on estimates.
     fold_predictions:
-        Held-out ``(y_true, y_prob, repeat, fold, test_indices)`` per outer nested-CV
-        fold — the ROC input and the paired-comparison record (v0.2).
+        Held-out ``(y_true, y_score, repeat, fold, test_indices, best_c)`` per outer
+        nested-CV fold — the ROC input, the paired-comparison record, and the per-fold
+        tuned ``C`` (tuning-stability read).
     cv_auc, cv_auc_sd, cv_balanced_accuracy, cv_average_precision:
         Nested-CV performance (mean over outer folds; ``_sd`` is the fold SD of AUC).
-    best_c, best_l1_ratio:
-        The all-data-tuned hyperparameters (also used for the stability loop and null).
-    grid_scores, c_grid, l1_grid:
-        The all-data tuning surface — ``grid_scores`` is ``(len(c_grid), len(l1_grid))``
-        mean inner-CV AUC; the hyperparameter heatmap reads these.
+        Balanced accuracy thresholds the margin at 0.
+    repeat_aucs:
+        Per outer repeat, the **mean of that repeat's fold AUCs** (primary; their mean
+        is ``cv_auc``). Length ``n_repeats``.
+    repeat_pooled_aucs:
+        Per outer repeat, the AUC of the **pooled** out-of-fold scores of that repeat's
+        ``n_splits`` fold models. **Supplementary, with a caveat:** each fold model has
+        its own weights, intercept and scaler, so the pooled scores share no common
+        scale and the pooled ranking is not that of any single classifier. A large gap
+        between pooled and mean-of-fold AUC signals fold-to-fold score-scale
+        instability, not better or worse performance.
+    best_c:
+        The all-data-tuned ``C`` (also used for the stability loop and null).
+    grid_scores, grid_scores_sd, c_grid:
+        The all-data tuning curve — mean inner-CV AUC per ``C`` and its SD over inner
+        folds; the hyperparameter-curve figure reads these.
+    top_k:
+        The ``k`` defining ``top_k_frequency``.
+    n_support_vectors, n_support_negative, n_support_positive:
+        Support vectors of the all-data fit (total, and per class). With balanced class
+        weights and a small ``C`` nearly every sample is a bounded support vector — a
+        sign of heavy regularization, not a fault; on the hard-margin plateau only the
+        boundary samples remain.
     null_aucs, observed_auc, null_p:
-        The label-shuffle null (fixed-hyperparameter procedure): the permutation AUC
+        The label-shuffle null (fixed-``C`` procedure): the permutation AUC
         distribution, the observed AUC computed by the *same* procedure, and the
         empirical p ``(#{null >= observed} + 1) / (n_perm + 1)``. All ``None`` when
         ``run_null`` was ``False`` — the finding is then capped at ``exploratory``.
     validated_eligible:
-        ``True`` iff the null was run (the coefficient report is licensed).
+        ``True`` iff the null was run (the weight report is licensed).
     outcome, positive_label, negative_label:
-        The resolved binary problem (``positive_label`` is class 1; coefficient sign is
+        The resolved binary problem (``positive_label`` is class 1; weight sign is
         *toward positive*).
     generalization_target, grouped, groups_column:
         The CV design: the target claimed, whether folds were grouped (only when the
@@ -289,11 +395,16 @@ class ClassificationResult:
     cv_auc_sd: float
     cv_balanced_accuracy: float
     cv_average_precision: float
+    repeat_aucs: tuple[float, ...]
+    repeat_pooled_aucs: tuple[float, ...]
     best_c: float
-    best_l1_ratio: float
     grid_scores: np.ndarray
+    grid_scores_sd: np.ndarray
     c_grid: tuple[float, ...]
-    l1_grid: tuple[float, ...]
+    top_k: int
+    n_support_vectors: int
+    n_support_negative: int
+    n_support_positive: int
     outcome: str
     positive_label: str
     negative_label: str
@@ -322,6 +433,7 @@ class ClassificationResult:
 
 # --------------------------------------------------------------------------- #
 # Internal: label resolution (outcome -> binary y + drop mask)
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
 # --------------------------------------------------------------------------- #
 def _is_numeric(series: pd.Series) -> bool:
     return bool(pd.api.types.is_numeric_dtype(series))
@@ -441,27 +553,33 @@ def _resolve_level_map(series: pd.Series, spec: LevelMap, outcome: str) -> _Labe
 # --------------------------------------------------------------------------- #
 # Internal: estimator + CV construction
 # --------------------------------------------------------------------------- #
-def _build_pipeline(
-    c: float | None, l1_ratio: float, max_iter: int, tol: float, random_state: int
-) -> Pipeline:
-    """StandardScaler + elastic-net logistic regression (in-fold scaling, no leakage).
+def _build_pipeline(c: float, tol: float, max_iter: int) -> Pipeline:
+    """StandardScaler + linear-kernel SVC (in-fold scaling, no leakage).
 
-    sklearn (>=1.8) selects elastic net by ``l1_ratio`` alone (0=L2, 1=L1, in-between=
-    elastic net) — ``penalty=`` is deprecated. ``class_weight="balanced"`` handles class
-    imbalance. ``C=None`` leaves the estimator default until GridSearchCV sets it.
+    ``class_weight="balanced"`` scales each class's box constraint to
+    ``C * n / (2 * n_c)``, recomputed from the training fold the pipeline is fitted on
+    (fold-local). ``probability`` stays ``False`` — every score in this template is the
+    ``decision_function`` margin, so no Platt scaling and no ``random_state`` (libsvm's
+    SMO is deterministic; the seed would only feed the unused probability CV).
     """
-    lr = LogisticRegression(
-        solver="saga",
-        l1_ratio=l1_ratio,
-        C=1.0 if c is None else c,
+    svm = SVC(
+        kernel="linear",
+        C=c,
         class_weight="balanced",
-        max_iter=max_iter,
         tol=tol,
-        random_state=random_state,
+        max_iter=max_iter,
     )
-    return Pipeline([("scaler", StandardScaler()), ("lr", lr)])
+    return Pipeline([("scaler", StandardScaler()), ("svm", svm)])
 
 
+def _scores(model: Pipeline, x: np.ndarray) -> np.ndarray:
+    """The SVM margin for each row of ``x`` (positive toward the positive class)."""
+    return np.asarray(model.decision_function(x), dtype=float).ravel()
+
+
+# (Grouping + CV construction duplicated from analysis.classification so this template
+# is a self-contained seed. Kept byte-identical: the identical-splits guarantee across
+# the classifier templates rests on it — see lib/tests/test_classification_splits.py.)
 def _resolve_grouping(
     groups: str | None,
     metadata: pd.DataFrame,
@@ -543,115 +661,200 @@ def _split(
 
 
 # --------------------------------------------------------------------------- #
-# Internal: hyperparameter selection (best cell, or neighborhood-smoothed)
+# Internal: hyperparameter selection on the 1-D C curve (best, or smoothed) — one
+# rule for the outer loop and the all-data fit alike
 # --------------------------------------------------------------------------- #
-def _neighborhood_smooth(scores: np.ndarray) -> np.ndarray:
-    """Average each grid cell with its axis-aligned neighbours (von Neumann).
+def _smooth_1d(scores: np.ndarray) -> np.ndarray:
+    """Average each grid point with its two neighbours (edges average two values).
 
-    Plateau-seeking: avoids latching onto an isolated high-scoring cell that is likely
-    noise. Edge cells average only the neighbours that exist.
+    Plateau-seeking: avoids latching onto an isolated high-scoring C that is likely
+    noise. The 1-D counterpart of the elastic-net template's von-Neumann smoothing.
     """
     padded = np.pad(scores, 1, mode="constant", constant_values=np.nan)
-    stack = np.stack(
-        [
-            padded[1:-1, 1:-1],  # centre
-            padded[:-2, 1:-1],  # up
-            padded[2:, 1:-1],  # down
-            padded[1:-1, :-2],  # left
-            padded[1:-1, 2:],  # right
-        ]
+    stack = np.stack([padded[:-2], padded[1:-1], padded[2:]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.asarray(np.nanmean(stack, axis=0), dtype=float)
+
+
+def _select_c(
+    scores: np.ndarray, c_grid: tuple[float, ...], select: Selection
+) -> float:
+    """The smallest C whose (optionally smoothed) inner-CV score is within tolerance
+    of the maximum — the most regularized point on the plateau.
+
+    On separable data every C above the hard-margin threshold yields the same
+    solution, so the curve plateaus and the maximum is tied; the first index (the grid
+    is strictly increasing) is the deterministic, most-regularized choice.
+    """
+    surface = _smooth_1d(scores) if select == "smoothed" else scores
+    if not np.any(np.isfinite(surface)):
+        raise ValueError("inner-CV scores are all non-finite; cannot select C.")
+    best = float(np.nanmax(surface))
+    idx = int(np.flatnonzero(surface >= best - _TIE_TOL)[0])
+    return c_grid[idx]
+
+
+def _tune_c(
+    x: np.ndarray, y: np.ndarray, cfg: _Config
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """Inner-CV grid search over C -> (selected C, mean scores, SD over inner folds).
+
+    ``refit=False``: the pipeline is refitted by the caller at the C chosen by
+    :func:`_select_c`, so the ``select`` rule (and the smallest-C tie-break) governs
+    every fit, not GridSearchCV's own argmax.
+    """
+    inner = StratifiedKFold(
+        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
     )
-    return np.asarray(np.nanmean(stack, axis=0), dtype=float)
-
-
-def _select_cell(
-    grid_scores: np.ndarray,
-    c_grid: tuple[float, ...],
-    l1_grid: tuple[float, ...],
-    select: Selection,
-) -> tuple[float, float]:
-    surface = _neighborhood_smooth(grid_scores) if select == "smoothed" else grid_scores
-    row, col = np.unravel_index(int(np.nanargmax(surface)), surface.shape)
-    return c_grid[row], l1_grid[col]
+    search = GridSearchCV(
+        _build_pipeline(cfg.c_grid[0], cfg.tol, cfg.max_iter),
+        {"svm__C": list(cfg.c_grid)},
+        cv=inner,
+        scoring=cfg.tuning_metric,
+        n_jobs=cfg.n_jobs,
+        refit=False,
+    )
+    search.fit(x, y)
+    tried = np.asarray(search.cv_results_["param_svm__C"], dtype=float)
+    if tried.shape != (len(cfg.c_grid),) or not np.allclose(tried, cfg.c_grid):
+        raise RuntimeError(
+            "GridSearchCV did not evaluate the C grid in order; cannot align scores."
+        )
+    means = np.asarray(search.cv_results_["mean_test_score"], dtype=float)
+    sds = np.asarray(search.cv_results_["std_test_score"], dtype=float)
+    return _select_c(means, cfg.c_grid, cfg.select), means, sds
 
 
 # --------------------------------------------------------------------------- #
 # Internal: the three CV uses
 # --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _Performance:
+    folds: list[FoldPrediction]
+    auc: float
+    auc_sd: float
+    balanced_accuracy: float
+    average_precision: float
+    repeat_aucs: tuple[float, ...]
+    repeat_pooled_aucs: tuple[float, ...]
+
+
 def _nested_performance(
     x: np.ndarray,
     y: np.ndarray,
     groups: np.ndarray | None,
     cfg: _Config,
-) -> tuple[list[FoldPrediction], float, float, float, float]:
-    """Tune-in-fold repeated stratified CV -> per-fold ROC input + AUC/balacc/AP."""
+) -> _Performance:
+    """Tune-in-fold repeated stratified CV -> per-fold ROC input + AUC/balacc/AP.
+
+    Each outer fold: tune C on the training fold (inner CV), refit at that C on the
+    training fold, score the untouched test fold by its margin. Fold identity is
+    recorded (``repeat = i // n_splits``; both CV kinds emit repeats contiguously).
+    """
     outer = _make_cv(cfg.n_splits, cfg.n_repeats, groups is not None, cfg.random_state)
-    param_grid = {"lr__C": list(cfg.c_grid), "lr__l1_ratio": list(cfg.l1_grid)}
-    inner = StratifiedKFold(
-        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
-    )
     folds: list[FoldPrediction] = []
     aucs: list[float] = []
     accs: list[float] = []
     aps: list[float] = []
     for i, (train, test) in enumerate(_split(outer, x, y, groups)):
-        search = GridSearchCV(
-            _build_pipeline(
-                None, cfg.l1_grid[0], cfg.max_iter, cfg.tol, cfg.random_state
-            ),
-            param_grid,
-            cv=inner,
-            scoring=cfg.tuning_metric,
-            n_jobs=cfg.n_jobs,
-        )
-        search.fit(x[train], y[train])
-        prob = np.asarray(search.predict_proba(x[test]), dtype=float)[:, 1]
+        best_c, _, _ = _tune_c(x[train], y[train], cfg)
+        model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
+        model.fit(x[train], y[train])
+        score = _scores(model, x[test])
         folds.append(
             FoldPrediction(
                 y_true=y[test].copy(),
-                y_prob=prob,
+                y_score=score,
                 repeat=i // cfg.n_splits,
                 fold=i % cfg.n_splits,
                 test_indices=np.asarray(test, dtype=int).copy(),
+                best_c=best_c,
             )
         )
-        aucs.append(float(roc_auc_score(y[test], prob)))
-        accs.append(float(balanced_accuracy_score(y[test], (prob >= 0.5).astype(int))))
-        aps.append(float(average_precision_score(y[test], prob)))
-    return (
-        folds,
-        float(np.mean(aucs)),
-        float(np.std(aucs)),
-        float(np.mean(accs)),
-        float(np.mean(aps)),
+        aucs.append(float(roc_auc_score(y[test], score)))
+        accs.append(float(balanced_accuracy_score(y[test], (score >= 0.0).astype(int))))
+        aps.append(float(average_precision_score(y[test], score)))
+    repeat_aucs, repeat_pooled = _per_repeat_aucs(folds, aucs)
+    return _Performance(
+        folds=folds,
+        auc=float(np.mean(aucs)),
+        auc_sd=float(np.std(aucs)),
+        balanced_accuracy=float(np.mean(accs)),
+        average_precision=float(np.mean(aps)),
+        repeat_aucs=repeat_aucs,
+        repeat_pooled_aucs=repeat_pooled,
     )
 
 
-def _all_data_fit(
-    x: np.ndarray, y: np.ndarray, cfg: _Config
-) -> tuple[float, float, np.ndarray, np.ndarray]:
-    """Tune (C, l1_ratio) on all data + refit -> best_c, best_l1, coef, grid."""
-    param_grid = {"lr__C": list(cfg.c_grid), "lr__l1_ratio": list(cfg.l1_grid)}
-    inner = StratifiedKFold(
-        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
-    )
-    search = GridSearchCV(
-        _build_pipeline(None, cfg.l1_grid[0], cfg.max_iter, cfg.tol, cfg.random_state),
-        param_grid,
-        cv=inner,
-        scoring=cfg.tuning_metric,
-        n_jobs=cfg.n_jobs,
-    )
-    search.fit(x, y)
-    grid_scores = np.asarray(
-        search.cv_results_["mean_test_score"], dtype=float
-    ).reshape(len(cfg.c_grid), len(cfg.l1_grid))
-    best_c, best_l1 = _select_cell(grid_scores, cfg.c_grid, cfg.l1_grid, cfg.select)
-    final = _build_pipeline(best_c, best_l1, cfg.max_iter, cfg.tol, cfg.random_state)
+def _per_repeat_aucs(
+    folds: list[FoldPrediction], fold_aucs: list[float]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """(mean-of-fold AUC, pooled-OOF AUC) per outer repeat, in repeat order."""
+    repeats = sorted({f.repeat for f in folds})
+    means: list[float] = []
+    pooled: list[float] = []
+    for r in repeats:
+        idx = [i for i, f in enumerate(folds) if f.repeat == r]
+        means.append(float(np.mean([fold_aucs[i] for i in idx])))
+        y_true = np.concatenate([folds[i].y_true for i in idx])
+        y_score = np.concatenate([folds[i].y_score for i in idx])
+        pooled.append(float(roc_auc_score(y_true, y_score)))
+    return tuple(means), tuple(pooled)
+
+
+@dataclass(frozen=True)
+class _AllDataFit:
+    best_c: float
+    coef: np.ndarray
+    grid_scores: np.ndarray
+    grid_scores_sd: np.ndarray
+    n_support_negative: int
+    n_support_positive: int
+
+
+def _all_data_fit(x: np.ndarray, y: np.ndarray, cfg: _Config) -> _AllDataFit:
+    """Tune C on all data + refit -> best C, standardized weights, curve, SV counts."""
+    best_c, means, sds = _tune_c(x, y, cfg)
+    _warn_if_grid_edge(best_c, cfg.c_grid)
+    final = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     final.fit(x, y)
-    lr = final.named_steps["lr"]
-    coef = np.asarray(lr.coef_, dtype=float).ravel()
-    return best_c, best_l1, coef, grid_scores
+    svm = final.named_steps["svm"]
+    # coef_ of a linear-kernel SVC is dual_coef_ @ support_vectors_ on the
+    # *standardized* inputs (the scaler precedes it) — the standardized weight. Copied:
+    # the property returns a read-only view.
+    coef = np.asarray(svm.coef_, dtype=float).ravel().copy()
+    n_support = np.asarray(svm.n_support_, dtype=int)  # in classes_ order: [0, 1]
+    return _AllDataFit(
+        best_c=best_c,
+        coef=coef,
+        grid_scores=means,
+        grid_scores_sd=sds,
+        n_support_negative=int(n_support[0]),
+        n_support_positive=int(n_support[1]),
+    )
+
+
+def _warn_if_grid_edge(best_c: float, c_grid: tuple[float, ...]) -> None:
+    """Warn when the selected C is a grid edge (the grid did not bracket it)."""
+    if len(c_grid) < 2:
+        return  # a single-element grid is a deliberate pin (e.g. hard margin)
+    if best_c == c_grid[0]:
+        warnings.warn(
+            f"Selected C = {best_c:g} is the SMALLEST value in c_grid: the inner-CV "
+            f"curve is still on its plateau there, so the grid never reached the "
+            f"soft-margin regime and the choice is only 'the most regularized C "
+            f"tried'. Extend c_grid downward (the knee scales ~1/n_features).",
+            CGridEdgeWarning,
+            stacklevel=4,
+        )
+    elif best_c == c_grid[-1]:
+        warnings.warn(
+            f"Selected C = {best_c:g} is the LARGEST value in c_grid: the inner-CV "
+            f"curve was still rising at the top of the grid. Extend c_grid upward.",
+            CGridEdgeWarning,
+            stacklevel=4,
+        )
 
 
 def _stability(
@@ -659,20 +862,23 @@ def _stability(
     y: np.ndarray,
     groups: np.ndarray | None,
     best_c: float,
-    best_l1: float,
     cfg: _Config,
 ) -> np.ndarray:
-    """Per-resample standardized coefficients at fixed hyperparameters."""
+    """Per-resample standardized weights at fixed C.
+
+    Refits on the training side of ``stability_repeats`` x ``n_splits`` stratified
+    resamples (the test side is discarded — this is a subsample-refit device, not an
+    evaluation). Note the shared ``random_state``: the first ``n_repeats`` resamples
+    coincide with the outer-CV training folds (inherited from the elastic-net template).
+    """
     cv = _make_cv(
         cfg.n_splits, cfg.stability_repeats, groups is not None, cfg.random_state
     )
     coefs: list[np.ndarray] = []
     for train, _ in _split(cv, x, y, groups):
-        model = _build_pipeline(
-            best_c, best_l1, cfg.max_iter, cfg.tol, cfg.random_state
-        )
+        model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
         model.fit(x[train], y[train])
-        coefs.append(np.asarray(model.named_steps["lr"].coef_, dtype=float).ravel())
+        coefs.append(np.asarray(model.named_steps["svm"].coef_, dtype=float).ravel())
     return np.asarray(coefs, dtype=float)
 
 
@@ -681,12 +887,16 @@ def _fixed_cv_auc(
     y: np.ndarray,
     groups: np.ndarray | None,
     best_c: float,
-    best_l1: float,
     cfg: _Config,
 ) -> float:
-    """Mean AUC from repeated K-fold at FIXED hyperparameters (observed + each null)."""
+    """Mean AUC from repeated K-fold at FIXED C (observed + each null).
+
+    The ``"roc_auc"`` scorer resolves to ``decision_function`` for an SVC pipeline
+    (response-method order ``decision_function`` then ``predict_proba``), oriented
+    toward ``classes_[1]`` — the same margin the grouped path computes explicitly.
+    """
     cv = _make_cv(cfg.n_splits, cfg.null_repeats, groups is not None, cfg.random_state)
-    model = _build_pipeline(best_c, best_l1, cfg.max_iter, cfg.tol, cfg.random_state)
+    model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     if groups is None:
         scores = cross_val_score(
             model, x, y, cv=cv, scoring="roc_auc", n_jobs=cfg.n_jobs
@@ -695,8 +905,7 @@ def _fixed_cv_auc(
     aucs: list[float] = []
     for train, test in _split(cv, x, y, groups):
         model.fit(x[train], y[train])
-        prob = np.asarray(model.predict_proba(x[test]), dtype=float)[:, 1]
-        aucs.append(float(roc_auc_score(y[test], prob)))
+        aucs.append(float(roc_auc_score(y[test], _scores(model, x[test]))))
     return float(np.mean(aucs))
 
 
@@ -719,17 +928,14 @@ def _null_distribution(
     y: np.ndarray,
     groups: np.ndarray | None,
     best_c: float,
-    best_l1: float,
     cfg: _Config,
 ) -> tuple[np.ndarray, float, float]:
-    """Label-shuffle null (fixed hyperparameters) -> null_aucs, observed, p."""
-    observed = _fixed_cv_auc(x, y, groups, best_c, best_l1, cfg)
+    """Label-shuffle null (fixed C) -> null_aucs, observed, p."""
+    observed = _fixed_cv_auc(x, y, groups, best_c, cfg)
     rng = np.random.default_rng(cfg.random_state)
     nulls = np.array(
         [
-            _fixed_cv_auc(
-                x, _permute_labels(y, groups, rng), groups, best_c, best_l1, cfg
-            )
+            _fixed_cv_auc(x, _permute_labels(y, groups, rng), groups, best_c, cfg)
             for _ in range(cfg.n_permutations)
         ],
         dtype=float,
@@ -739,37 +945,46 @@ def _null_distribution(
 
 
 # --------------------------------------------------------------------------- #
-# Internal: coefficient table
+# Internal: coefficient table (dense — every feature; top-k membership, not
+# selection frequency)
 # --------------------------------------------------------------------------- #
+def _top_k_membership(resample_coef: np.ndarray, top_k: int) -> np.ndarray:
+    """(n_resamples, n_features) bool — is the feature in the resample's top-k |w|?
+
+    Ranked per resample by ``argsort(-|w|, kind="stable")`` so an exact tie at the k-th
+    rank resolves deterministically by feature order.
+    """
+    n_resamples, n_features = resample_coef.shape
+    member = np.zeros((n_resamples, n_features), dtype=bool)
+    for i in range(n_resamples):
+        top = np.argsort(-np.abs(resample_coef[i]), kind="stable")[:top_k]
+        member[i, top] = True
+    return member
+
+
 def _coefficient_table(
-    final_coef: np.ndarray, resample_coef: np.ndarray, feature_names: np.ndarray
+    final_coef: np.ndarray,
+    resample_coef: np.ndarray,
+    feature_names: np.ndarray,
+    top_k: int,
 ) -> pd.DataFrame:
-    """Assemble the per-feature table for features non-zero in the final model."""
-    selected = np.abs(final_coef) > _ZERO_COEF
-    nonzero = np.abs(resample_coef) > _ZERO_COEF
+    """Assemble the per-feature table for every analyzed feature (dense model)."""
     n_resample = resample_coef.shape[0]
-    sel_freq = nonzero.mean(axis=0)
-    with np.errstate(invalid="ignore"):
-        sign_sum = np.abs(np.sum(np.sign(resample_coef), axis=0))
-        n_nz = nonzero.sum(axis=0)
-        sign_cons = np.where(n_nz > 0, sign_sum / np.maximum(n_nz, 1), 0.0)
-    masked = np.where(nonzero, resample_coef, np.nan)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        median = np.nanmedian(masked, axis=0)
-        q25 = np.nanpercentile(masked, 25, axis=0)
-        q75 = np.nanpercentile(masked, 75, axis=0)
-    idx = np.where(selected)[0]
+    top_k_freq = _top_k_membership(resample_coef, top_k).mean(axis=0)
+    sign_cons = np.abs(np.sign(resample_coef).sum(axis=0)) / n_resample
+    median = np.median(resample_coef, axis=0)
+    q25 = np.percentile(resample_coef, 25, axis=0)
+    q75 = np.percentile(resample_coef, 75, axis=0)
     table = pd.DataFrame(
         {
-            "feature": feature_names[idx],
-            "coef": final_coef[idx],
-            "abs_coef": np.abs(final_coef[idx]),
-            "selection_frequency": sel_freq[idx],
-            "sign_consistency": sign_cons[idx],
-            "coef_median": median[idx],
-            "coef_q25": q25[idx],
-            "coef_q75": q75[idx],
+            "feature": feature_names,
+            "coef": final_coef,
+            "abs_coef": np.abs(final_coef),
+            "top_k_frequency": top_k_freq,
+            "sign_consistency": sign_cons,
+            "coef_median": median,
+            "coef_q25": q25,
+            "coef_q75": q75,
             "n_resamples": n_resample,
         }
     )
@@ -784,7 +999,7 @@ def _coefficient_table(
 @dataclass(frozen=True)
 class _Config:
     c_grid: tuple[float, ...]
-    l1_grid: tuple[float, ...]
+    top_k: int
     select: Selection
     tuning_metric: str
     n_splits: int
@@ -792,8 +1007,8 @@ class _Config:
     stability_repeats: int
     null_repeats: int
     n_permutations: int
-    max_iter: int
     tol: float
+    max_iter: int
     n_jobs: int
     random_state: int
 
@@ -801,7 +1016,7 @@ class _Config:
 # --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
-def classify(
+def classify_svm(
     dataset: Dataset,
     outcome: str,
     *,
@@ -811,7 +1026,7 @@ def classify(
     generalization_target: GeneralizationTarget = "samples",
     feature_list: Sequence[str] | None = None,
     c_grid: Sequence[float] = DEFAULT_C_GRID,
-    l1_ratios: Sequence[float] = DEFAULT_L1_RATIOS,
+    top_k: int = 20,
     select: Selection = "best",
     tuning_metric: str = "roc_auc",
     n_splits: int = 5,
@@ -820,12 +1035,12 @@ def classify(
     run_null: bool = False,
     n_permutations: int = 1000,
     null_repeats: int = 3,
-    max_iter: int = 5000,
-    tol: float = 1e-4,
+    tol: float = 1e-3,
+    max_iter: int = -1,
     n_jobs: int = -1,
     random_state: int = 0,
-) -> ClassificationResult:
-    """Fit a leakage-safe elastic-net logistic classifier; report the three parts.
+) -> SVMClassificationResult:
+    """Fit a leakage-safe linear SVM classifier; report the three parts.
 
     Parameters
     ----------
@@ -840,8 +1055,8 @@ def classify(
         a continuous column) or :class:`LevelMap` (assign categorical levels; unlisted
         ones are dropped). Required unless ``outcome`` already has exactly two classes.
     positive_class:
-        For an already-binary categorical outcome, which level is class 1 (the
-        coefficient sign is *toward* it). Default is the sorted-second level.
+        For an already-binary categorical outcome, which level is class 1 (the weight
+        sign is *toward* it). Default is the sorted-second level.
     groups:
         Metadata column naming the independent unit (subject/animal/batch). Used for
         group-aware CV **only if it has repeats**; all-singletons -> row-level CV.
@@ -855,42 +1070,63 @@ def classify(
         defined independent of ``outcome``** (a list derived from this data's class is
         circular). Applied to the whole matrix once (leakage-safe, since the list is
         outcome-independent); matched/unmatched counts are recorded.
-    c_grid, l1_ratios:
-        Elastic-net grid (``l1_ratio`` 0=ridge grouping .. 1=fully sparse).
+    c_grid:
+        The soft-margin ``C`` grid: strictly increasing, all ``> 0``. Broad and
+        log-spaced by default (``1e-5`` .. ``100``); the hard-margin SVM is its
+        large-``C`` limit (a single-element grid such as ``(1e6,)`` pins it and skips
+        tuning). Where the inner-CV curve reaches its plateau scales roughly with
+        ``1 / n_features``, so a much smaller or larger feature set may need the grid
+        shifted; a :class:`CGridEdgeWarning` says when the selected ``C`` sits at a
+        grid edge (the grid did not bracket the optimum).
+    top_k:
+        The ``k`` of the stability read: a feature's ``top_k_frequency`` is the fraction
+        of stability resamples in which it ranks in the top ``k`` by |weight|. Must be
+        ``1 <= top_k <= n_features`` (after constant dropping).
     select:
-        ``"best"`` (highest inner-CV score) or ``"smoothed"`` (neighborhood-smoothed,
-        plateau-seeking) cell selection.
+        ``"best"`` (highest inner-CV score) or ``"smoothed"`` (3-point neighbour-
+        smoothed, plateau-seeking) selection on the C curve. Ties resolve to the
+        smallest C either way.
     tuning_metric:
-        Inner-CV scoring for tuning (default ``"roc_auc"``).
+        Inner-CV scoring for tuning (default ``"roc_auc"``, computed from the margin).
     n_splits, n_repeats:
         Outer nested-CV folds and repeats (the honest performance estimate).
     stability_repeats:
-        Repeats of the fixed-hyperparameter stability loop (``n_splits`` folds each).
+        Repeats of the fixed-``C`` stability loop (``n_splits`` folds each).
     run_null:
         If ``True``, run the **label-shuffle null** (the gate that licenses trusting the
-        coefficients and enables a ``validated`` finding). Opt-in because it is the main
+        weights and enables a ``validated`` finding). Opt-in because it is the main
         compute cost. If ``False``, ``null_*`` are ``None`` and the finding is capped at
         ``exploratory``.
     n_permutations, null_repeats:
-        Number of label permutations, and the (lighter) fixed-hyperparameter CV repeats
-        per permutation.
-    max_iter, tol:
-        saga convergence controls.
+        Number of label permutations, and the (lighter) fixed-``C`` CV repeats per
+        permutation.
+    tol, max_iter:
+        libsvm stopping tolerance and iteration cap (``-1`` = no cap, the SVC default;
+        with no cap there is no convergence warning to silence).
     n_jobs:
         Parallelism for the inner grid search / fixed-CV scoring (``-1`` = all cores).
     random_state:
-        Recorded seed for every stochastic step.
+        Recorded seed for every stochastic step (the CV shuffles and the null's
+        permutations; the SVM solver itself is deterministic).
 
     Returns
     -------
-    ClassificationResult
+    SVMClassificationResult
     """
     c_grid_t = tuple(float(c) for c in c_grid)
-    l1_grid_t = tuple(float(v) for v in l1_ratios)
-    if not c_grid_t or not l1_grid_t:
-        raise ValueError("c_grid and l1_ratios must be non-empty.")
-    if any(not 0.0 <= v <= 1.0 for v in l1_grid_t):
-        raise ValueError(f"l1_ratios must be in [0, 1]; got {l1_grid_t}.")
+    if not c_grid_t:
+        raise ValueError("c_grid must be non-empty.")
+    if any(not np.isfinite(c) or c <= 0.0 for c in c_grid_t):
+        raise ValueError(f"c_grid values must be finite and > 0; got {c_grid_t}.")
+    if any(b <= a for a, b in pairwise(c_grid_t)):
+        raise ValueError(
+            f"c_grid must be strictly increasing (the tie-break rule 'smallest C among "
+            f"the inner-CV maxima' depends on it); got {c_grid_t}."
+        )
+    if top_k < 1:
+        raise ValueError(f"top_k must be >= 1; got {top_k}.")
+    if max_iter != -1 and max_iter < 1:
+        raise ValueError(f"max_iter must be -1 (no cap) or >= 1; got {max_iter}.")
 
     metadata = dataset.metadata
     abundances = np.asarray(dataset.abundances, dtype=float)
@@ -936,13 +1172,23 @@ def classify(
         raise ValueError(
             f"Need >=2 samples per class; got positive={n_pos}, negative={n_neg}."
         )
+    if min(n_pos, n_neg) < n_splits:
+        raise ValueError(
+            f"Each class needs >= n_splits ({n_splits}) samples for stratified folds; "
+            f"got positive={n_pos}, negative={n_neg}. Lower n_splits to proceed."
+        )
+    if top_k > x.shape[1]:
+        raise ValueError(
+            f"top_k ({top_k}) exceeds the {x.shape[1]} analyzed features; a top-k "
+            f"membership frequency of 1.0 everywhere would be meaningless. Lower top_k."
+        )
 
     groups_kept = _resolve_grouping(groups, metadata, keep)
     grouped = groups_kept is not None
 
     cfg = _Config(
         c_grid=c_grid_t,
-        l1_grid=l1_grid_t,
+        top_k=top_k,
         select=select,
         tuning_metric=tuning_metric,
         n_splits=n_splits,
@@ -950,39 +1196,42 @@ def classify(
         stability_repeats=stability_repeats,
         null_repeats=null_repeats,
         n_permutations=n_permutations,
-        max_iter=max_iter,
         tol=tol,
+        max_iter=max_iter,
         n_jobs=n_jobs,
         random_state=random_state,
     )
 
-    folds, cv_auc, cv_auc_sd, cv_acc, cv_ap = _nested_performance(
-        x, y, groups_kept, cfg
-    )
-    best_c, best_l1, final_coef, grid_scores = _all_data_fit(x, y, cfg)
-    resample_coef = _stability(x, y, groups_kept, best_c, best_l1, cfg)
-    coeff_table = _coefficient_table(final_coef, resample_coef, kept_features)
+    perf = _nested_performance(x, y, groups_kept, cfg)
+    fit = _all_data_fit(x, y, cfg)
+    resample_coef = _stability(x, y, groups_kept, fit.best_c, cfg)
+    coeff_table = _coefficient_table(fit.coef, resample_coef, kept_features, top_k)
 
     null_aucs: np.ndarray | None = None
     observed_auc: float | None = None
     null_p: float | None = None
     if run_null:
         null_aucs, observed_auc, null_p = _null_distribution(
-            x, y, groups_kept, best_c, best_l1, cfg
+            x, y, groups_kept, fit.best_c, cfg
         )
 
-    return ClassificationResult(
+    return SVMClassificationResult(
         coefficients=coeff_table,
-        fold_predictions=folds,
-        cv_auc=cv_auc,
-        cv_auc_sd=cv_auc_sd,
-        cv_balanced_accuracy=cv_acc,
-        cv_average_precision=cv_ap,
-        best_c=best_c,
-        best_l1_ratio=best_l1,
-        grid_scores=grid_scores,
+        fold_predictions=perf.folds,
+        cv_auc=perf.auc,
+        cv_auc_sd=perf.auc_sd,
+        cv_balanced_accuracy=perf.balanced_accuracy,
+        cv_average_precision=perf.average_precision,
+        repeat_aucs=perf.repeat_aucs,
+        repeat_pooled_aucs=perf.repeat_pooled_aucs,
+        best_c=fit.best_c,
+        grid_scores=fit.grid_scores,
+        grid_scores_sd=fit.grid_scores_sd,
         c_grid=c_grid_t,
-        l1_grid=l1_grid_t,
+        top_k=top_k,
+        n_support_vectors=fit.n_support_negative + fit.n_support_positive,
+        n_support_negative=fit.n_support_negative,
+        n_support_positive=fit.n_support_positive,
         outcome=outcome,
         positive_label=labels.positive_label,
         negative_label=labels.negative_label,

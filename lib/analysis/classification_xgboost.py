@@ -110,7 +110,7 @@ DEFAULT_LEARNING_RATE_GRID: tuple[float, ...] = (0.03, 0.1, 0.3)
 _ZERO_IMPORTANCE = 1e-12
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-xgboost", "version": "0.1"},
+    "template": {"name": "classification-xgboost", "version": "0.2"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
@@ -141,7 +141,9 @@ __script_meta__: dict[str, object] = {
         "direct; a continuous/multi-level outcome needs a Threshold/LevelMap rule, "
         "unassigned samples dropped); group-aware CV only when the groups column has "
         "repeats (else row-level = individual-level; group-level null permutation); "
-        "generalization_target recorded. Raises on NaN (missing handling upstream; "
+        "generalization_target recorded; fold identity (repeat/fold/test_indices) "
+        "recorded on every fold for paired comparison across classifier templates. "
+        "Raises on NaN (missing handling upstream; "
         "native NaN routing deliberately unused), drops constant features. Binary "
         "outcomes only (v0.1). Uses common.data_loading. Requires scikit-learn + "
         "xgboost. Study-agnostic; fail-loud."
@@ -242,10 +244,21 @@ BinarizeSpec = Threshold | LevelMap
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class FoldPrediction:
-    """Held-out predictions from one outer CV fold (feeds the ROC curve)."""
+    """Held-out predictions from one outer CV fold (feeds the ROC curve).
+
+    ``repeat`` / ``fold`` locate the fold in the repeated outer CV and ``test_indices``
+    are the held-out sample positions **in the analyzed sample set** (after the
+    binarize drop mask), so a same-seed run of another classifier template can be
+    compared fold-by-fold (a *paired* comparison). Defaulted for back-compatibility
+    with results cached before v0.2 (they load with ``repeat == fold == -1`` and an
+    empty ``test_indices``).
+    """
 
     y_true: np.ndarray
     y_prob: np.ndarray
+    repeat: int = -1
+    fold: int = -1
+    test_indices: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
 
 
 @dataclass(frozen=True)
@@ -263,7 +276,8 @@ class XGBClassificationResult:
         ``n_resamples``. The trust annotation on estimates. There is **no** sign column
         (tree importance carries no direction).
     fold_predictions:
-        Held-out ``(y_true, y_prob)`` per outer nested-CV fold — the ROC input.
+        Held-out ``(y_true, y_prob, repeat, fold, test_indices)`` per outer nested-CV
+        fold — the ROC input and the paired-comparison record (v0.2).
     cv_auc, cv_auc_sd, cv_balanced_accuracy, cv_average_precision:
         Nested-CV performance (mean over outer folds; ``_sd`` is the fold SD of AUC).
     best_params:
@@ -647,7 +661,7 @@ def _nested_performance(
     aucs: list[float] = []
     accs: list[float] = []
     aps: list[float] = []
-    for train, test in _split(outer, x, y, groups):
+    for i, (train, test) in enumerate(_split(outer, x, y, groups)):
         spw = _scale_pos_weight(y[train])
         base = _make_xgb(
             cfg.max_depth_grid[0], cfg.learning_rate_grid[0], spw, cfg, n_jobs=1
@@ -657,7 +671,15 @@ def _nested_performance(
         )
         search.fit(x[train], y[train])
         prob = np.asarray(search.predict_proba(x[test]), dtype=float)[:, 1]
-        folds.append(FoldPrediction(y_true=y[test].copy(), y_prob=prob))
+        folds.append(
+            FoldPrediction(
+                y_true=y[test].copy(),
+                y_prob=prob,
+                repeat=i // cfg.n_splits,
+                fold=i % cfg.n_splits,
+                test_indices=np.asarray(test, dtype=int).copy(),
+            )
+        )
         aucs.append(float(roc_auc_score(y[test], prob)))
         accs.append(float(balanced_accuracy_score(y[test], (prob >= 0.5).astype(int))))
         aps.append(float(average_precision_score(y[test], prob)))

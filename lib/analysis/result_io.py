@@ -7,7 +7,8 @@ different layout. Held to the correctness charter (conventions/correctness.md):
 **assume nothing, verify everything, fail loud.**
 
 Why this exists: the CPU-heavy analysis templates (`classification`,
-`classification-xgboost`, `regression`, `boruta`) return a **frozen dataclass** result
+`classification-xgboost`, `classification-svm`, `regression`, `boruta`) return a
+**frozen dataclass** result
 (nested CV, a stability loop, an opt-in label/target-shuffle **null** — the expensive
 part) that the figure templates read via ``plot_*(result)``. With the result only in
 memory, a naive *run-and-plot* script re-runs the whole analysis to change a figure
@@ -35,7 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import MISSING, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
@@ -43,7 +44,7 @@ import numpy as np
 import pandas as pd
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "result-io", "version": "0.1"},
+    "template": {"name": "result-io", "version": "0.2"},
     "kind": "module",
     "provides": [
         "save_result",
@@ -191,6 +192,13 @@ def load_result(path: str | Path, cls: type[T]) -> T:
     kwargs: dict[str, object] = {}
     for field_info in fields(cls):  # type: ignore[arg-type]  # cls is a dataclass type
         if field_info.name not in entries:
+            if (
+                field_info.default is not MISSING
+                or field_info.default_factory is not MISSING
+            ):
+                # A field added to the result class after this result was cached:
+                # the dataclass default applies (forward-compatible reload).
+                continue
             raise ValueError(
                 f"Result at {directory} is missing field {field_info.name!r} "
                 f"expected by {cls.__qualname__}."
