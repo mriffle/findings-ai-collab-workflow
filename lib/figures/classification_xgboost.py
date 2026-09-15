@@ -46,7 +46,7 @@ from sklearn.metrics import auc, roc_curve
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-xgboost-figures", "version": "0.1"},
+    "template": {"name": "classification-xgboost-figures", "version": "0.2"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -179,6 +179,17 @@ def _roc_default_title(result: XGBClassificationResult) -> str:
 # --------------------------------------------------------------------------- #
 # Null histogram
 # --------------------------------------------------------------------------- #
+
+
+def _null_scheme_note(scheme: str | None) -> str:
+    """Title clause naming the null permutation scheme (empty for a plain shuffle)."""
+    if scheme == "within_units":
+        return ", within-unit permutation"
+    if scheme == "units":
+        return ", unit-level permutation"
+    return ""  # "samples" (a row shuffle needs no qualifier) or None (pre-0.3 cache)
+
+
 def plot_null(result: XGBClassificationResult, *, title: str | None = None) -> Figure:
     """Label-shuffle null AUC distribution with the observed AUC and empirical p.
 
@@ -210,7 +221,8 @@ def plot_null(result: XGBClassificationResult, *, title: str | None = None) -> F
             _apply_title(
                 fig,
                 title,
-                f"Label-shuffle null ({n_perm} permutations, fixed hyperparameters)",
+                f"Label-shuffle null ({n_perm} permutations, fixed hyperparameters"
+                f"{_null_scheme_note(result.null_permutation)})",
                 result,
             )
         except BaseException:

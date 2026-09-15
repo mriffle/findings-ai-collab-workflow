@@ -80,7 +80,9 @@ folds at that unit. Grouping is used **only when the ``groups`` column actually 
 repeats** — if every unit appears once, a new sample *is* a new individual and
 row-level folds already estimate individual-level performance, so nothing is grouped
 (grouping singletons only hurts class balance). When grouped, the null permutes labels
-at the group level.
+at the unit level by default (``null_permutation="units"``, one label per unit) or
+*within* each unit for a batch-grouped design whose units hold both classes
+(``null_permutation="within_units"``, preserving per-unit class counts).
 
 Scale / missing / sample set: the input should be the **experimental subset** on a
 **log2-like** scale with **missing values already resolved upstream** (Stage-2). This
@@ -123,6 +125,7 @@ from sklearn.svm import SVC
 
 GeneralizationTarget = Literal["samples", "individuals", "batches"]
 Selection = Literal["best", "smoothed"]
+NullPermutation = Literal["units", "within_units"]
 
 # Scales on which the input is a genuine log abundance. StandardScaler tolerates the
 # scale, but linear-scale abundances are right-skewed and leave outlier z-scores the
@@ -164,16 +167,18 @@ _TIE_TOL = 1e-6
 _SUB_PLATEAU_WARN_FRACTION = 0.25
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm", "version": "0.2"},
+    "template": {"name": "classification-svm", "version": "0.3"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
         "Selection",
+        "NullPermutation",
         "Threshold",
         "LevelMap",
         "BinarizeSpec",
         "ClassificationScaleWarning",
         "SingletonGroupsWarning",
+        "NullPermutationWarning",
         "FeatureListWarning",
         "CGridEdgeWarning",
         "TuningNoiseWarning",
@@ -197,7 +202,9 @@ __script_meta__: dict[str, object] = {
         "is paired per fold. Smallest-C tie-break on the inner-CV plateau. "
         "Study-agnostic outcome + binarize API (binary direct; a non-binary outcome "
         "needs an explicit rule); group-aware CV only when the groups column has "
-        "repeats. Warns on non-log scale, raises on NaN (missing handling upstream), "
+        "repeats; the null permutes at the unit level or, for a batch-grouped design, "
+        "within units (null_permutation). Warns on non-log scale, raises on NaN "
+        "(missing handling upstream), "
         "drops constant features. Binary outcomes only (v0.1). Requires scikit-learn."
     ),
 }
@@ -216,6 +223,15 @@ class SingletonGroupsWarning(UserWarning):
 
     Every unit appears once, so a held-out sample is already a held-out unit; row-level
     CV is used (grouping singletons only degrades class balance).
+    """
+
+
+class NullPermutationWarning(UserWarning):
+    """The within-unit null can reach fewer distinct label arrangements than requested.
+
+    ``prod_u C(n_u, k_u)`` is below ``n_permutations``: permutation draws must repeat
+    and the empirical p resolves only to about ``1 / arrangements``. The p stays valid
+    (a Monte-Carlo p with duplicate draws is still a p); it is just coarse.
     """
 
 
@@ -424,6 +440,10 @@ class SVMClassificationResult:
     n_features_requested, n_features_matched:
         When a ``feature_list`` was supplied: its unique size and how many matched the
         data's features (``None`` when no list was given). Recorded for provenance.
+    null_permutation:
+        The null's permutation scheme as applied: ``"samples"`` (row-level CV, plain
+        shuffle), ``"units"``, or ``"within_units"``; ``None`` when the null was not run
+        or on a result cached before v0.3.
     """
 
     coefficients: pd.DataFrame
@@ -462,6 +482,7 @@ class SVMClassificationResult:
     n_features_matched: int | None = None
     plateau_start_c: float | None = None
     n_folds_sub_plateau: int | None = None
+    null_permutation: str | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
 
     @property
@@ -994,11 +1015,24 @@ def _fixed_cv_auc(
 
 
 def _permute_labels(
-    y: np.ndarray, groups: np.ndarray | None, rng: np.random.Generator
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    rng: np.random.Generator,
+    scheme: NullPermutation = "units",
 ) -> np.ndarray:
-    """Shuffle labels — at group level when grouped (keeps a unit's label intact)."""
+    """Shuffle labels for one null draw.
+
+    Ungrouped: a plain row shuffle. Grouped, ``scheme="units"``: shuffle one label per
+    unit (a unit's samples keep a common label — the null for a label that is a *unit*
+    property, e.g. a subject/animal). Grouped, ``scheme="within_units"``: shuffle labels
+    *inside* each unit, preserving every unit's class counts — the restricted
+    (within-block) permutation for a batch-grouped design whose units hold both
+    classes; see :func:`_permute_within_units`.
+    """
     if groups is None:
         return np.asarray(rng.permutation(y), dtype=int)
+    if scheme == "within_units":
+        return _permute_within_units(y, groups, rng)
     units, inverse = np.unique(groups, return_inverse=True)
     unit_label = _unit_labels(y, groups, units)
     shuffled = rng.permutation(unit_label)
@@ -1008,25 +1042,62 @@ def _permute_labels(
 def _unit_labels(y: np.ndarray, groups: np.ndarray, units: np.ndarray) -> np.ndarray:
     """One label per unit — raises if any unit carries both classes.
 
-    A group-level null permutes *unit* labels, which is only defined when each unit has
+    A unit-level null permutes *unit* labels, which is only defined when each unit has
     one label; a mixed unit means ``groups`` is not the unit of the outcome (rounding
-    a mixed unit would silently change the class balance of the permuted labels).
-    Consequence: a **batch-grouped design** (``generalization_target="batches"``, each
-    batch holding both classes) has **no label-shuffle null** in this template and
-    its finding stays ``exploratory``; the grouped CV itself still runs
-    (``run_null=False``).
+    a mixed unit would silently change the class balance of the permuted labels). A
+    **batch-grouped design** (``generalization_target="batches"``, each batch holding
+    both classes) is the within-unit case: pass ``null_permutation="within_units"``.
     """
     out = np.empty(len(units), dtype=int)
     for i, u in enumerate(units):
         labels = np.unique(y[groups == u])
         if len(labels) != 1:
             raise ValueError(
-                f"groups unit {u!r} carries both classes; a group-level label-shuffle "
+                f"groups unit {u!r} carries both classes; a unit-level label-shuffle "
                 f"null needs one label per unit. Use a groups column that is the unit "
-                f"of the outcome, or run without groups."
+                f"of the outcome, run without groups, or — for a batch-grouped design "
+                f"whose units hold both classes — pass null_permutation='within_units'."
             )
         out[i] = int(labels[0])
     return out
+
+
+def _permute_within_units(
+    y: np.ndarray, groups: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """Shuffle labels inside each unit, preserving every unit's class counts.
+
+    The restricted permutation for exchangeable blocks (Anderson & ter Braak 2003;
+    Winkler et al. 2015): under H0 the label is independent of the features *given the
+    unit*, so labels are exchangeable within a unit but not across units. Every draw
+    keeps each unit's class composition — hence the unit↔label association, the global
+    class balance, and (because ``StratifiedGroupKFold`` assigns units to folds from
+    their class counts) the grouped CV folds themselves — so only the labels move.
+    Assumes samples within a unit are exchangeable: not for a nested design (subjects
+    repeated within a batch), which needs a multi-level block permutation.
+    """
+    out = np.asarray(y, dtype=int).copy()
+    for u in np.unique(groups):
+        idx = np.flatnonzero(groups == u)
+        out[idx] = y[rng.permutation(idx)]
+    return out
+
+
+def _within_unit_arrangements(y: np.ndarray, groups: np.ndarray) -> int:
+    """Distinct label arrangements a within-unit permutation can reach.
+
+    ``prod_u C(n_u, k_u)`` over units (``k_u`` positives of ``n_u``), as an exact Python
+    ``int`` — never a numpy product, which overflows int64 silently on a few large
+    units. ``1`` means every unit carries one class: the permutation is the identity
+    and a null built on it would reproduce the observed AUC (p = 1) — the caller
+    refuses. Below ``n_permutations`` the draws must repeat and the empirical p resolves
+    only to about ``1 / arrangements`` — the caller warns.
+    """
+    total = 1
+    for u in np.unique(groups):
+        in_unit = groups == u
+        total *= math.comb(int(in_unit.sum()), int(y[in_unit].sum()))
+    return total
 
 
 def _null_distribution(
@@ -1041,7 +1112,13 @@ def _null_distribution(
     rng = np.random.default_rng(cfg.random_state)
     nulls = np.array(
         [
-            _fixed_cv_auc(x, _permute_labels(y, groups, rng), groups, best_c, cfg)
+            _fixed_cv_auc(
+                x,
+                _permute_labels(y, groups, rng, cfg.null_permutation),
+                groups,
+                best_c,
+                cfg,
+            )
             for _ in range(cfg.n_permutations)
         ],
         dtype=float,
@@ -1114,6 +1191,7 @@ class _Config:
     stability_repeats: int
     null_repeats: int
     n_permutations: int
+    null_permutation: NullPermutation
     tol: float
     max_iter: int
     n_jobs: int
@@ -1142,6 +1220,7 @@ def classify_svm(
     run_null: bool = False,
     n_permutations: int = 1000,
     null_repeats: int = 3,
+    null_permutation: NullPermutation = "units",
     tol: float = 1e-3,
     max_iter: int = -1,
     n_jobs: int = -1,
@@ -1167,10 +1246,10 @@ def classify_svm(
     groups:
         Metadata column naming the independent unit (subject/animal/batch). Used for
         group-aware CV **only if it has repeats**; all-singletons -> row-level CV.
-        The label-shuffle null permutes labels at the unit level, so with
-        ``run_null=True`` every unit must carry one class (a subject/animal); a
-        batch-grouped design, whose units hold both classes, is refused for the null
-        (run it with ``run_null=False`` and report the finding as exploratory).
+        With ``run_null=True`` the null permutes labels at the unit level by default
+        (every unit must then carry one class — a subject/animal); a batch-grouped
+        design, whose units hold both classes, runs its null with
+        ``null_permutation="within_units"``.
     generalization_target:
         The performance question — ``"samples"``, ``"individuals"``, or ``"batches"``.
         Recorded; report performance as "on unseen <target>". With no repeats, unseen
@@ -1212,6 +1291,19 @@ def classify_svm(
     n_permutations, null_repeats:
         Number of label permutations, and the (lighter) fixed-``C`` CV repeats per
         permutation.
+    null_permutation:
+        How the label-shuffle null permutes under grouped CV. ``"units"`` (default)
+        shuffles one label per unit — the null for a label that is a unit property
+        (``generalization_target="individuals"``; a unit holding both classes raises).
+        ``"within_units"`` shuffles labels inside each unit, preserving every unit's
+        class counts — the restricted permutation for a batch-grouped design
+        (``generalization_target="batches"``, batches holding both classes): it tests
+        whether the features predict the label *beyond batch*, keeps the grouped folds
+        identical to the observed run, and needs grouped CV with some mixed unit
+        (all-single-class units raise; fewer distinct arrangements than
+        ``n_permutations`` warn — :class:`NullPermutationWarning`). Under row-level
+        CV ``"units"`` is the plain row shuffle and ``"within_units"`` raises. The
+        scheme applied is recorded on the result and belongs in the cache fingerprint.
     tol, max_iter:
         libsvm stopping tolerance and iteration cap (``-1`` = no cap, the SVC default;
         with no cap there is no convergence warning to silence).
@@ -1242,6 +1334,12 @@ def classify_svm(
         raise ValueError(f"select must be 'best' or 'smoothed'; got {select!r}.")
     if max_iter != -1 and max_iter < 1:
         raise ValueError(f"max_iter must be -1 (no cap) or >= 1; got {max_iter}.")
+
+    if null_permutation not in ("units", "within_units"):
+        raise ValueError(
+            f"null_permutation must be 'units' or 'within_units'; "
+            f"got {null_permutation!r}."
+        )
 
     metadata = dataset.metadata
     abundances = np.asarray(dataset.abundances, dtype=float)
@@ -1296,9 +1394,37 @@ def classify_svm(
 
     groups_kept = _resolve_grouping(groups, metadata, keep)
     grouped = groups_kept is not None
-    if run_null and groups_kept is not None:
-        # Fail before the expensive CV: a group-level null needs one label per unit.
+    if run_null and null_permutation == "within_units":
+        # Fail before the expensive CV: a within-unit null needs grouped CV + freedom.
+        if groups_kept is None:
+            raise ValueError(
+                f"null_permutation='within_units' needs grouped CV, but this run is "
+                f"row-level (groups={groups!r}: not given, or no repeated units — see "
+                f"SingletonGroupsWarning). Use null_permutation='units' (the default)."
+            )
+        n_arrangements = _within_unit_arrangements(y, groups_kept)
+        if n_arrangements == 1:
+            raise ValueError(
+                "null_permutation='within_units' has no freedom: every groups unit "
+                "carries one class, so a within-unit shuffle is the identity and the "
+                "null would reproduce the observed AUC (p = 1). Use "
+                "null_permutation='units' — the label is a unit property here."
+            )
+        if n_arrangements < n_permutations:
+            warnings.warn(
+                f"Within-unit permutation can reach only {n_arrangements} distinct "
+                f"label arrangements, fewer than n_permutations={n_permutations}: "
+                f"draws will repeat and the empirical p resolves only to about "
+                f"1/{n_arrangements}. Larger or more mixed units give a finer null.",
+                NullPermutationWarning,
+                stacklevel=2,
+            )
+    elif run_null and groups_kept is not None:
+        # Fail before the expensive CV: a unit-level null needs one label per unit.
         _unit_labels(y, groups_kept, np.unique(groups_kept))
+    null_scheme: str | None = None
+    if run_null:
+        null_scheme = "samples" if groups_kept is None else null_permutation
 
     cfg = _Config(
         c_grid=c_grid_t,
@@ -1310,6 +1436,7 @@ def classify_svm(
         stability_repeats=stability_repeats,
         null_repeats=null_repeats,
         n_permutations=n_permutations,
+        null_permutation=null_permutation,
         tol=tol,
         max_iter=max_iter,
         n_jobs=n_jobs,
@@ -1369,6 +1496,7 @@ def classify_svm(
         n_features_matched=n_matched,
         plateau_start_c=fit.plateau_start_c,
         n_folds_sub_plateau=n_sub_plateau,
+        null_permutation=null_scheme,
         feature_names=kept_features,
     )
 

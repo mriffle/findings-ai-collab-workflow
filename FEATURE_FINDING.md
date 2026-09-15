@@ -116,7 +116,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
 | **XGBoost** (gradient-boosted-tree) **classification** | multivariate / classification | `te-phase2a-pelt/src/classification_xgboost.py` + `classification_xgboost_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification-xgboost` (`classify_xgboost`) + `lib/figures/classification_xgboost` |
-| **Linear SVM** (soft-margin `SVC(kernel="linear")`, `C` tuned; hard margin = the large-`C` limit) **classification** | multivariate / classification | — (fresh design; `lib/analysis/classification` is the shape oracle — no SVM in the source project) | ✅ **Shipped** (v0.1, 2026-09-14) | `lib/analysis/classification-svm` (`classify_svm`) + `lib/figures/classification_svm` |
+| **Linear SVM** (soft-margin `SVC(kernel="linear")`, `C` tuned; hard margin = the large-`C` limit) **classification** | multivariate / classification | — (fresh design; `lib/analysis/classification` is the shape oracle — no SVM in the source project) | ✅ **Shipped** (v0.1, 2026-09-14; **v0.3** — within-unit null) | `lib/analysis/classification-svm` (`classify_svm`) + `lib/figures/classification_svm` |
 | Elastic-net linear regression | multivariate | `te-phase2a-pelt/src/regression.py` + `regression_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/regression` (`regress`) + `lib/figures/regression` |
 | Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
@@ -436,6 +436,25 @@ caches reload with `None`. +2 tests. Also recorded for any finding on MagNet: th
 A four-seed sweep settles the seed question: nested AUC over seeds 1–4 averages **elastic net 0.933**
 (0.917–0.950) vs **SVM 0.967** (0.960–0.973) — seed 0's elastic-net 0.870 was an unlucky draw, the
 user's 0.92 sits at the multi-seed mean, and the paired SVM advantage holds at every seed.
+**Tie-break bake-off (2026-09-14) — the `tie_break` option is *not* added.** The open question from v0.2
+(smallest-`C` vs largest-`C` on a tied plateau) was measured **paired on the same inner searches**: per
+outer fold the inner grid search ran once, then both rules refit and scored the same held-out fold
+(default grid, 5×5 outer CV, `select` ∈ {best, smoothed}; MagNet-EV-ADD seeds 0–4, 5xFAD seeds 0–2 —
+`testdata/MagNet-EV-ADD/tiebreak_bakeoff.csv`, `testdata/5xFAD/_classification_svm_preview/tiebreak_bakeoff.{py,csv}`).
+Result: the held-out AUC is **identical in 90–99 % of folds** (MagNet, best: 111/125 ties, largest better
+8 / worse 6, Wilcoxon p = 0.74; smoothed: 119/125 ties, p = 0.78; 5xFAD, best: 71/75 ties, 1 / 3;
+smoothed: 74/75 ties), mean AUC differs by ≤ 0.003, and the per-seed swings (−0.013 … +0.020)
+reproduce the v0.2 anecdote — it was seed noise. Mechanism: the two rules pick a different `C` in most
+folds (92/125, 43/75) but on a plateau the solutions rank identically; where they differ the largest
+rule is the **grid top** in 85/92 and 43/43 folds, i.e. it is not a tie-break but "hard margin at
+whatever `C` the grid tops out at", which `c_grid=(1e6,)` already pins. Adding the option would also
+have broken two shipped pieces: `_warn_if_grid_edge`'s upper-edge message ("still rising") is false on
+every plateau (the all-data largest pick hits the top edge in 6 of 8 seeds), and `n_folds_sub_plateau`
+drops 34 → 12 (MagNet) without the tuning noise changing, miscalibrating the 25 % `TuningNoiseWarning`.
+**Decision (user, 2026-09-14): no `tie_break` option; `smallest` stands** (`conventions/statistics.md`
+records it in one sentence). What would reopen it: a paired multi-seed advantage consistent in sign
+across ≥ 2 datasets that exceeds seed noise (|Δ| > ~0.03, Wilcoxon p < 0.05 over ≥ 100 paired folds) —
+the bake-off script is that harness.
 **Independent review (Fable subagent, 2026-09-14) → all findings fixed before release:** (B1) the
 class-size guard was one fold too lenient — the inner CV runs on the outer *training* fold, so a
 minority class of 5–6 at `n_splits=5` passed the guard and crashed deep inside with an all-NaN
@@ -466,10 +485,41 @@ outer test fold now **raises** in all three classifier templates instead of yiel
 (`fold_predictions[].repeat`), not once per fold record; the nested class-size guard documents its
 leniency under grouping (still fail-loud); the cost figures use one convention (null ≈3.5× an
 elastic-net run, ≈9× an SVM run; the stability loop ≈1% / ≈3%); "skips tuning" corrected (the
-inner search still runs over a single-element grid). **User decision:** the group-level null's
-one-label-per-unit requirement is **documented as a limitation** — a batch-grouped design
-(`generalization_target="batches"`) has no label-shuffle null and stays `exploratory`; a within-unit
-permutation option is deferred. 46 tests in the SVM file.
+inner search still runs over a single-element grid). **User decision (at the time):** the group-level null's
+one-label-per-unit requirement was **documented as a limitation** — a batch-grouped design
+(`generalization_target="batches"`) had no label-shuffle null and stayed `exploratory`; a within-unit
+permutation option was deferred (46 tests in the SVM file) — and then built the same day, next.
+
+**Within-unit null — ✅ BUILT (v0.3 of all three classifier templates, 2026-09-14).** The deferred
+option above shipped as **`null_permutation: "units" | "within_units"`** on `classify` /
+`classify_xgboost` / `classify_svm`. `"units"` (default) is the prior behaviour — one label per unit, a
+mixed unit refused (the message now names the remedy). `"within_units"` shuffles labels **inside each
+unit, preserving every unit's class counts** — the restricted permutation for exchangeable blocks
+(Anderson & ter Braak 2003; Winkler et al. 2015), testing H0: label ⊥ proteome | batch, i.e. *does the
+proteome predict the label beyond batch* — the batch-held-out question. Two facts settled it: **(a)**
+`StratifiedGroupKFold` assigns units to folds from their class-count vectors, so under within-unit
+permutation the grouped folds are **byte-identical** to the observed run (verified 50/50; a unit-level
+permutation moves them 50/50) — every null draw is scored on the observed folds and only the labels
+move (pinned by `test_within_unit_permutation_keeps_grouped_folds_fixed`); **(b)** on real 5xFAD
+(`groups="Cohort"` — two cohorts, each holding both genotypes — cohort-held-out 2-fold, fixed
+`C = 1e-3`) the unit scheme refuses while the within-cohort null gives observed AUC **0.843** vs null
+**0.500 ± 0.098** (max 0.751), **p = 0.005** (200 permutations, 6 s; the slow smoke
+`test_smoke_5xfad_cohort_held_out_within_unit_null` pins it at 100). Guards, all up-front before the CV:
+`within_units` needs grouped CV (`groups=None` or the singleton fallback → raise, naming the column);
+every unit single-class → raise (the shuffle would be the identity and p = 1 silently); fewer distinct
+arrangements (`∏ C(n_u, k_u)`, an exact Python int — an int64 product overflows on six 20-sample
+batches) than `n_permutations` → `NullPermutationWarning` (p resolves only to ~1/count). The scheme
+actually applied is recorded on the result (`null_permutation`: `samples` / `units` / `within_units`;
+`None` when no null, and on a pre-0.3 cache via the loader's `ResultSchemaWarning`), named in
+`plot_null`'s title (figure modules bumped), and enters the cache fingerprint. The CV blocks are
+untouched (the identical-splits invariant holds); `test_classification_splits.py` now also pins the
+null helpers **byte-identical** across the three templates (`inspect.getsource`) and identical draws
+under both schemes. Assumption, documented in-code: samples within a unit are exchangeable — a nested
+subject-within-batch design needs a multi-level block permutation (not offered). +5 tests per template
+file (+1 mirrored mixed-unit refusal in the elastic-net and XGBoost files, which had none), +3 splits,
++1 result-io, +1 slow smoke. Wired into `conventions/{statistics,results-cache}.md`,
+`commands/stage4-explore.md` (the generalization-target answer now also fixes the scheme),
+`agents/{statistician,stats-reviewer}.md`, `skills/statistical-analysis/SKILL.md`, `lib/manifest.md`.
 
 **The reframing (the key decision, the user's call).** Elastic net tuned for prediction yields
 the **minimal-optimal** feature set — the smallest sufficient predictive basis — *not* the

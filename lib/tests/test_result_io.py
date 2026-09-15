@@ -563,3 +563,32 @@ def test_load_bad_format_version_raises(tmp_path: Path) -> None:
     manifest.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="format version"):
         rio.load_result(tmp_path / "outer", _Outer)
+
+
+def test_pre_0_3_cache_without_null_permutation_reloads(tmp_path: Path) -> None:
+    """A result cached before ``null_permutation`` existed reloads with ``None``."""
+    result = clf.classify(
+        _planted(),
+        "grp",
+        random_state=0,
+        c_grid=[1.0],
+        l1_ratios=[0.5],
+        n_repeats=1,
+        stability_repeats=1,
+        n_jobs=1,
+        max_iter=2000,
+        tol=1e-3,
+        run_null=True,
+        n_permutations=3,
+        null_repeats=1,
+    )
+    assert result.null_permutation == "samples"
+    rio.save_result(result, tmp_path / "old")
+    manifest_path = tmp_path / "old" / "_result.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["fields"]["null_permutation"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.warns(rio.ResultSchemaWarning, match="null_permutation"):
+        out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
+    assert out.null_permutation is None
+    assert out.null_p == result.null_p  # the null itself is intact

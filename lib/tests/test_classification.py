@@ -288,7 +288,8 @@ def test_non_log_scale_warns() -> None:
 # --------------------------------------------------------------------------- #
 def test_grouping_engaged_with_repeats() -> None:
     ds = _planted(n=60, p=40, n_signal=4, seed=0)
-    # subject pairs consecutive rows; each subject has one label (blocks share y)
+    # subject pairs consecutive rows; _planted alternates y, so each pair is a
+    # MIXED unit (the null is not run here — see the within-unit tests below)
     ds.metadata["subject"] = [f"s{i // 2}" for i in range(60)]
     res = cls.classify(
         ds,
@@ -461,3 +462,212 @@ def test_smoke_5xfad_genotype_recovers_ad_signal() -> None:
     # the APP transgene / canonical AD proteins dominate the top of the ranking
     top = " ".join(res.coefficients.head(15)["feature"].astype(str)).upper()
     assert ("5XFAD" in top) or ("APOE" in top) or ("A4_MOUSE" in top)
+
+
+# --------------------------------------------------------------------------- #
+# The null's permutation scheme: unit-level (default) vs within-unit (batches)
+# --------------------------------------------------------------------------- #
+# Cheapest valid nested run + a one-repeat null (the null is the expensive part).
+_NULL_FAST: dict[str, Any] = {
+    "c_grid": [1.0],
+    "l1_ratios": [0.5],
+    "max_iter": 2000,
+    "tol": 1e-3,
+    "n_splits": 3,
+    "n_repeats": 1,
+    "stability_repeats": 1,
+    "null_repeats": 1,
+    "n_jobs": 1,
+    "random_state": 0,
+}
+
+
+def _pure_units(ds: dl.Dataset) -> dl.Dataset:
+    """Add an ``animal`` column: repeated units that each carry ONE class."""
+    y = (ds.metadata["grp"].to_numpy() == "B").astype(int)
+    ds.metadata["animal"] = [f"a{y[i]}_{i // 4}" for i in range(len(y))]
+    return ds
+
+
+def test_within_unit_null_planted_signal_and_noise() -> None:
+    # _planted alternates labels within each consecutive pair, so its ``subject`` pairs
+    # are mixed-label units — exactly a batch-grouped design (each batch holds both
+    # classes), the case the within-unit scheme exists for.
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    res = cls.classify(
+        ds,
+        "grp",
+        groups="subject",
+        generalization_target="batches",
+        run_null=True,
+        null_permutation="within_units",
+        n_permutations=19,
+        **_NULL_FAST,
+    )
+    assert res.grouped is True
+    assert res.null_permutation == "within_units"
+    assert res.null_aucs is not None and res.observed_auc is not None
+    assert res.null_p == pytest.approx(1 / 20)  # observed beats all 19 permutations
+    assert res.observed_auc > float(np.max(res.null_aucs))
+    assert res.validated_eligible
+    # pure noise on the same design does not beat its within-unit null
+    noise = cls.classify(
+        _planted(n=40, p=20, n_signal=0, seed=1),
+        "grp",
+        groups="subject",
+        generalization_target="batches",
+        run_null=True,
+        null_permutation="within_units",
+        n_permutations=19,
+        **_NULL_FAST,
+    )
+    assert noise.null_p is not None and noise.null_p > 0.2
+
+
+def test_within_unit_permutation_preserves_unit_counts() -> None:
+    y = np.array([0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0])
+    g = np.array(["a"] * 7 + ["b"] * 3 + ["c"] * 4)  # c is a pure unit
+    rng = np.random.default_rng(0)
+    changed = False
+    for _ in range(50):
+        perm = cls._permute_labels(y, g, rng, "within_units")
+        for u in ("a", "b", "c"):
+            assert perm[g == u].sum() == y[g == u].sum()
+        np.testing.assert_array_equal(perm[g == "c"], y[g == "c"])  # untouched
+        changed |= not np.array_equal(perm, y)
+    assert changed
+    # the default (unit-level) scheme refuses the mixed units and names the remedy
+    with pytest.raises(ValueError, match="within_units"):
+        cls._permute_labels(y, g, rng, "units")
+    # ungrouped: a plain row shuffle whatever the scheme
+    plain = cls._permute_labels(y, None, np.random.default_rng(0), "within_units")
+    assert plain.sum() == y.sum() and plain.shape == y.shape
+
+
+def test_within_unit_arrangements_hand_computed() -> None:
+    # two 3/3 batches -> C(6,3)^2 = 400
+    y = np.array([0, 0, 0, 1, 1, 1] * 2)
+    g = np.array(["a"] * 6 + ["b"] * 6)
+    assert cls._within_unit_arrangements(y, g) == 400
+    # every unit pure -> exactly one arrangement (the identity)
+    assert (
+        cls._within_unit_arrangements(np.array([0, 0, 1, 1]), np.array(list("aabb")))
+        == 1
+    )
+    # six batches of 20 with 10 positives each: 184756**6 ~ 4e31 > 2**63 — the count is
+    # an exact Python int; an int64 product would overflow silently
+    y6 = np.tile(np.array([0] * 10 + [1] * 10), 6)
+    g6 = np.repeat([f"b{i}" for i in range(6)], 20)
+    assert cls._within_unit_arrangements(y6, g6) == 184756**6
+
+
+def test_within_unit_null_guards() -> None:
+    kw: dict[str, Any] = {
+        "run_null": True,
+        "null_permutation": "within_units",
+        "n_permutations": 5,
+        **_NULL_FAST,
+    }
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    # needs grouped CV: no groups column at all
+    with pytest.raises(ValueError, match="needs grouped CV"):
+        cls.classify(ds, "grp", **kw)
+    # singleton groups fall back to row-level (warns) -> still refused, naming the col
+    single = _planted(n=40, p=20, n_signal=4, seed=0)
+    single.metadata["unit"] = [f"u{i}" for i in range(40)]
+    with (
+        pytest.warns(cls.SingletonGroupsWarning),
+        pytest.raises(ValueError, match="'unit'"),
+    ):
+        cls.classify(single, "grp", groups="unit", **kw)
+    # every unit single-class: the within-unit shuffle is the identity -> refused
+    with pytest.raises(ValueError, match="no freedom"):
+        cls.classify(
+            _pure_units(_planted(n=40, p=20, n_signal=4, seed=0)),
+            "grp",
+            groups="animal",
+            **kw,
+        )
+    # a bad scheme name
+    with pytest.raises(ValueError, match="null_permutation must be"):
+        cls.classify(ds, "grp", null_permutation="rows", **_NULL_FAST)  # type: ignore[arg-type]
+    # too few distinct arrangements for n_permutations: warns, still runs. Two batches
+    # of 2/2 -> C(4,2)^2 = 36 arrangements < 37 requested.
+    small = _planted(n=8, p=10, n_signal=3, seed=0)
+    small.metadata["batch"] = ["a"] * 4 + ["b"] * 4
+    with pytest.warns(cls.NullPermutationWarning, match="36 distinct"):
+        res = cls.classify(
+            small,
+            "grp",
+            groups="batch",
+            run_null=True,
+            null_permutation="within_units",
+            n_permutations=37,
+            **{**_NULL_FAST, "n_splits": 2},
+        )
+    assert res.null_permutation == "within_units"
+    assert res.null_p is not None
+
+
+def test_null_permutation_recorded_and_titled() -> None:
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    assert (
+        cls.classify(ds, "grp", **_NULL_FAST).null_permutation is None
+    )  # null not run
+    rows = cls.classify(ds, "grp", run_null=True, n_permutations=3, **_NULL_FAST)
+    assert rows.null_permutation == "samples"  # row-level CV: a plain shuffle
+    units = cls.classify(
+        _pure_units(_planted(n=40, p=20, n_signal=4, seed=0)),
+        "grp",
+        groups="animal",
+        run_null=True,
+        n_permutations=3,
+        **_NULL_FAST,
+    )
+    assert units.null_permutation == "units"
+    within = cls.classify(
+        ds,
+        "grp",
+        groups="subject",
+        run_null=True,
+        null_permutation="within_units",
+        n_permutations=3,
+        **_NULL_FAST,
+    )
+    assert within.null_permutation == "within_units"
+    # the null figure names the scheme so a reviewer sees which null was run
+    for res, needle in (
+        (rows, "permutations, fixed"),
+        (units, "unit-level"),
+        (within, "within-unit"),
+    ):
+        fig = clsfig.plot_null(res)
+        assert needle in fig.get_suptitle()
+        plt.close(fig)
+    assert "unit-level" not in clsfig.plot_null(rows).get_suptitle()
+    plt.close("all")
+
+
+def test_grouped_null_rejects_mixed_label_unit() -> None:
+    ds = _planted(n=60, p=40, n_signal=4, seed=0)
+    # _planted alternates labels within each consecutive pair -> every unit is mixed
+    ds.metadata["subject"] = [f"s{i // 2}" for i in range(60)]
+    with pytest.raises(ValueError, match=r"both classes.*within_units"):
+        cls.classify(
+            ds,
+            "grp",
+            groups="subject",
+            run_null=True,
+            n_permutations=2,
+            **_NULL_FAST,
+        )
+    # the permutation helper itself refuses too
+    y = np.array([0, 1, 1, 1])
+    g = np.array(["a", "a", "b", "b"])
+    with pytest.raises(ValueError, match="both classes"):
+        cls._permute_labels(y, g, np.random.default_rng(0))
+    # and preserves class counts on clean units
+    y2 = np.array([0, 0, 1, 1, 1, 1])
+    g2 = np.array(["a", "a", "b", "b", "c", "c"])
+    perm = cls._permute_labels(y2, g2, np.random.default_rng(0))
+    assert perm.sum() == 4
