@@ -44,9 +44,13 @@ A data-loading error is silent and common-mode. A broken loader does not crash; 
 
 **A. Test the loader.** Unit tests with hand-verified fixtures; property/invariant tests (loading preserves source counts; no value appears that wasn't in the source); a **planted-truth fixture** (synthetic data with a known effect the pipeline must recover); edge cases (empty, all-missing, single sample, duplicate IDs, ties).
 
-**B. Verify the loaded data on the real file.** Counts reconcile (rows/cols vs source); random-cell spot reconciliation against the raw source; orientation confirmed not assumed; dtypes explicit and correct (no silent string↔numeric coercion); value ranges plausible; identifier integrity (no truncation/reformatting); missing-value encoding made explicit; transformation/normalization state confirmed; **sample↔metadata pairing complete and exact** (every sample matched once, no orphans/duplicates, counts reconcile both sides).
+**B. Verify the loaded data on the real file.** Counts reconcile (rows/cols vs source); random-cell spot reconciliation against the raw source; orientation confirmed not assumed; dtypes explicit and correct (no silent string↔numeric coercion); value ranges plausible; identifier integrity (no truncation/reformatting); missing-value encoding made explicit; transformation/normalization state confirmed; **sample↔metadata pairing complete and exact** (every sample matched once, no orphans/duplicates, counts reconcile both sides); **annotations concordant with the data where the data can speak** (below).
 
 Loading is not "done" until both pass and the scientist signs off (the integrity gate, doc 02.3).
+
+### Pairing exact by key is not pairing correct *(added after implementation, by user decision)*
+
+A label swap upstream of the files — a swapped tube, a mis-genotyped animal, a transposed sample-sheet row — passes every pairing check: the join is exact and the annotation is still wrong, silently and common-mode (the verifier reads the same metadata). So where an annotation has a **near-binary marker** in the data (Y-linked proteins vs sex; a transgene or knockout product vs genotype; a protein drug vs treatment arm; a strain/tissue marker) it is checked at the integrity gate. The check is **deliberately conservative — it must never tell a scientist their metadata is wrong when it isn't**: the data must first prove the marker (bimodal, clear gap, the large majority of samples on their expected side — else the *marker* failed and the outcome is inconclusive, nothing flagged); only a sample squarely in the other group's range, past the gap and consistent across technical replicates, is flagged; more than a small flagged fraction means the marker is unreliable, not the metadata. A flag is a question to the scientist, the default is no change, and any correction is a documented loader override or exclusion — never an edit to the read-only metadata file. Every outcome (concordant / inconclusive / flagged / not checkable) is stated in the QC report. Graded markers are out of scope. *(Implementation: `commands/stage3-loaders.md`, *Annotation concordance*; candidates noted in Stage 1, marker presence confirmed in Stage 2.)*
 
 ### Domain-specific fidelity traps (proteomics)
 
@@ -83,6 +87,7 @@ Where feasible, derive key numbers two independent ways and reconcile. Because l
 | No leakage; CV matched to target; shuffle null run **or** proposed as the outstanding follow-up (finding capped `exploratory`) | Stats reviewer |
 | Canonical tests; moderated models for DE | Stats reviewer |
 | Loader test + load verification complete | Code reviewer + hook on gate |
+| Annotations checked against the data where a near-binary marker exists; flagged only on unambiguous discordance; every outcome stated | Human checkpoint (Stage 3) + code/figure reviewers; no hook |
 | Every reference exists and supports its claim | Research reviewer |
 | Figure rendered, reviewed, dual-exported (doc 06) | Figure reviewer + hook |
 

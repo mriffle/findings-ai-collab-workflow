@@ -44,6 +44,7 @@ These are not optional — they are what makes a template a sound seed (`lib/AUT
 | Identification depth (IDs per run) | 1 | **Shipped** (2026-06-29) | `lib/figures/id-depth` |
 | Data completeness / missingness | 1 | **Shipped** (2026-06-29) | `lib/figures/missingness` |
 | RLE — relative log expression | 1 | Not started | — |
+| Annotation concordance (metadata vs marker) | 1 | Not started — **prose rule shipped** (2026-09-17); template candidate | — (write-from-scratch in Stage 3) |
 | p-value histogram | 1 | **Shipped** (2026-06-29) | `lib/figures/pvalue-hist` (with the DE template) |
 | MA plot (Bland–Altman) | 2 | Not started | — |
 | Dynamic range / rank-abundance | 2 | **Shipped** (2026-06-29) | `lib/figures/dynamic-range` |
@@ -61,6 +62,33 @@ template), then Tier 2 as the analysis templates land.
 Detected features (finite & `> min_intensity`) per run, one stacked panel per feature
 level (protein over precursor), bars in acquisition order; the first-look QC. Kept here
 for completeness — see the manifest and `commands/stage3-loaders.md`.
+
+### Annotation concordance — metadata checked against a near-binary marker
+- **What.** The template behind the Stage-3 *annotation concordance* rule (`commands/stage3-loaders.md`;
+  `conventions/correctness.md`), which currently ships as **prose only** (a from-scratch script +
+  strip plot per project). Input: a `Dataset` + a marker spec
+  `{annotation_column: [(feature_id, expected_high_level), …]}` (sex → Y-linked proteins with
+  `expected_high = "M"`; genotype → the transgene with `expected_high = "5xFAD"`). Output: a
+  per-sample marker signal (log2 of the raw matrix), a **marker-validation verdict** (bimodal with a
+  clear gap? large majority on the expected side?), and — *only if validated* — the flagged samples
+  (squarely in the other mode, past the gap, replicate-consistent, below a small flagged fraction),
+  plus the strip plot (`figures/qc/annotation-concordance/`).
+- **The bar is the product.** The user's constraint is that this must never tell a scientist their
+  metadata is wrong when it isn't: a template earns its place by encoding the two-step rule so the
+  conservatism is mechanical — *inconclusive* is a first-class outcome, the marker fails before the
+  labels do, and the fraction cap reverts the check rather than flagging a cohort. Gap detection
+  needs a real design pass (a 1-D two-cluster split with a required empty margin, not a mixture
+  fit that will always find two modes).
+- **Oracle.** `testdata/5xFAD/`: the human APP transgene `sp|P05067|5xFADA4_HUMAN` vs `Genotype` is
+  bimodal across the 74 experimental runs with an **empty log2 bin** (25–26) between modes; 68/74
+  runs on their annotated side; **8 discordant runs = 5 animals** — 81, 64, 70 annotated 5xFAD but
+  transgene-low in *both* technical replicates; 105 and 59 annotated WT/C57BL/6j but transgene-high.
+  **Counter-example (must come back inconclusive):** DDX3Y/KDM5D vs `Gender` — present in females
+  at male levels at the protein-group level (peptides shared with X-linked DDX3X/KDM5C), so the bulk
+  does not separate and nothing may be flagged. Precursor-level unique peptides would be the fix.
+- **Not in scope of the template (deliberately):** structural swap detectors (technical-replicate
+  nearest-neighbour, cluster membership) — plausible later extensions, but they lack the
+  near-binary clarity the rule requires and would over-flag under batch structure.
 
 ### RLE — Relative Log Expression
 - **What.** Per-sample box plots of each feature's deviation from its **across-sample

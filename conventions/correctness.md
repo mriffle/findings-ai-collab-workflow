@@ -28,8 +28,20 @@ A data-loading error is **silent and common-mode**. A broken loader does not cra
 - Missing-value encoding made explicit.
 - Transformation/normalization state confirmed.
 - **Sample↔metadata pairing complete and exact** — every sample matched once, no orphans/duplicates, counts reconcile on both sides (fuzzy matches are a human checkpoint).
+- **Annotations concordant with the data where the data can speak** — checked conservatively; every outcome stated (below).
 
 Loading is not "done" until both pass and the scientist signs off.
+
+## Pairing exact by key is not pairing correct — annotation concordance
+
+A label swap upstream of the files (a swapped tube, a mis-genotyped animal, a transposed sample-sheet row) passes every check above: the join is exact, the counts reconcile, and the annotation is still wrong. It is silent and **common-mode** in exactly the loader-bug sense — the verifier reads the same metadata. So where the data itself can speak to an annotation, it is asked, at the integrity gate.
+
+**It is asked carefully.** The check must never tell a scientist their metadata is wrong when it isn't, so its conservatism is part of the rule, not a matter of judgment (`commands/stage3-loaders.md`, *Annotation concordance*):
+
+- **Only near-binary markers qualify** — an annotation that dictates a present-vs-absent or orders-of-magnitude pattern (Y-linked proteins vs sex; a transgene or knockout product vs genotype; a protein drug vs treatment arm; a strain/tissue marker). Graded markers never can show a *clear* error and are out of scope.
+- **The data must prove the marker before the marker may question a label.** The marker validates only if it is bimodal with a clear gap *and* the large majority of annotated samples fall on their expected side; otherwise the marker failed, not the metadata — *inconclusive*, nothing flagged (a protein-group quantity carried by paralog-shared peptides is the usual reason; use unique peptides).
+- **Only an unambiguous sample is flagged** — squarely inside the other group's range, well past the gap, agreeing across technical replicates where they exist; borderline is inconclusive, and a flagged fraction beyond a small share of the cohort means the marker is unreliable and the check reverts to inconclusive.
+- **A flag is a question, and the default is no change.** The annotation stands unless the scientist decides otherwise (keep / exclude / a documented loader override — never an edit to the read-only metadata file). Every outcome — concordant, inconclusive, flagged, not checkable — is stated in the QC report, so silence never reads as concordance.
 
 ## Domain-specific fidelity traps (proteomics)
 
@@ -60,4 +72,5 @@ Where feasible, **derive key numbers two independent ways and reconcile.** Becau
 | No finding claims `integrity_signoff: true` / `validated` before the gate | **Hook** (`guard_findings.py` reads `state/workflow.json .integrity_gate.passed`) + findings-manager + human sign-off |
 | Raw data read-only | **Hook** (`guard_readonly_data.py`) |
 | Loader tested + load verified + pairing exact | **Code-reviewer** + the Stage 3 integrity-gate checklist + human sign-off |
+| Annotations checked against the data where a near-binary marker exists; a flag only on unambiguous discordance; every outcome stated; the annotation stands unless the scientist decides | **Human checkpoint** (Stage 3 sign-off) + **Code-reviewer** (the concordance script) + **Figure-reviewer** (the concordance figure) + orchestrator behavior — no hook ("is this a clear error?" is judgment) |
 | Assumptions tested in code, results recorded | Orchestrator behavior (Stages 1–2) + code/stats reviewers |

@@ -32,6 +32,7 @@ The agent locates the metadata file (asking the scientist where it is), then:
 - opens an interaction to validate that understanding with the scientist — **including the experimental/control split and the rule deriving it**;
 - checks value validity (types, ranges, allowed sets, uniqueness where expected);
 - infers relationships that *should* hold if its understanding is correct, and **tests them as hypotheses** (principle from doc 05) — including confound detection: is the variable of interest aliased with batch, run order, or another factor?
+- **notes which annotations the data itself could check** *(added after implementation, by user decision)* — those with a **near-binary marker** (sex ↔ Y-linked proteins; genotype ↔ a transgene or knockout product; a protein drug; a strain/tissue marker), asking the scientist for the marker rather than guessing, and records them (or *none*) in `METADATA.md` for the conservative annotation-concordance check at the Stage 3 gate (doc 05.4); no data is touched here;
 - generates thorough descriptive plots and tables of the metadata — the distribution of every variable, pairwise cross-tabulations (variable of interest against covariates and batch), and a cohort summary table — to characterize the cohort and **expose class imbalance, covariate skew, and confounding** (per doc 06; metrics in doc 05.3);
 - records each **material imbalance, skew, or confound as a caveat finding** (`kind: caveat`, doc 03.1) — the durable memory of the gotchas that constrain downstream claims, consulted in Stage 4 and carried into the report.
 
@@ -61,6 +62,7 @@ This stage ends at the **integrity gate**, the workflow's hardest precondition (
 - the loaded data is verified against the source (counts reconcile, spot reconciliation, dtypes, ranges, identifier integrity, missing-value semantics, orientation);
 - sample↔metadata pairing is complete and exact (every sample matched once, no orphans/duplicates, counts reconcile on both sides);
 - the experimental/control classification (Stage 1) is carried onto the loaded samples and certified, so the experimental subset analysis runs on is well-defined (doc 05.3);
+- the annotations are checked against the data where a near-binary marker exists, **conservatively** — the marker must prove itself before it may question a label, only an unambiguous discordance is flagged, a flag is a question with *keep as annotated* as the default, and every outcome (concordant / inconclusive / flagged / not checkable) is stated in the QC report (doc 05.4) *(added after implementation, by user decision)*;
 - the scientist signs off.
 
 Metadata **caveat findings** recorded in Stage 1 (doc 03.1) have their `integrity_signoff` set at this gate, which certifies the sample↔metadata pairing they rest on.
@@ -99,6 +101,7 @@ All state files are canonical references that any fresh agent reads to rehydrate
 | End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding (incl. surfaced imbalances/confounds) |
 | End of Stage 1 | Human checkpoint | Scientist confirms the experimental/control sample split + the rule deriving it |
 | Sample↔metadata pairing | Human checkpoint | Scientist confirms join resolution (esp. fuzzy matches) |
+| Flagged annotation (Stage 3) | Human checkpoint | Scientist resolves a data-discordant annotation: keep as annotated (default) / exclude / documented loader override |
 | Integrity gate (end Stage 3) | Command precondition + hook (finding writes) + human sign-off | Loaders verified; no analysis before pass |
 | Finding promotion | Gate (validation) + human | Independent validation cleared; scientist accepts |
 | Report finding-selection | Human checkpoint | Which findings the report is about (doc 07) |
