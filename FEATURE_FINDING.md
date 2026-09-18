@@ -117,6 +117,7 @@ active enforcer (none of this is cleanly hook-checkable):
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
 | **XGBoost** (gradient-boosted-tree) **classification** | multivariate / classification | `te-phase2a-pelt/src/classification_xgboost.py` + `classification_xgboost_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification-xgboost` (`classify_xgboost`) + `lib/figures/classification_xgboost` |
 | **Linear SVM** (soft-margin `SVC(kernel="linear")`, `C` tuned; hard margin = the large-`C` limit) **classification** | multivariate / classification | — (fresh design; `lib/analysis/classification` is the shape oracle — no SVM in the source project) | ✅ **Shipped** (v0.1, 2026-09-14; **v0.3** — within-unit null) | `lib/analysis/classification-svm` (`classify_svm`) + `lib/figures/classification_svm` |
+| **Shrinkage LDA** (Ledoit-Wolf shrinkage linear discriminant, dual/Woodbury form; tuning-free) **classification** | multivariate / classification | — (fresh design; the sklearn `LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto")` recipe is the numerics oracle, pinned at machine precision; `classification-svm` is the shape oracle) | ✅ **Shipped** (v0.1, 2026-09-17) | `lib/analysis/classification-lda` (`classify_lda`) + `lib/figures/classification_lda` (three figures) |
 | Elastic-net linear regression | multivariate | `te-phase2a-pelt/src/regression.py` + `regression_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/regression` (`regress`) + `lib/figures/regression` |
 | Boruta | multivariate / selection | `te-phase2a-pelt/src/feature_finding_boruta.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/boruta` (`boruta_select`) |
 | Boruta importance box-plot | output viz | `te-phase2a-pelt/src/boruta_plotting.py` | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/figures/boruta-importance` |
@@ -591,6 +592,56 @@ a selection harness** (it never extracts coefficients), and as scanned it:
 elastic-net classification of a real contrast, showing the ROC-vs-null curve and the
 coefficient / selection-frequency readout — for the user to eyeball before it's built to the
 `lib/` bar.
+
+**➕ Third linear sibling — shrinkage-LDA classification — ✅ SHIPPED (v0.1, 2026-09-17).** A
+**parallel template** `lib/analysis/classification-lda` (`classify_lda`) +
+`lib/figures/classification_lda`, built as a **self-contained sibling** of the elastic-net and SVM
+classifiers (own `LDAClassificationResult`, own figure module, the label/CV/null/stability
+scaffolding copied byte-identically so the seed stands alone and `test_classification_splits.py` now
+pins **four** templates to identical outer splits + byte-identical null helpers). **Why:** a
+*tuning-free* dense linear model (Ledoit-Wolf sets the shrinkage analytically — no grid, so none of
+the SVM's grid-bracketing / tuning-noise failure modes), **calibrated log-odds** scores, a
+**covariance-adjusted** reading (the direction is `S⁻¹Δμ` — which proteins separate the classes
+after accounting for co-variation), and a null cheap enough to run in the same sitting. **The build
+was gated on scale:** scikit-learn's own solver forms the p×p shrunk covariance (26 s per fit at p =
+2,000; unfinished after 10 min at p = 6,186; 3.2 GB per fit at the user's routine 20,000) — the
+template solves it in the **dual (Woodbury) form** (`diag(a) + UᵀU`, an n×n solve; the Ledoit-Wolf
+intensity from the Gram matrix), the one place the engine ships **in-module numerics** rather than a
+wrapper, justified by an identity the test suite pins to sklearn at ~1e-10 (shrinkage intensity,
+coefficients, intercepts, scores, probabilities; binary + the k-class math kept for v0.2). Two
+sklearn subtleties reproduced exactly: the per-class target is `μ·diag(scale²)` with μ the mean
+*standardized* variance (exactly 1 unless a feature is constant within the class), and **two rows
+per class give β ≡ 0** (the centered block is ±v), so λ = 0 and the pooled covariance is singular —
+the class-size guard therefore requires ≥ 3 rows per class inside every training fold (the SVM's
+nested guard is replaced, not copied). **Four user decisions (2026-09-17):** binary-only v0.1
+(multiclass is a v0.2 extension; the design's four-class MagNet run reached macro OvR AUC 0.957);
+`run_null=False` stays the default for API symmetry, with Stage 4 running the cheap null immediately
+after the first pass; the LDA is a **third sibling on its own triggers** (SVM tuning noise
+unresolvable at small *n*; a covariance-adjusted reading; the null needed now), each alternative
+compared **paired against the elastic net, never all-pairs** — the *Choosing between the two linear
+classifiers* rule was generalized to *Choosing among the linear classifiers* (reference = elastic
+net; reading pre-stated among three; alternative cleanly fitted — SVM tuning warnings resolved / LDA
+`ShrinkageSaturationWarning` acknowledged; every AUC reported); and **three figures**, not four (the
+first template with no hyperparameter figure; the shrinkage λ pair is annotated on the ROC instead).
+**Six documented divergences** in-code: nothing to tune; dense weights → top-k membership (the SVM
+convention); calibrated log-odds (class-frequency priors, no `class_weight`); the per-fold +
+all-data shrinkage diagnostic with `ShrinkageSaturationWarning` at λ ≥ 0.95 (the weights are then ≈
+a standardized mean difference); fold identity + per-repeat AUCs; no `n_jobs`. **Preview evidence
+(same folds as the shipped templates, seed 0; `testdata/*/_classification_lda_preview/`):** 5xFAD
+genotype LDA **0.848 ± 0.140** (EN 0.905, SVM 0.796 — LDA > SVM at all three seeds; vs EN 5/13/7), λ
+= 0.47 / 0.24, null p = 0.001 in 139 s incl. 1,000 permutations, top-20 = APP + the human transgene,
+midkine, APOE, TICN1/2, clusterin, GPC1, the C1q trio, SPON1 with 0.83 mean fold-membership and
+17/20 overlap with the elastic net; MagNet-EV-ADD LDA **0.950 ± 0.108** (SVM 0.963 — a tie across
+seeds; vs EN 0.870: 10/0/15, corrected-t p 0.34 — the correction is conservative at J = 25, which is
+why sign-across-seeds is the rule), λ = 0.25 / 0.50, null p = 0.001 in 41 s, but weights unstable
+(0.45 membership) — the membership read is what stops a dense list being mistaken for a stable
+feature set. A synthetic 100 × 20,000 fit: 40 ms. **52 tests + 1 splits extension + 1 result-io
+round trip**; CI now type-checks `lib/analysis` too (a pre-existing gap). Wired into
+`lib/manifest.md`,
+`conventions/{statistics,visualization,findings,results-cache,enforcement-map}.md`,
+`commands/stage4-explore.md` (offered on its triggers; compared paired against the elastic net),
+`agents/{statistician,stats-reviewer,figure-generator}.md`, `skills/statistical-analysis/SKILL.md`,
+`templates/{project-CLAUDE,finding}.md`, `spec/05`, `lib/README.md`.
 
 ### B.2 Elastic-net linear regression (continuous outcome) — ✅ SHIPPED (v0.1, 2026-07-06) — *source oracle* (`te-phase2a-pelt/src/regression.py` + `regression_plotting.py`)
 

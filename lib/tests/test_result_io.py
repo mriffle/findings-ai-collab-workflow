@@ -4,9 +4,9 @@
   numeric + object ndarray, nested dataclass, list of dataclasses, dict, tuple,
   optional-set + optional-None, scalars) must reload identically;
 * edge-case arrays — NaN/inf, an empty object array, a 2-D object array round-trip;
-* real end-to-end — each of the five CPU-heavy results (classification, regression,
-  xgboost, svm, boruta) is run on tiny data, round-tripped, and its **figures render
-  from the reloaded result** (the reason the cache exists);
+* real end-to-end — each of the six CPU-heavy results (classification, regression,
+  xgboost, svm, lda, boruta) is run on tiny data, round-tripped, and its **figures
+  render from the reloaded result** (the reason the cache exists);
 * forward-compatible reload — a cached result that predates a defaulted field (the
   v0.2 fold identity on ``FoldPrediction``) still loads with the dataclass default; a
   missing *required* field still raises;
@@ -33,6 +33,7 @@ import pandas as pd
 import pytest
 from analysis import boruta as bor
 from analysis import classification as clf
+from analysis import classification_lda as lda
 from analysis import classification_svm as svm
 from analysis import classification_xgboost as xgb
 from analysis import regression as reg
@@ -40,6 +41,7 @@ from analysis import result_io as rio
 from common import data_loading as dl
 from figures import boruta_importance as borfig
 from figures import classification as clffig
+from figures import classification_lda as ldafig
 from figures import classification_svm as svmfig
 from figures import classification_xgboost as xgbfig
 from figures import regression as regfig
@@ -320,6 +322,40 @@ def test_svm_result_cache_then_figures(tmp_path: Path) -> None:
         svmfig.plot_null(out),
         svmfig.plot_coefficients(out),
         svmfig.plot_hyperparameter_curve(out),
+    )
+
+
+def test_lda_result_cache_then_figures(tmp_path: Path) -> None:
+    result = lda.classify_lda(
+        _planted(),
+        "grp",
+        run_null=True,
+        n_permutations=8,
+        null_repeats=1,
+        random_state=0,
+        top_k=5,
+        n_repeats=2,
+        stability_repeats=3,
+    )
+    rio.save_result(result, tmp_path / "lda")
+    out = rio.load_result(tmp_path / "lda", lda.LDAClassificationResult)
+    assert out.cv_auc == result.cv_auc
+    assert out.null_p == result.null_p
+    assert out.shrinkage_negative == result.shrinkage_negative  # float round-trip
+    assert out.shrinkage_positive == result.shrinkage_positive
+    assert out.repeat_aucs == result.repeat_aucs  # tuple[float, ...] round-trip
+    assert out.repeat_pooled_aucs == result.repeat_pooled_aucs
+    assert out.null_permutation == result.null_permutation
+    pd.testing.assert_frame_equal(out.coefficients, result.coefficients)
+    assert len(out.fold_predictions) == len(result.fold_predictions)
+    first_in, first_out = result.fold_predictions[0], out.fold_predictions[0]
+    assert (first_out.repeat, first_out.fold) == (first_in.repeat, first_in.fold)
+    assert first_out.shrinkage_positive == first_in.shrinkage_positive
+    np.testing.assert_array_equal(first_out.test_indices, first_in.test_indices)
+    _assert_renders(
+        ldafig.plot_roc(out),
+        ldafig.plot_null(out),
+        ldafig.plot_coefficients(out),
     )
 
 

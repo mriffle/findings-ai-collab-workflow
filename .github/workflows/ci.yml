@@ -63,7 +63,7 @@ jobs:
       - name: Lint (ruff, strict rule set)
         run: ruff check lib/
       - name: Type-check templates (mypy --strict)
-        run: mypy lib/common lib/figures
+        run: mypy lib/common lib/figures lib/analysis
       - name: Tests (pytest, excl. slow smoke)
         run: pytest -m "not slow"
 

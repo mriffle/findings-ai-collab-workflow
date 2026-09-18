@@ -1,15 +1,16 @@
 """The identical-outer-splits guarantee across the classifier templates.
 
 A comparison between two classifier types is **paired** (per outer fold) only if both
-were evaluated on the same outer train/test partitions. The three classifier templates
-(`classification`, `classification-xgboost`, `classification-svm`) each carry a
+were evaluated on the same outer train/test partitions. The four classifier templates
+(`classification`, `classification-xgboost`, `classification-svm`,
+`classification-lda`) each carry a
 byte-identical copy of the CV construction (`_make_cv` / `_split`), so the same
 ``(n_splits, n_repeats, random_state)`` on the same analyzed samples yields the same
 splits — this file turns that implicit "same seed" into a checked invariant:
 
   * unit — each module's ``_make_cv`` + ``_split`` produce identical index sequences
     on one synthetic ``y`` (ungrouped and grouped), guarding the copies against drift;
-  * end-to-end — the three public entry points on one tiny dataset + seed record the
+  * end-to-end — the four public entry points on one tiny dataset + seed record the
     same ``(repeat, fold, test_indices)`` sequence in their ``fold_predictions``.
 """
 
@@ -22,12 +23,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from analysis import classification as clf
+from analysis import classification_lda as lda
 from analysis import classification_svm as svm
 from analysis import classification_xgboost as xgb
 from common import data_loading as dl
 from sklearn.exceptions import ConvergenceWarning
 
-_MODULES: dict[str, Any] = {"elastic-net": clf, "xgboost": xgb, "svm": svm}
+_MODULES: dict[str, Any] = {"elastic-net": clf, "xgboost": xgb, "svm": svm, "lda": lda}
 
 
 def _splits(module: Any, grouped: bool) -> list[tuple[list[int], list[int]]]:
@@ -96,15 +98,24 @@ def test_outer_splits_identical_across_classifiers() -> None:
         **common,
     )
     c = svm.classify_svm(ds, "grp", c_grid=[1.0], top_k=5, **common)
+    lda_common = {
+        k: v for k, v in common.items() if k != "n_jobs"
+    }  # nothing to parallelize
+    d = lda.classify_lda(ds, "grp", top_k=5, **lda_common)
     ident = _fold_identity(a)
     assert len(ident) == 6
-    assert ident == _fold_identity(b) == _fold_identity(c)
+    assert ident == _fold_identity(b) == _fold_identity(c) == _fold_identity(d)
     # the same held-out labels, fold for fold -> a paired per-fold comparison is valid
-    for fa, fb, fc in zip(
-        a.fold_predictions, b.fold_predictions, c.fold_predictions, strict=True
+    for fa, fb, fc, fd in zip(
+        a.fold_predictions,
+        b.fold_predictions,
+        c.fold_predictions,
+        d.fold_predictions,
+        strict=True,
     ):
         np.testing.assert_array_equal(fa.y_true, fb.y_true)
         np.testing.assert_array_equal(fa.y_true, fc.y_true)
+        np.testing.assert_array_equal(fa.y_true, fd.y_true)
 
 
 # --------------------------------------------------------------------------- #
@@ -120,7 +131,7 @@ _NULL_HELPERS = (
 
 
 def test_null_helpers_byte_identical_across_templates() -> None:
-    # the three templates carry deliberate copies (self-contained seeds); a drift in one
+    # the four templates carry deliberate copies (self-contained seeds); a drift in one
     # would make "the same null" untrue across a paired comparison
     for name in _NULL_HELPERS:
         sources = {k: inspect.getsource(getattr(m, name)) for k, m in _MODULES.items()}
@@ -149,7 +160,7 @@ def test_null_draws_identical_across_templates() -> None:
                 m._permute_labels(yy, g, np.random.default_rng(5), scheme).tolist()
                 for m in _MODULES.values()
             ]
-            assert draws[0] == draws[1] == draws[2], (scheme, g is None)
+            assert all(d == draws[0] for d in draws[1:]), (scheme, g is None)
 
 
 def test_within_unit_permutation_keeps_grouped_folds_fixed() -> None:

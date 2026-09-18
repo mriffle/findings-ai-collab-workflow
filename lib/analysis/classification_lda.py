@@ -1,0 +1,1444 @@
+"""Shrinkage-LDA classification for feature finding — leakage-safe, tuning-free LDA.
+
+TEMPLATE (lib/) — a *seed* for a project's classification script, not a finished
+analysis. Copy it into the project's ``scripts/`` and adapt the call site per study
+(which metadata column is the outcome, how to reduce it to two classes, the independent
+unit). Held to the correctness charter (conventions/correctness.md) and the statistics
+convention (conventions/statistics.md): assume nothing, verify everything, fail loud.
+
+**What this answers.** *Can the proteome predict the class, and how well?* — a
+**Ledoit-Wolf shrinkage linear discriminant** (LDA): the Gaussian classifier with a
+shared, shrunk within-class covariance, the *third linear model* beside the elastic-net
+classifier (``analysis.classification``) and the linear SVM
+(``analysis.classification_svm``). Its discriminant direction is the
+**covariance-adjusted mean difference** ``S^-1 (mu_pos - mu_neg)`` — which proteins
+separate the classes *after* accounting for how proteins co-vary — reported as signed
+standardized weights: a caveated interpretation of the classifier, **not** an
+all-relevant feature selection (that is Boruta's job — FEATURE_FINDING.md §B). Like
+the SVM's, the weight vector is **dense**. State that in the finding.
+
+**Why it exists beside the other two.** It is **tuning-free** — the shrinkage
+intensity is set analytically (Ledoit & Wolf 2004), so there is no inner CV, no grid,
+and none of the grid-bracketing / tuning-noise failure modes of the SVM's ``C``; its
+scores are **calibrated log-odds** (a posterior, not a margin); and a fit costs
+milliseconds at 20,000 features, so its label-shuffle null is cheap enough to run in
+the same sitting. Offered on those triggers (conventions/statistics.md, *Choosing
+among the linear classifiers*), compared **paired per fold** against the elastic net.
+
+**The three coupled deliverables** (all in :class:`LDAClassificationResult`), the *same
+shape as the elastic-net and SVM classifiers* so the readouts line up:
+
+  * **Performance vs a label-shuffle null** — leakage-safe **repeated stratified CV**
+    with in-fold ``StandardScaler`` and in-fold shrinkage estimation. The null is
+    **opt-in** (``run_null=True``), the gate that licenses trusting the weights; it
+    maps to the exploratory/validated distinction — run it to be eligible for
+    ``validated``, skip it and the finding is capped at ``exploratory`` (weights
+    flagged "not tested against a null"). It is cheap here: run it right after the
+    first pass.
+  * **All-data weights** — refit on all data; the reported **standardized** signed
+    weights (magnitude = importance, sign = direction) plus the per-class shrinkage
+    intensities of that fit.
+  * **Cross-fold stability** — a dedicated resampling loop giving each feature a
+    **top-k membership frequency**, **sign consistency**, and weight distribution.
+
+**Divergences from the elastic-net / SVM classifiers** (documented, deliberate — each
+follows from the estimator, not from a different philosophy):
+
+  1. **Nothing to tune.** The per-class Ledoit-Wolf shrinkage is computed in closed
+     form on each training fold, so "nested CV" collapses to plain repeated stratified
+     CV (still leakage-safe: scaler + shrinkage are fit on the training fold only).
+     There is no ``c_grid`` / ``select`` / ``tuning_metric``, no tuning-curve figure
+     (this template ships **three** figures, not four), and no grid-edge or
+     tuning-noise warning. The stability loop and the null re-estimate the shrinkage
+     on every resample — there is no "fixed hyperparameter" to hold.
+  2. **Dense, not sparse.** Every feature carries a non-zero weight, so *selection
+     frequency* is meaningless; the stability read is the **top-k membership
+     frequency** (fraction of stability resamples in which the feature ranks in the
+     top ``top_k`` by |weight|), and the coefficient table holds **every** feature
+     (sorted by |weight|) — the SVM convention.
+  3. **Scores are calibrated log-odds, not margins or logistic probabilities.**
+     ``y_score`` is the LDA decision function — the log posterior-odds
+     ``log P(pos|x) / P(neg|x)`` under the Gaussian shared-covariance model with
+     class-frequency priors — so ``sigmoid(y_score)`` is the posterior. Balanced
+     accuracy thresholds it at ``0`` (posterior 0.5 under the class priors). There is
+     no ``class_weight``: class imbalance enters through the priors (the log prior
+     ratio shifts the intercept), and balanced accuracy is reported beside AUC.
+  4. **A shrinkage diagnostic replaces the tuning diagnostic.** Every fold record
+     carries the two class shrinkage intensities the fold estimated
+     (``shrinkage_negative`` / ``shrinkage_positive``, in place of the SVM's
+     ``best_c``), and the result carries the all-data pair. A
+     :class:`ShrinkageSaturationWarning` fires when either all-data intensity is
+     ``>= 0.95``: the covariance carried
+     almost nothing, the direction is then ~ a standardized mean difference
+     (diagonal LDA), and the "covariance-adjusted" reading no longer applies — the
+     comparison with the other classifiers stays valid, the interpretation changes.
+  5. **Fold identity is recorded** (``repeat``, ``fold``, ``test_indices``) and
+     **per-repeat AUCs** are reported (mean-of-fold, and pooled out-of-fold), exactly
+     as the SVM does, so a same-seed comparison with another classifier is a **paired**
+     per-fold comparison. The pooled-OOF caveat is *weaker* here than for the SVM —
+     log-odds share a scale across fold models — but each fold still has its own
+     scaler and covariance, so it remains supplementary.
+  6. **No ``n_jobs``.** Nothing is parallelized (a fit is milliseconds); the argument
+     is dropped rather than accepted as a no-op.
+
+**The estimator is in-module numerics, not a library call.** Scikit-learn's
+``LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto")`` forms and solves the
+``p x p`` shrunk covariance — cubic in the feature count (26 s per fit at p = 2,000;
+unfinished after ten minutes at p = 6,186; 3.2 GB per fit at p = 20,000). The
+per-class Ledoit-Wolf shrunk covariance is ``diag(a) + U^T U`` with ``U`` of rank
+``<= n``, so ``S^-1 v`` is an ``n x n`` solve (Woodbury) and the shrinkage intensity
+is a function of the ``n x n`` Gram matrix — ``O(n^2 p)``, milliseconds at any width.
+:class:`_DualShrinkageLDA` implements exactly scikit-learn's recipe (per-class
+standardize -> Ledoit-Wolf -> rescale -> pool by priors -> ``coef = S^-1 means``,
+``intercept = -0.5 mean.coef + log prior``, binary difference) and the test suite pins
+it to scikit-learn at machine precision — the oracle for these numerics.
+
+**Generalization target & grouping.** Choose the CV scheme to answer a stated question:
+name the target (``"samples"`` / ``"individuals"`` / ``"batches"``) and hold out
+folds at that unit. Grouping is used **only when the ``groups`` column actually has
+repeats** — if every unit appears once, a new sample *is* a new individual and
+row-level folds already estimate individual-level performance, so nothing is grouped
+(grouping singletons only hurts class balance). When grouped, the null permutes labels
+at the unit level by default (``null_permutation="units"``, one label per unit) or
+*within* each unit for a batch-grouped design whose units hold both classes
+(``null_permutation="within_units"``, preserving per-unit class counts).
+
+Scale / missing / sample set: the input should be the **experimental subset** on a
+**log2-like** scale with **missing values already resolved upstream** (Stage-2). This
+template **never silently imputes or zeros** — it **raises** on any ``NaN`` — warns on a
+non-log scale (a Gaussian model on standardized features), and drops constant /
+all-zero features (they carry no signal). Covariate confounding is **not** handled
+here: it is a Stage-1 caveat surfaced collaboratively in Stage 4
+(conventions/statistics.md), gated by consequence.
+
+Requires scikit-learn (``StandardScaler``, the CV splitters, and the metrics; the
+discriminant itself is in-module).
+"""
+
+from __future__ import annotations
+
+import math
+import warnings
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Literal
+
+import numpy as np
+import pandas as pd
+from common.data_loading import Dataset
+from sklearn.metrics import (
+    average_precision_score,
+    balanced_accuracy_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import (
+    RepeatedStratifiedKFold,
+    StratifiedGroupKFold,
+)
+from sklearn.preprocessing import StandardScaler
+
+GeneralizationTarget = Literal["samples", "individuals", "batches"]
+NullPermutation = Literal["units", "within_units"]
+
+# Scales on which the input is a genuine log abundance. StandardScaler tolerates the
+# scale, but linear-scale abundances are right-skewed and leave outlier z-scores the
+# model is sensitive to; outside this set the classifier warns (see _check_scale).
+_LOG2_LIKE: frozenset[str] = frozenset({"log2", "glog2", "log10", "ln", "zscore"})
+
+# An all-data Ledoit-Wolf intensity at or above this means the sample covariance was
+# shrunk almost entirely to its diagonal target: the discriminant direction is then
+# ~ a standardized mean difference, not a covariance-adjusted one
+# (ShrinkageSaturationWarning).
+_SHRINKAGE_SATURATION = 0.95
+
+__script_meta__: dict[str, object] = {
+    "template": {"name": "classification-lda", "version": "0.1"},
+    "kind": "analysis",
+    "provides": [
+        "GeneralizationTarget",
+        "NullPermutation",
+        "Threshold",
+        "LevelMap",
+        "BinarizeSpec",
+        "ClassificationScaleWarning",
+        "SingletonGroupsWarning",
+        "NullPermutationWarning",
+        "FeatureListWarning",
+        "ShrinkageSaturationWarning",
+        "FoldPrediction",
+        "LDAClassificationResult",
+        "classify_lda",
+    ],
+    "uses": ["common.data_loading"],
+    "seeded_from": None,
+    "description": (
+        "Leakage-safe shrinkage-LDA CLASSIFICATION (Ledoit-Wolf shrinkage linear "
+        "discriminant, solved in the dual/Woodbury form so a fit is milliseconds at "
+        "20,000 features) over a Dataset — the third linear model beside "
+        "analysis.classification and analysis.classification_svm, the same readouts. "
+        "Tuning-free: the shrinkage is analytic, so repeated stratified CV (in-fold "
+        "StandardScaler + in-fold shrinkage) replaces nested CV and there is no "
+        "tuning figure (three figures, not four). Performance from calibrated log-odds "
+        "scores vs an opt-in label-shuffle null (cheap here — run it right after the "
+        "first pass); all-data standardized signed weights (the covariance-adjusted "
+        "mean difference) + the per-class shrinkage intensities "
+        "(ShrinkageSaturationWarning when the covariance carried nothing); and a "
+        "stability loop (top-k membership frequency + sign consistency — the "
+        "dense-model replacement for selection frequency) — reported together. Fold "
+        "identity (repeat/fold/test_indices) and per-repeat AUCs recorded so a "
+        "same-seed comparison with another classifier is paired per fold. "
+        "Study-agnostic outcome + binarize API (binary direct; a non-binary outcome "
+        "needs an explicit rule); group-aware CV only when the groups column has "
+        "repeats; the null permutes at the unit level or, for a batch-grouped design, "
+        "within units (null_permutation). Warns on non-log scale, raises on NaN "
+        "(missing handling upstream), drops constant features. Binary outcomes only "
+        "(v0.1). Requires scikit-learn (StandardScaler, splitters, metrics; the "
+        "discriminant itself is in-module, pinned to sklearn at machine precision)."
+    ),
+}
+
+
+# --------------------------------------------------------------------------- #
+# Warnings
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
+# --------------------------------------------------------------------------- #
+class ClassificationScaleWarning(UserWarning):
+    """The abundances are not on a log-like scale (standardization leaves skew)."""
+
+
+class SingletonGroupsWarning(UserWarning):
+    """The ``groups`` column has no repeated units, so grouping is a no-op.
+
+    Every unit appears once, so a held-out sample is already a held-out unit; row-level
+    CV is used (grouping singletons only degrades class balance).
+    """
+
+
+class NullPermutationWarning(UserWarning):
+    """The within-unit null can reach fewer distinct label arrangements than requested.
+
+    ``prod_u C(n_u, k_u)`` is below ``n_permutations``: permutation draws must repeat
+    and the empirical p resolves only to about ``1 / arrangements``. The p stays valid
+    (a Monte-Carlo p with duplicate draws is still a p); it is just coarse.
+    """
+
+
+class FeatureListWarning(UserWarning):
+    """The ``feature_list`` matched few (or a small fraction) of the data's features."""
+
+
+class ShrinkageSaturationWarning(UserWarning):
+    """An all-data Ledoit-Wolf intensity is at or above ``0.95``.
+
+    The within-class sample covariance of that class was shrunk almost entirely onto
+    its diagonal target, so the discriminant direction is approximately a standardized
+    mean difference (diagonal LDA) rather than a covariance-adjusted one. The model is
+    still valid and the paired comparison still holds; the *reading* changes — say in
+    the finding that the weights are not covariance-adjusted. Typical causes: very few
+    samples in that class, or features that barely co-vary.
+    """
+
+
+_FEATURE_LIST_WARN_FRACTION = 0.5
+
+
+def _resolve_feature_list(
+    feature_names: np.ndarray, feature_list: Sequence[str] | None
+) -> tuple[np.ndarray, int | None, int | None]:
+    """Return (keep-mask over features, n_requested, n_matched).
+
+    An all-True mask is returned when no list is given (with ``None`` counts). Raises
+    when a list matches nothing; warns on a poor match. Restricting to a prior /
+    curated list is applied to the whole matrix **before** the CV — leakage-safe only
+    because such a list is defined **independent of the outcome** (see
+    :func:`classify_lda`).
+    """
+    if feature_list is None:
+        return np.ones(len(feature_names), dtype=bool), None, None
+    requested = {str(f) for f in feature_list}
+    n_requested = len(requested)
+    if n_requested == 0:
+        raise ValueError("feature_list is empty; pass None to use all features.")
+    mask = np.isin(feature_names.astype(str), list(requested))
+    n_matched = int(mask.sum())
+    if n_matched == 0:
+        raise ValueError(
+            f"feature_list matched none of the {len(feature_names)} data features "
+            f"(is the id scheme the same, e.g. UniProt accessions?)."
+        )
+    if n_matched < _FEATURE_LIST_WARN_FRACTION * n_requested:
+        warnings.warn(
+            f"feature_list matched only {n_matched}/{n_requested} data features — "
+            f"check the id scheme matches. Proceeding with the matched subset.",
+            FeatureListWarning,
+            stacklevel=3,
+        )
+    return mask, n_requested, n_matched
+
+
+# --------------------------------------------------------------------------- #
+# Outcome binarization spec — the caller's rule reducing an outcome to two classes
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Threshold:
+    """Binarize a **continuous** outcome at a cut: ``value >= cut`` -> positive class.
+
+    Optionally drop an ambiguous middle band: with ``drop_below``/``drop_at_or_above``,
+    samples with ``drop_below <= value < drop_at_or_above`` are excluded (the "compare
+    the extremes, drop the middle" design). Unassigned samples are dropped and counted
+    in provenance.
+    """
+
+    cut: float
+    positive_label: str = "high"
+    negative_label: str = "low"
+    drop_below: float | None = None
+    drop_at_or_above: float | None = None
+
+
+@dataclass(frozen=True)
+class LevelMap:
+    """Binarize a **categorical** outcome by assigning levels to the two classes.
+
+    Levels listed in neither ``positive`` nor ``negative`` are **dropped** (so this also
+    expresses "compare these two of k levels, drop the rest"). Levels must not overlap.
+    """
+
+    positive: tuple[str, ...]
+    negative: tuple[str, ...]
+
+
+BinarizeSpec = Threshold | LevelMap
+
+
+# --------------------------------------------------------------------------- #
+# Result
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class FoldPrediction:
+    """Held-out log-odds from one outer CV fold (feeds the ROC curve).
+
+    ``y_score`` is the LDA **decision function** — the log posterior-odds toward the
+    positive class under the fold's fitted model (calibrated: ``sigmoid(y_score)`` is
+    the posterior). ``repeat`` / ``fold`` locate the fold in the repeated CV and
+    ``test_indices`` are the held-out sample positions **in the analyzed sample set**
+    (after the binarize drop mask), so a same-seed run of another classifier can be
+    compared fold-by-fold. ``shrinkage_negative`` / ``shrinkage_positive`` are the
+    per-class Ledoit-Wolf intensities this fold's training data produced — read across
+    folds they show how much of the covariance each fit could use (the analogue of the
+    SVM's per-fold tuned ``C``).
+    """
+
+    y_true: np.ndarray
+    y_score: np.ndarray
+    repeat: int
+    fold: int
+    test_indices: np.ndarray
+    shrinkage_negative: float
+    shrinkage_positive: float
+
+
+@dataclass(frozen=True)
+class LDAClassificationResult:
+    """Everything the three figures and the finding read.
+
+    Attributes
+    ----------
+    coefficients:
+        Per-feature table, one row per analyzed feature (the model is **dense**), sorted
+        by ``abs_coef`` descending. Columns: ``feature``, ``coef`` (all-data
+        standardized weight — the discriminant direction on standardized features),
+        ``abs_coef``, ``top_k_frequency`` (fraction of stability resamples in which the
+        feature ranks in the top ``top_k`` by |weight|), ``sign_consistency``
+        (``|sum(sign)| / n_resamples`` over all resamples; an exact zero counts as
+        disagreement), ``coef_median``, ``coef_q25``, ``coef_q75`` (over all
+        resamples), ``n_resamples``. The trust annotation on estimates.
+    fold_predictions:
+        Held-out ``(y_true, y_score, repeat, fold, test_indices, shrinkage_negative,
+        shrinkage_positive)`` per outer CV fold — the ROC input, the paired-comparison
+        record, and the per-fold shrinkage read.
+    cv_auc, cv_auc_sd, cv_balanced_accuracy, cv_average_precision:
+        Repeated-CV performance (mean over outer folds; ``_sd`` is the fold SD of AUC).
+        Balanced accuracy thresholds the log-odds at 0 (posterior 0.5 under the class
+        priors).
+    repeat_aucs:
+        Per outer repeat, the **mean of that repeat's fold AUCs** (primary; their mean
+        is ``cv_auc``). Length ``n_repeats``.
+    repeat_pooled_aucs:
+        Per outer repeat, the AUC of the **pooled** out-of-fold log-odds of that
+        repeat's ``n_splits`` fold models. Supplementary: the log-odds share a nominal
+        scale across fold models (unlike SVM margins), but each fold has its own scaler
+        and covariance, so the pooled ranking is still not that of any single
+        classifier. A large gap to the mean-of-fold AUC signals fold-to-fold
+        instability of the fitted model, not better or worse performance.
+    shrinkage_negative, shrinkage_positive:
+        The per-class Ledoit-Wolf intensities of the all-data fit, in ``[0, 1]``: ``0``
+        = the sample covariance was used as is, ``1`` = shrunk entirely onto its
+        diagonal target. At or above ``0.95`` a :class:`ShrinkageSaturationWarning`
+        fires (the weights are then ~ a standardized mean difference).
+    top_k:
+        The ``k`` defining ``top_k_frequency``.
+    null_aucs, observed_auc, null_p:
+        The label-shuffle null: the permutation AUC distribution, the observed AUC
+        computed by the *same* procedure, and the empirical p
+        ``(#{null >= observed} + 1) / (n_perm + 1)``. There is no fixed hyperparameter:
+        the observed run and every permutation re-estimate the shrinkage on each
+        training fold, so the test includes exactly what a real run includes;
+        ``observed_auc`` (the null-CV procedure, ``null_repeats`` repeats) is what
+        ``null_p`` belongs to — it is not ``cv_auc``. All ``None`` when ``run_null`` was
+        ``False`` — the finding is then capped at ``exploratory``.
+    validated_eligible:
+        ``True`` iff the null was run (the weight report is licensed).
+    outcome, positive_label, negative_label:
+        The resolved binary problem (``positive_label`` is class 1; weight sign is
+        *toward positive*).
+    generalization_target, grouped, groups_column:
+        The CV design: the target claimed, whether folds were grouped (only when the
+        ``groups`` column had repeats), and that column's name.
+    n_samples, n_positive, n_negative, n_features, n_dropped_constant,
+    n_dropped_unassigned:
+        Analyzed counts (for ``provenance.params``); ``n_dropped_unassigned`` is samples
+        excluded by the binarize rule.
+    random_state:
+        The recorded seed.
+    n_features_requested, n_features_matched:
+        When a ``feature_list`` was supplied: its unique size and how many matched the
+        data's features (``None`` when no list was given). Recorded for provenance.
+    null_permutation:
+        The null's permutation scheme as applied: ``"samples"`` (row-level CV, plain
+        shuffle), ``"units"``, or ``"within_units"``; ``None`` when the null was not
+        run.
+    """
+
+    coefficients: pd.DataFrame
+    fold_predictions: list[FoldPrediction]
+    cv_auc: float
+    cv_auc_sd: float
+    cv_balanced_accuracy: float
+    cv_average_precision: float
+    repeat_aucs: tuple[float, ...]
+    repeat_pooled_aucs: tuple[float, ...]
+    shrinkage_negative: float
+    shrinkage_positive: float
+    top_k: int
+    outcome: str
+    positive_label: str
+    negative_label: str
+    generalization_target: GeneralizationTarget
+    grouped: bool
+    groups_column: str | None
+    n_samples: int
+    n_positive: int
+    n_negative: int
+    n_features: int
+    n_dropped_constant: int
+    n_dropped_unassigned: int
+    random_state: int
+    null_aucs: np.ndarray | None = None
+    observed_auc: float | None = None
+    null_p: float | None = None
+    n_features_requested: int | None = None
+    n_features_matched: int | None = None
+    null_permutation: str | None = None
+    feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
+
+    @property
+    def validated_eligible(self) -> bool:
+        """``True`` iff the label-shuffle null was run (licenses ``validated``)."""
+        return self.null_p is not None
+
+
+# --------------------------------------------------------------------------- #
+# Internal: label resolution (outcome -> binary y + drop mask)
+# (Duplicated from analysis.classification so this template is a self-contained seed.)
+# --------------------------------------------------------------------------- #
+def _is_numeric(series: pd.Series) -> bool:
+    return bool(pd.api.types.is_numeric_dtype(series))
+
+
+@dataclass(frozen=True)
+class _Labels:
+    y: np.ndarray  # (n_kept,) int 0/1
+    keep: np.ndarray  # (n_samples,) bool — samples assigned a class
+    positive_label: str
+    negative_label: str
+
+
+def _resolve_labels(
+    series: pd.Series,
+    binarize: BinarizeSpec | None,
+    positive_class: str | None,
+    outcome: str,
+) -> _Labels:
+    """Reduce an outcome to a binary label + a keep mask (unassigned -> dropped)."""
+    if binarize is None:
+        return _resolve_already_binary(series, positive_class, outcome)
+    if isinstance(binarize, Threshold):
+        return _resolve_threshold(series, binarize, outcome)
+    return _resolve_level_map(series, binarize, outcome)
+
+
+def _resolve_already_binary(
+    series: pd.Series, positive_class: str | None, outcome: str
+) -> _Labels:
+    if _is_numeric(series):
+        raise ValueError(
+            f"outcome {outcome!r} is numeric; a classifier needs classes. Pass "
+            f"binarize=Threshold(cut=...) to split it, or a LevelMap if it is a coded "
+            f"factor."
+        )
+    labels = series.astype(str).to_numpy()
+    keep = labels != "nan"
+    levels = sorted(set(labels[keep].tolist()))
+    if len(levels) != 2:
+        raise ValueError(
+            f"outcome {outcome!r} has {len(levels)} classes {levels}; v0.1 is binary "
+            f"only. Pass binarize=LevelMap(positive=..., negative=...) to choose two "
+            f"(others are dropped)."
+        )
+    if positive_class is not None and positive_class not in levels:
+        raise ValueError(
+            f"positive_class {positive_class!r} not among outcome levels {levels}."
+        )
+    pos = positive_class if positive_class is not None else levels[1]
+    neg = next(level for level in levels if level != pos)
+    y = np.where(labels == pos, 1, 0)[keep].astype(int)
+    return _Labels(y=y, keep=keep, positive_label=pos, negative_label=neg)
+
+
+def _resolve_threshold(series: pd.Series, spec: Threshold, outcome: str) -> _Labels:
+    if not _is_numeric(series):
+        raise ValueError(
+            f"binarize=Threshold needs a numeric outcome; {outcome!r} is categorical. "
+            f"Use a LevelMap."
+        )
+    values = series.to_numpy(dtype=float)
+    finite = np.isfinite(values)
+    if (spec.drop_below is None) != (spec.drop_at_or_above is None):
+        raise ValueError(
+            "Threshold drop band needs both drop_below and drop_at_or_above, or "
+            "neither."
+        )
+    in_band = np.zeros_like(finite)
+    if spec.drop_below is not None and spec.drop_at_or_above is not None:
+        if not spec.drop_below <= spec.cut <= spec.drop_at_or_above:
+            raise ValueError(
+                f"Threshold cut {spec.cut} must lie within the drop band "
+                f"[{spec.drop_below}, {spec.drop_at_or_above}]."
+            )
+        in_band = (values >= spec.drop_below) & (values < spec.drop_at_or_above)
+    keep = finite & ~in_band
+    y = (values[keep] >= spec.cut).astype(int)
+    if int(y.sum()) == 0 or int((y == 0).sum()) == 0:
+        raise ValueError(
+            f"Threshold(cut={spec.cut}) on {outcome!r} yields only one class; choose a "
+            f"cut inside the value range."
+        )
+    return _Labels(
+        y=y,
+        keep=keep,
+        positive_label=spec.positive_label,
+        negative_label=spec.negative_label,
+    )
+
+
+def _resolve_level_map(series: pd.Series, spec: LevelMap, outcome: str) -> _Labels:
+    labels = series.astype(str).to_numpy()
+    pos_set, neg_set = set(spec.positive), set(spec.negative)
+    overlap = pos_set & neg_set
+    if overlap:
+        raise ValueError(f"LevelMap positive/negative overlap on {sorted(overlap)}.")
+    present = set(labels.tolist())
+    unknown = (pos_set | neg_set) - present
+    if unknown:
+        raise ValueError(
+            f"LevelMap references levels {sorted(unknown)} absent from {outcome!r} "
+            f"(present: {sorted(present)})."
+        )
+    is_pos = np.isin(labels, list(pos_set))
+    is_neg = np.isin(labels, list(neg_set))
+    keep = is_pos | is_neg
+    y = is_pos[keep].astype(int)
+    return _Labels(
+        y=y,
+        keep=keep,
+        positive_label="|".join(sorted(pos_set)),
+        negative_label="|".join(sorted(neg_set)),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Internal: the estimator — Ledoit-Wolf shrinkage LDA in the dual (Woodbury) form
+# --------------------------------------------------------------------------- #
+def _ledoit_wolf_shrinkage_gram(x_centered: np.ndarray) -> float:
+    """Ledoit-Wolf shrinkage intensity from the Gram matrix (exact sklearn formula).
+
+    ``sklearn.covariance.ledoit_wolf_shrinkage`` accumulates two scalars over ``p x p``
+    blocks: ``beta_ = sum(X2^T X2) = sum_s ||x_s||^4`` and ``delta_ = ||X^T X||_F^2``.
+    Both are Gram-matrix quantities — with ``G = X X^T`` (``n x n``), ``beta_ = sum_s
+    G_ss^2`` and ``delta_ = ||G||_F^2`` — and the rest of the formula is scalar
+    algebra, so the intensity costs ``O(n^2 p)`` and no ``p x p`` matrix.
+    """
+    n, p = x_centered.shape
+    g = x_centered @ x_centered.T  # (n, n)
+    trace_s = float(np.trace(g)) / n  # trace of the empirical covariance
+    mu = trace_s / p
+    beta_ = float(np.sum(np.diag(g) ** 2))
+    delta_ = float(np.sum(g**2)) / n**2
+    beta = 1.0 / (p * n) * (beta_ / n - delta_)
+    delta = (delta_ - 2.0 * mu * trace_s + p * mu**2) / p
+    beta = min(beta, delta)
+    return 0.0 if beta == 0 else beta / delta
+
+
+class _DualShrinkageLDA:
+    """LDA with per-class Ledoit-Wolf shrinkage, solved in the ``n``-dimensional dual.
+
+    Reproduces ``sklearn.discriminant_analysis.LinearDiscriminantAnalysis(
+    solver="lsqr", shrinkage="auto")`` exactly — the same ``classes_``, ``priors_``,
+    ``means_``, ``coef_``, ``intercept_``, ``decision_function`` and ``predict_proba``
+    — without ever forming the ``p x p`` covariance. sklearn's recipe: for each class,
+    standardize the class block (biased std; a zero-std feature keeps scale 1), run
+    Ledoit-Wolf on it, rescale — so ``cov_k = (1 - lam_k) S_k + lam_k diag(scale_k^2)``
+    — then pool by the priors: ``S = diag(a) + U^T U`` with ``a = sum_k priors_k
+    lam_k scale_k^2`` and ``U`` stacking ``sqrt(priors_k (1 - lam_k) / n_k) X_kc``
+    (rank ``<= n``). With ``A = diag(a)``, Woodbury gives
+    ``S^-1 v = A^-1 v - A^-1 U^T (I_n + U A^-1 U^T)^-1 U A^-1 v``: one ``n x n`` solve.
+
+    The class-count math is general (``k`` classes); the public API is binary in v0.1.
+    Not a scikit-learn estimator subclass (its base classes are untyped, which
+    ``mypy --strict`` refuses), so it is fitted explicitly per fold in this module.
+    """
+
+    classes_: np.ndarray
+    priors_: np.ndarray
+    means_: np.ndarray
+    coef_: np.ndarray
+    intercept_: np.ndarray
+    shrinkage_: np.ndarray
+
+    def fit(self, x: np.ndarray, y: np.ndarray) -> _DualShrinkageLDA:
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y)
+        n, p = x.shape
+        self.classes_, y_idx = np.unique(y, return_inverse=True)
+        k = len(self.classes_)
+        if k < 2:
+            raise ValueError("LDA needs at least two classes.")
+        counts = np.bincount(y_idx, minlength=k)
+        if np.any(counts < 2):
+            raise ValueError("every class needs at least two samples for a covariance.")
+        self.priors_ = counts / n
+        self.means_ = np.vstack([x[y_idx == j].mean(axis=0) for j in range(k)])
+
+        a = np.zeros(p)
+        blocks: list[np.ndarray] = []
+        lam = np.empty(k)
+        for j in range(k):
+            xc = x[y_idx == j] - self.means_[j]
+            n_j = counts[j]
+            scale = np.sqrt(np.sum(xc**2, axis=0) / n_j)
+            scale[scale == 0.0] = 1.0
+            xs = xc / scale
+            lam[j] = _ledoit_wolf_shrinkage_gram(xs)
+            # sklearn's target is mu * I on the standardized block, mu = trace / p —
+            # exactly 1 unless a feature is constant within the class (scale kept 1).
+            mu = float(np.sum(xs**2)) / n_j / p
+            a += self.priors_[j] * lam[j] * mu * scale**2
+            blocks.append(np.sqrt(self.priors_[j] * (1.0 - lam[j]) / n_j) * xc)
+        if np.any(a <= 0.0):
+            raise ValueError(
+                "the pooled shrunk covariance is singular: Ledoit-Wolf shrinkage is "
+                f"zero in every class (intensities {np.round(lam, 3).tolist()}) — "
+                "with only two rows in a class its centered block is +-v, so the "
+                "estimator has nothing to shrink. LDA needs >= 3 samples per class in "
+                "every fit."
+            )
+        self.shrinkage_ = lam
+        u = np.vstack(blocks)  # (n, p)
+
+        m = self.means_.T  # (p, k)
+        a_inv = 1.0 / a
+        ua = u * a_inv  # (n, p) = U A^-1
+        inner = np.eye(n) + ua @ u.T  # (n, n)
+        am = m * a_inv[:, None]  # (p, k) = A^-1 m
+        coef = am - ua.T @ np.linalg.solve(inner, u @ am)  # (p, k) = S^-1 m
+        coef = coef.T  # (k, p)
+        intercept = -0.5 * np.einsum("kp,kp->k", self.means_, coef) + np.log(
+            self.priors_
+        )
+        if k == 2:
+            coef = (coef[1] - coef[0])[None, :]
+            intercept = np.array([intercept[1] - intercept[0]])
+        self.coef_ = coef
+        self.intercept_ = intercept
+        return self
+
+    def decision_function(self, x: np.ndarray) -> np.ndarray:
+        scores = np.asarray(
+            np.asarray(x, dtype=np.float64) @ self.coef_.T + self.intercept_,
+            dtype=float,
+        )
+        return scores.ravel() if scores.shape[1] == 1 else scores
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        d = self.decision_function(x)
+        if d.ndim == 1:
+            p1 = 1.0 / (1.0 + np.exp(-d))
+            return np.column_stack([1.0 - p1, p1])
+        d = d - d.max(axis=1, keepdims=True)
+        e = np.exp(d)
+        return np.asarray(e / e.sum(axis=1, keepdims=True), dtype=float)
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        d = self.decision_function(x)
+        idx = (d > 0).astype(int) if d.ndim == 1 else d.argmax(axis=1)
+        return np.asarray(self.classes_[idx])
+
+
+def _fit_fold(
+    x_train: np.ndarray, y_train: np.ndarray
+) -> tuple[StandardScaler, _DualShrinkageLDA]:
+    """The one leakage boundary: scaler + LDA fitted on the training rows only.
+
+    Every CV use in this module (performance folds, stability resamples, the null's
+    folds) goes through here, so nothing is ever learned from held-out rows. The
+    scaler plays the role of the in-Pipeline ``StandardScaler`` of the sibling
+    templates; the discriminant is in-module, so the pair is explicit rather than a
+    ``Pipeline``.
+    """
+    scaler = StandardScaler().fit(x_train)
+    model = _DualShrinkageLDA().fit(scaler.transform(x_train), y_train)
+    return scaler, model
+
+
+def _scores(
+    scaler: StandardScaler, model: _DualShrinkageLDA, x: np.ndarray
+) -> np.ndarray:
+    """The log posterior-odds toward the positive class for each row of ``x``."""
+    return np.asarray(model.decision_function(scaler.transform(x)), dtype=float).ravel()
+
+
+# (Grouping + CV construction duplicated from analysis.classification so this template
+# is a self-contained seed. Kept byte-identical: the identical-splits guarantee across
+# the classifier templates rests on it — see lib/tests/test_classification_splits.py.)
+def _resolve_grouping(
+    groups: str | None,
+    metadata: pd.DataFrame,
+    keep: np.ndarray,
+) -> np.ndarray | None:
+    """Return per-sample group ids (kept samples) if grouping applies, else ``None``.
+
+    Grouping applies only when the ``groups`` column has at least one repeated unit; all
+    singletons -> ``None`` (row-level CV) with a :class:`SingletonGroupsWarning`.
+    """
+    if groups is None:
+        return None
+    if groups not in metadata.columns:
+        raise ValueError(f"groups column {groups!r} not in metadata.")
+    g = np.asarray(metadata[groups].astype(str).to_numpy())[keep]
+    _, counts = np.unique(g, return_counts=True)
+    if int(counts.max(initial=0)) <= 1:
+        warnings.warn(
+            f"groups column {groups!r} has no repeated units (each appears once), "
+            f"so a held-out sample is already a held-out unit; using row-level CV.",
+            SingletonGroupsWarning,
+            stacklevel=3,
+        )
+        return None
+    return np.asarray(g)
+
+
+def _make_cv(
+    n_splits: int,
+    n_repeats: int,
+    grouped: bool,
+    random_state: int,
+) -> RepeatedStratifiedKFold | _RepeatedStratifiedGroupKFold:
+    """Repeated stratified K-fold — group-aware when grouped (keeps units intact)."""
+    if grouped:
+        return _RepeatedStratifiedGroupKFold(n_splits, n_repeats, random_state)
+    return RepeatedStratifiedKFold(
+        n_splits=n_splits, n_repeats=n_repeats, random_state=random_state
+    )
+
+
+class _RepeatedStratifiedGroupKFold:
+    """Repeat StratifiedGroupKFold with a reseeded shuffle each repeat.
+
+    sklearn ships ``StratifiedGroupKFold`` but not a *repeated* variant; we repeat it
+    with a per-repeat seed so the stability loop and null get many grouped resamples.
+    """
+
+    def __init__(self, n_splits: int, n_repeats: int, random_state: int) -> None:
+        self.n_splits = n_splits
+        self.n_repeats = n_repeats
+        self.random_state = random_state
+
+    def split(
+        self, x: np.ndarray, y: np.ndarray, groups: np.ndarray
+    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        out: list[tuple[np.ndarray, np.ndarray]] = []
+        for repeat in range(self.n_repeats):
+            cv = StratifiedGroupKFold(
+                n_splits=self.n_splits,
+                shuffle=True,
+                random_state=self.random_state + repeat,
+            )
+            out.extend(cv.split(x, y, groups))
+        return out
+
+
+def _split(
+    cv: RepeatedStratifiedKFold | _RepeatedStratifiedGroupKFold,
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Uniform split() over the grouped/ungrouped CV objects."""
+    if isinstance(cv, _RepeatedStratifiedGroupKFold):
+        assert groups is not None
+        return cv.split(x, y, groups)
+    return list(cv.split(x, y))
+
+
+# --------------------------------------------------------------------------- #
+# Internal: the three CV uses
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _Performance:
+    folds: list[FoldPrediction]
+    auc: float
+    auc_sd: float
+    balanced_accuracy: float
+    average_precision: float
+    repeat_aucs: tuple[float, ...]
+    repeat_pooled_aucs: tuple[float, ...]
+
+
+def _nested_performance(
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    cfg: _Config,
+) -> _Performance:
+    """Repeated stratified CV -> per-fold ROC input + AUC/balacc/AP.
+
+    Each outer fold: fit scaler + shrinkage LDA on the training fold (the shrinkage is
+    analytic, so there is no inner CV), score the untouched test fold by its log-odds.
+    Fold identity is recorded (``repeat = i // n_splits``; both CV kinds emit repeats
+    contiguously). Named like its sibling-template counterpart so the three templates'
+    public entry points share a body order; here the "nesting" is trivial.
+    """
+    outer = _make_cv(cfg.n_splits, cfg.n_repeats, groups is not None, cfg.random_state)
+    folds: list[FoldPrediction] = []
+    aucs: list[float] = []
+    accs: list[float] = []
+    aps: list[float] = []
+    for i, (train, test) in enumerate(_split(outer, x, y, groups)):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"outer test fold {i} holds a single class (n={len(test)}), so its "
+                f"AUC is undefined. With grouped CV this happens when a unit carries "
+                f"most of one class — use more units per fold (lower n_splits) or "
+                f"row-level CV."
+            )
+        scaler, model = _fit_fold(x[train], y[train])
+        score = _scores(scaler, model, x[test])
+        folds.append(
+            FoldPrediction(
+                y_true=y[test].copy(),
+                y_score=score,
+                repeat=i // cfg.n_splits,
+                fold=i % cfg.n_splits,
+                test_indices=np.asarray(test, dtype=int).copy(),
+                shrinkage_negative=float(model.shrinkage_[0]),
+                shrinkage_positive=float(model.shrinkage_[1]),
+            )
+        )
+        aucs.append(float(roc_auc_score(y[test], score)))
+        accs.append(float(balanced_accuracy_score(y[test], (score >= 0.0).astype(int))))
+        aps.append(float(average_precision_score(y[test], score)))
+    repeat_aucs, repeat_pooled = _per_repeat_aucs(folds, aucs)
+    return _Performance(
+        folds=folds,
+        auc=float(np.mean(aucs)),
+        auc_sd=float(np.std(aucs)),
+        balanced_accuracy=float(np.mean(accs)),
+        average_precision=float(np.mean(aps)),
+        repeat_aucs=repeat_aucs,
+        repeat_pooled_aucs=repeat_pooled,
+    )
+
+
+def _per_repeat_aucs(
+    folds: list[FoldPrediction], fold_aucs: list[float]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """(mean-of-fold AUC, pooled-OOF AUC) per outer repeat, in repeat order."""
+    repeats = sorted({f.repeat for f in folds})
+    means: list[float] = []
+    pooled: list[float] = []
+    for r in repeats:
+        idx = [i for i, f in enumerate(folds) if f.repeat == r]
+        means.append(float(np.mean([fold_aucs[i] for i in idx])))
+        y_true = np.concatenate([folds[i].y_true for i in idx])
+        y_score = np.concatenate([folds[i].y_score for i in idx])
+        pooled.append(float(roc_auc_score(y_true, y_score)))
+    return tuple(means), tuple(pooled)
+
+
+@dataclass(frozen=True)
+class _AllDataFit:
+    coef: np.ndarray
+    shrinkage_negative: float
+    shrinkage_positive: float
+
+
+def _all_data_fit(x: np.ndarray, y: np.ndarray) -> _AllDataFit:
+    """Refit on all data -> standardized weights + per-class shrinkage intensities."""
+    _, model = _fit_fold(x, y)
+    coef = np.asarray(model.coef_, dtype=float).ravel().copy()
+    return _AllDataFit(
+        coef=coef,
+        shrinkage_negative=float(model.shrinkage_[0]),
+        shrinkage_positive=float(model.shrinkage_[1]),
+    )
+
+
+def _warn_if_shrinkage_saturated(
+    shrinkage_negative: float,
+    shrinkage_positive: float,
+    negative_label: str,
+    positive_label: str,
+) -> None:
+    """Warn when an all-data intensity is at or above the saturation threshold."""
+    saturated = [
+        f"{label} (lambda = {lam:.3f})"
+        for label, lam in (
+            (negative_label, shrinkage_negative),
+            (positive_label, shrinkage_positive),
+        )
+        if lam >= _SHRINKAGE_SATURATION
+    ]
+    if not saturated:
+        return
+    warnings.warn(
+        f"Ledoit-Wolf shrinkage is saturated for class {' and '.join(saturated)}: the "
+        f"within-class covariance was shrunk almost entirely onto its diagonal target, "
+        f"so the discriminant direction is approximately a standardized mean "
+        f"difference (diagonal LDA), not a covariance-adjusted one. State that reading "
+        f"in the finding.",
+        ShrinkageSaturationWarning,
+        stacklevel=3,
+    )
+
+
+def _stability(
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    cfg: _Config,
+) -> np.ndarray:
+    """Per-resample standardized weights (shrinkage re-estimated on each resample).
+
+    Refits on the training side of ``stability_repeats`` x ``n_splits`` stratified
+    resamples (the test side is discarded — this is a subsample-refit device, not an
+    evaluation). Note the shared ``random_state``: the first ``n_repeats`` resamples
+    coincide with the outer-CV training folds (inherited from the elastic-net template).
+    """
+    cv = _make_cv(
+        cfg.n_splits, cfg.stability_repeats, groups is not None, cfg.random_state
+    )
+    coefs: list[np.ndarray] = []
+    for train, _ in _split(cv, x, y, groups):
+        _, model = _fit_fold(x[train], y[train])
+        coefs.append(np.asarray(model.coef_, dtype=float).ravel())
+    return np.asarray(coefs, dtype=float)
+
+
+def _cv_auc(
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    cfg: _Config,
+) -> float:
+    """Mean AUC from repeated K-fold (the observed run and each null draw alike).
+
+    There is no fixed hyperparameter to hold: every fold refits the scaler and
+    re-estimates the shrinkage on its training rows, exactly as the performance folds
+    do. ``null_repeats`` (lighter than ``n_repeats``) sets the repeats.
+    """
+    cv = _make_cv(cfg.n_splits, cfg.null_repeats, groups is not None, cfg.random_state)
+    aucs: list[float] = []
+    for train, test in _split(cv, x, y, groups):
+        scaler, model = _fit_fold(x[train], y[train])
+        aucs.append(float(roc_auc_score(y[test], _scores(scaler, model, x[test]))))
+    return float(np.mean(aucs))
+
+
+def _permute_labels(
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    rng: np.random.Generator,
+    scheme: NullPermutation = "units",
+) -> np.ndarray:
+    """Shuffle labels for one null draw.
+
+    Ungrouped: a plain row shuffle. Grouped, ``scheme="units"``: shuffle one label per
+    unit (a unit's samples keep a common label — the null for a label that is a *unit*
+    property, e.g. a subject/animal). Grouped, ``scheme="within_units"``: shuffle labels
+    *inside* each unit, preserving every unit's class counts — the restricted
+    (within-block) permutation for a batch-grouped design whose units hold both
+    classes; see :func:`_permute_within_units`.
+    """
+    if groups is None:
+        return np.asarray(rng.permutation(y), dtype=int)
+    if scheme == "within_units":
+        return _permute_within_units(y, groups, rng)
+    units, inverse = np.unique(groups, return_inverse=True)
+    unit_label = _unit_labels(y, groups, units)
+    shuffled = rng.permutation(unit_label)
+    return np.asarray(shuffled[inverse], dtype=int)
+
+
+def _unit_labels(y: np.ndarray, groups: np.ndarray, units: np.ndarray) -> np.ndarray:
+    """One label per unit — raises if any unit carries both classes.
+
+    A unit-level null permutes *unit* labels, which is only defined when each unit has
+    one label; a mixed unit means ``groups`` is not the unit of the outcome (rounding
+    a mixed unit would silently change the class balance of the permuted labels). A
+    **batch-grouped design** (``generalization_target="batches"``, each batch holding
+    both classes) is the within-unit case: pass ``null_permutation="within_units"``.
+    """
+    out = np.empty(len(units), dtype=int)
+    for i, u in enumerate(units):
+        labels = np.unique(y[groups == u])
+        if len(labels) != 1:
+            raise ValueError(
+                f"groups unit {u!r} carries both classes; a unit-level label-shuffle "
+                f"null needs one label per unit. Use a groups column that is the unit "
+                f"of the outcome, run without groups, or — for a batch-grouped design "
+                f"whose units hold both classes — pass null_permutation='within_units'."
+            )
+        out[i] = int(labels[0])
+    return out
+
+
+def _permute_within_units(
+    y: np.ndarray, groups: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """Shuffle labels inside each unit, preserving every unit's class counts.
+
+    The restricted permutation for exchangeable blocks (Anderson & ter Braak 2003;
+    Winkler et al. 2015): under H0 the label is independent of the features *given the
+    unit*, so labels are exchangeable within a unit but not across units. Every draw
+    keeps each unit's class composition — hence the unit↔label association, the global
+    class balance, and (because ``StratifiedGroupKFold`` assigns units to folds from
+    their class counts) the grouped CV folds themselves — so only the labels move.
+    Assumes samples within a unit are exchangeable: not for a nested design (subjects
+    repeated within a batch), which needs a multi-level block permutation.
+    """
+    out = np.asarray(y, dtype=int).copy()
+    for u in np.unique(groups):
+        idx = np.flatnonzero(groups == u)
+        out[idx] = y[rng.permutation(idx)]
+    return out
+
+
+def _within_unit_arrangements(y: np.ndarray, groups: np.ndarray) -> int:
+    """Distinct label arrangements a within-unit permutation can reach.
+
+    ``prod_u C(n_u, k_u)`` over units (``k_u`` positives of ``n_u``), as an exact Python
+    ``int`` — never a numpy product, which overflows int64 silently on a few large
+    units. ``1`` means every unit carries one class: the permutation is the identity
+    and a null built on it would reproduce the observed AUC (p = 1) — the caller
+    refuses. Below ``n_permutations`` the draws must repeat and the empirical p resolves
+    only to about ``1 / arrangements`` — the caller warns.
+    """
+    total = 1
+    for u in np.unique(groups):
+        in_unit = groups == u
+        total *= math.comb(int(in_unit.sum()), int(y[in_unit].sum()))
+    return total
+
+
+def _null_distribution(
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+    cfg: _Config,
+) -> tuple[np.ndarray, float, float]:
+    """Label-shuffle null (shrinkage re-estimated per draw) -> nulls, observed, p."""
+    observed = _cv_auc(x, y, groups, cfg)
+    rng = np.random.default_rng(cfg.random_state)
+    nulls = np.array(
+        [
+            _cv_auc(
+                x, _permute_labels(y, groups, rng, cfg.null_permutation), groups, cfg
+            )
+            for _ in range(cfg.n_permutations)
+        ],
+        dtype=float,
+    )
+    p = float((np.sum(nulls >= observed) + 1) / (cfg.n_permutations + 1))
+    return nulls, observed, p
+
+
+# --------------------------------------------------------------------------- #
+# Internal: coefficient table (dense — every feature; top-k membership, not
+# selection frequency)
+# (Duplicated from analysis.classification_svm — the dense-model convention.)
+# --------------------------------------------------------------------------- #
+def _top_k_membership(resample_coef: np.ndarray, top_k: int) -> np.ndarray:
+    """(n_resamples, n_features) bool — is the feature in the resample's top-k |w|?
+
+    Membership is ``|w| >= the k-th largest |w|`` of that resample, so features **tied**
+    with the k-th weight are all members (a duplicated / perfectly collinear protein
+    row gets the same frequency as its twin, never an arbitrary 1.0 vs 0.0 split); a
+    resample with ties at rank k therefore has more than ``top_k`` members, and the
+    frequencies sum to at least ``top_k``.
+    """
+    mag = np.abs(resample_coef)
+    kth = np.sort(mag, axis=1)[:, ::-1][:, top_k - 1]
+    member: np.ndarray = mag >= kth[:, None]
+    return member
+
+
+def _coefficient_table(
+    final_coef: np.ndarray,
+    resample_coef: np.ndarray,
+    feature_names: np.ndarray,
+    top_k: int,
+) -> pd.DataFrame:
+    """Assemble the per-feature table for every analyzed feature (dense model)."""
+    n_resample = resample_coef.shape[0]
+    top_k_freq = _top_k_membership(resample_coef, top_k).mean(axis=0)
+    sign_cons = np.abs(np.sign(resample_coef).sum(axis=0)) / n_resample
+    median = np.median(resample_coef, axis=0)
+    q25 = np.percentile(resample_coef, 25, axis=0)
+    q75 = np.percentile(resample_coef, 75, axis=0)
+    table = pd.DataFrame(
+        {
+            "feature": feature_names,
+            "coef": final_coef,
+            "abs_coef": np.abs(final_coef),
+            "top_k_frequency": top_k_freq,
+            "sign_consistency": sign_cons,
+            "coef_median": median,
+            "coef_q25": q25,
+            "coef_q75": q75,
+            "n_resamples": n_resample,
+        }
+    )
+    return table.sort_values("abs_coef", ascending=False, kind="stable").reset_index(
+        drop=True
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Internal: resolved configuration
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _Config:
+    top_k: int
+    n_splits: int
+    n_repeats: int
+    stability_repeats: int
+    null_repeats: int
+    n_permutations: int
+    null_permutation: NullPermutation
+    random_state: int
+
+
+# --------------------------------------------------------------------------- #
+# Public API
+# --------------------------------------------------------------------------- #
+def classify_lda(
+    dataset: Dataset,
+    outcome: str,
+    *,
+    binarize: BinarizeSpec | None = None,
+    positive_class: str | None = None,
+    groups: str | None = None,
+    generalization_target: GeneralizationTarget = "samples",
+    feature_list: Sequence[str] | None = None,
+    top_k: int = 20,
+    n_splits: int = 5,
+    n_repeats: int = 5,
+    stability_repeats: int = 10,
+    run_null: bool = False,
+    n_permutations: int = 1000,
+    null_repeats: int = 3,
+    null_permutation: NullPermutation = "units",
+    random_state: int = 0,
+) -> LDAClassificationResult:
+    """Fit a leakage-safe shrinkage-LDA classifier; report the three parts.
+
+    Parameters
+    ----------
+    dataset:
+        The **experimental subset** on a **log2-like** scale, missing values resolved
+        upstream (a ``NaN`` raises). Constant/all-zero features are dropped.
+    outcome:
+        The metadata column that defines the class. An already-binary categorical
+        column is used directly; a continuous or >2-level column needs ``binarize``.
+    binarize:
+        The rule reducing a non-binary outcome to two classes — :class:`Threshold` (cut
+        a continuous column) or :class:`LevelMap` (assign categorical levels; unlisted
+        ones are dropped). Required unless ``outcome`` already has exactly two classes.
+    positive_class:
+        For an already-binary categorical outcome, which level is class 1 (the weight
+        sign is *toward* it). Default is the sorted-second level.
+    groups:
+        Metadata column naming the independent unit (subject/animal/batch). Used for
+        group-aware CV **only if it has repeats**; all-singletons -> row-level CV.
+        With ``run_null=True`` the null permutes labels at the unit level by default
+        (every unit must then carry one class — a subject/animal); a batch-grouped
+        design, whose units hold both classes, runs its null with
+        ``null_permutation="within_units"``.
+    generalization_target:
+        The performance question — ``"samples"``, ``"individuals"``, or ``"batches"``.
+        Recorded; report performance as "on unseen <target>". With no repeats, unseen
+        sample and unseen individual coincide.
+    feature_list:
+        Optional curated / hypothesis-driven feature ids to restrict to before fitting
+        (prior knowledge; cuts dimensionality, can sharpen a weak signal). **Must be
+        defined independent of ``outcome``** (a list derived from this data's class is
+        circular). Applied to the whole matrix once (leakage-safe, since the list is
+        outcome-independent); matched/unmatched counts are recorded.
+    top_k:
+        The ``k`` of the stability read: a feature's ``top_k_frequency`` is the fraction
+        of stability resamples in which it ranks in the top ``k`` by |weight|. Must be
+        ``1 <= top_k <= n_features`` (after constant dropping).
+    n_splits, n_repeats:
+        Outer repeated-CV folds and repeats (the honest performance estimate). There is
+        no inner CV — the shrinkage is analytic — so each class only needs
+        ``>= n_splits`` samples (and ``>= 2`` inside every training fold).
+    stability_repeats:
+        Repeats of the stability loop (``n_splits`` folds each; the shrinkage is
+        re-estimated on every resample).
+    run_null:
+        If ``True``, run the **label-shuffle null** (the gate that licenses trusting the
+        weights and enables a ``validated`` finding). Opt-in for API symmetry with the
+        sibling templates; it is **cheap** here (a fit is milliseconds), so run it right
+        after the first pass. If ``False``, ``null_*`` are ``None`` and the finding is
+        capped at ``exploratory``.
+    n_permutations, null_repeats:
+        Number of label permutations, and the (lighter) CV repeats per permutation.
+    null_permutation:
+        How the label-shuffle null permutes under grouped CV. ``"units"`` (default)
+        shuffles one label per unit — the null for a label that is a unit property
+        (``generalization_target="individuals"``; a unit holding both classes raises).
+        ``"within_units"`` shuffles labels inside each unit, preserving every unit's
+        class counts — the restricted permutation for a batch-grouped design
+        (``generalization_target="batches"``, batches holding both classes): it tests
+        whether the features predict the label *beyond batch*, keeps the grouped folds
+        identical to the observed run, and needs grouped CV with some mixed unit
+        (all-single-class units raise; fewer distinct arrangements than
+        ``n_permutations`` warn — :class:`NullPermutationWarning`). Under row-level
+        CV ``"units"`` is the plain row shuffle and ``"within_units"`` raises. The
+        scheme applied is recorded on the result and belongs in the cache fingerprint.
+    random_state:
+        Recorded seed for every stochastic step (the CV shuffles and the null's
+        permutations; the fit itself is deterministic).
+
+    Returns
+    -------
+    LDAClassificationResult
+    """
+    if top_k < 1:
+        raise ValueError(f"top_k must be >= 1; got {top_k}.")
+    if null_permutation not in ("units", "within_units"):
+        raise ValueError(
+            f"null_permutation must be 'units' or 'within_units'; "
+            f"got {null_permutation!r}."
+        )
+
+    metadata = dataset.metadata
+    abundances = np.asarray(dataset.abundances, dtype=float)
+    if abundances.ndim != 2:
+        raise ValueError(f"abundances must be 2D; got shape {abundances.shape}.")
+    n_samples, _ = abundances.shape
+    if len(metadata) != n_samples:
+        raise ValueError(
+            f"metadata has {len(metadata)} rows but abundances has {n_samples} samples."
+        )
+    if outcome not in metadata.columns:
+        raise ValueError(f"outcome column {outcome!r} not in metadata.")
+    if not np.all(np.isfinite(abundances)):
+        raise ValueError(
+            "abundances contain NaN/inf. Missing-value handling is an upstream Stage-2 "
+            "decision (conventions/statistics.md); this classifier does not silently "
+            "impute. Resolve missingness before classification."
+        )
+    _check_scale(dataset.scale)
+
+    labels = _resolve_labels(metadata[outcome], binarize, positive_class, outcome)
+    keep = labels.keep
+    y = labels.y
+    n_dropped_unassigned = int(n_samples - int(keep.sum()))
+    x_kept = abundances[keep, :]
+
+    feature_names = np.asarray(dataset.feature_names)
+    feat_mask, n_requested, n_matched = _resolve_feature_list(
+        feature_names, feature_list
+    )
+    x_listed = x_kept[:, feat_mask]
+    listed_names = feature_names[feat_mask]
+    non_constant = np.std(x_listed, axis=0) > 0.0
+    n_dropped_constant = int((~non_constant).sum())
+    x = x_listed[:, non_constant]
+    kept_features = listed_names[non_constant]
+    if x.shape[1] == 0:
+        raise ValueError("No non-constant features remain after dropping constants.")
+
+    n_pos = int(y.sum())
+    n_neg = int((y == 0).sum())
+    if n_pos < 2 or n_neg < 2:
+        raise ValueError(
+            f"Need >=2 samples per class; got positive={n_pos}, negative={n_neg}."
+        )
+    _check_class_sizes_for_cv(n_pos, n_neg, n_splits)
+    if top_k > x.shape[1]:
+        raise ValueError(
+            f"top_k ({top_k}) exceeds the {x.shape[1]} analyzed features; a top-k "
+            f"membership frequency of 1.0 everywhere would be meaningless. Lower top_k."
+        )
+
+    groups_kept = _resolve_grouping(groups, metadata, keep)
+    grouped = groups_kept is not None
+    if run_null and null_permutation == "within_units":
+        # Fail before the CV: a within-unit null needs grouped CV + freedom.
+        if groups_kept is None:
+            raise ValueError(
+                f"null_permutation='within_units' needs grouped CV, but this run is "
+                f"row-level (groups={groups!r}: not given, or no repeated units — see "
+                f"SingletonGroupsWarning). Use null_permutation='units' (the default)."
+            )
+        n_arrangements = _within_unit_arrangements(y, groups_kept)
+        if n_arrangements == 1:
+            raise ValueError(
+                "null_permutation='within_units' has no freedom: every groups unit "
+                "carries one class, so a within-unit shuffle is the identity and the "
+                "null would reproduce the observed AUC (p = 1). Use "
+                "null_permutation='units' — the label is a unit property here."
+            )
+        if n_arrangements < n_permutations:
+            warnings.warn(
+                f"Within-unit permutation can reach only {n_arrangements} distinct "
+                f"label arrangements, fewer than n_permutations={n_permutations}: "
+                f"draws will repeat and the empirical p resolves only to about "
+                f"1/{n_arrangements}. Larger or more mixed units give a finer null.",
+                NullPermutationWarning,
+                stacklevel=2,
+            )
+    elif run_null and groups_kept is not None:
+        # Fail before the CV: a unit-level null needs one label per unit.
+        _unit_labels(y, groups_kept, np.unique(groups_kept))
+    null_scheme: str | None = None
+    if run_null:
+        null_scheme = "samples" if groups_kept is None else null_permutation
+
+    cfg = _Config(
+        top_k=top_k,
+        n_splits=n_splits,
+        n_repeats=n_repeats,
+        stability_repeats=stability_repeats,
+        null_repeats=null_repeats,
+        n_permutations=n_permutations,
+        null_permutation=null_permutation,
+        random_state=random_state,
+    )
+
+    perf = _nested_performance(x, y, groups_kept, cfg)
+    fit = _all_data_fit(x, y)
+    _warn_if_shrinkage_saturated(
+        fit.shrinkage_negative,
+        fit.shrinkage_positive,
+        labels.negative_label,
+        labels.positive_label,
+    )
+    resample_coef = _stability(x, y, groups_kept, cfg)
+    coeff_table = _coefficient_table(fit.coef, resample_coef, kept_features, top_k)
+
+    null_aucs: np.ndarray | None = None
+    observed_auc: float | None = None
+    null_p: float | None = None
+    if run_null:
+        null_aucs, observed_auc, null_p = _null_distribution(x, y, groups_kept, cfg)
+
+    return LDAClassificationResult(
+        coefficients=coeff_table,
+        fold_predictions=perf.folds,
+        cv_auc=perf.auc,
+        cv_auc_sd=perf.auc_sd,
+        cv_balanced_accuracy=perf.balanced_accuracy,
+        cv_average_precision=perf.average_precision,
+        repeat_aucs=perf.repeat_aucs,
+        repeat_pooled_aucs=perf.repeat_pooled_aucs,
+        shrinkage_negative=fit.shrinkage_negative,
+        shrinkage_positive=fit.shrinkage_positive,
+        top_k=top_k,
+        outcome=outcome,
+        positive_label=labels.positive_label,
+        negative_label=labels.negative_label,
+        generalization_target=generalization_target,
+        grouped=grouped,
+        groups_column=groups if grouped else None,
+        n_samples=int(keep.sum()),
+        n_positive=n_pos,
+        n_negative=n_neg,
+        n_features=int(x.shape[1]),
+        n_dropped_constant=n_dropped_constant,
+        n_dropped_unassigned=n_dropped_unassigned,
+        random_state=random_state,
+        null_aucs=null_aucs,
+        observed_auc=observed_auc,
+        null_p=null_p,
+        n_features_requested=n_requested,
+        n_features_matched=n_matched,
+        null_permutation=null_scheme,
+        feature_names=kept_features,
+    )
+
+
+def _check_scale(scale: str) -> None:
+    if scale not in _LOG2_LIKE:
+        warnings.warn(
+            f"Classification on scale {scale!r}: in-fold standardization tolerates the "
+            f"scale, but linear-scale abundances are right-skewed and leave outlier "
+            f"z-scores the model is sensitive to. Run on log data unless you have a "
+            f"specific reason not to.",
+            ClassificationScaleWarning,
+            stacklevel=3,
+        )
+
+
+def _check_class_sizes_for_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
+    """Each class must fill every stratified fold and keep >= 3 rows per training fold.
+
+    The sibling templates guard the *inner* CV of their nested search; this template
+    has no inner CV (the shrinkage is analytic), so the bound is the plain stratified
+    one — ``min_class >= n_splits`` — plus the shrinkage estimator's own need for
+    **three** rows of each class inside every training fold
+    (``min_class - ceil(min_class / n_splits) >= 3``): with two rows a class's
+    centered block is ``+-v``, Ledoit-Wolf's ``beta`` is identically zero, the
+    intensity is 0, and the pooled covariance is singular. Under grouped CV a whole
+    minority unit can leave with the test fold; that fails loudly in the fit, never
+    silently.
+    """
+    min_class = min(n_pos, n_neg)
+    if min_class < n_splits:
+        raise ValueError(
+            f"Stratified CV needs each class to have >= n_splits ({n_splits}) samples; "
+            f"got positive={n_pos}, negative={n_neg}. Lower n_splits to proceed."
+        )
+    train_min = min_class - math.ceil(min_class / n_splits)
+    if train_min < 3:
+        raise ValueError(
+            f"Each class needs >= 3 samples inside every training fold for a shrunk "
+            f"covariance (two rows give Ledoit-Wolf nothing to shrink); got "
+            f"positive={n_pos}, negative={n_neg} with n_splits={n_splits}, leaving "
+            f"only {train_min} of the minority class. Lower n_splits to proceed."
+        )
