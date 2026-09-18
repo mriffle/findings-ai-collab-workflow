@@ -22,10 +22,12 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pytest
 from analysis import classification as clf
 from analysis import classification_lda as lda
 from analysis import classification_svm as svm
 from analysis import classification_xgboost as xgb
+from analysis import regression as reg
 from common import data_loading as dl
 from sklearn.exceptions import ConvergenceWarning
 
@@ -129,6 +131,23 @@ _NULL_HELPERS = (
     "_within_unit_arrangements",
 )
 
+# The label / grouping / CV scaffolding the four classifiers also carry as deliberate
+# byte-identical copies (self-contained seeds). A drift in one would make "the same
+# analyzed sample set on the same folds" untrue across a paired comparison.
+_SHARED_HELPERS = (
+    "_is_numeric",
+    "_labels_and_missing",
+    "_resolve_labels",
+    "_resolve_already_binary",
+    "_resolve_threshold",
+    "_resolve_level_map",
+    "_resolve_grouping",
+    "_make_cv",
+    "_split",
+    "_RepeatedStratifiedGroupKFold",
+    *_NULL_HELPERS,
+)
+
 
 def test_null_helpers_byte_identical_across_templates() -> None:
     # the four templates carry deliberate copies (self-contained seeds); a drift in one
@@ -136,6 +155,52 @@ def test_null_helpers_byte_identical_across_templates() -> None:
     for name in _NULL_HELPERS:
         sources = {k: inspect.getsource(getattr(m, name)) for k, m in _MODULES.items()}
         assert len(set(sources.values())) == 1, name
+
+
+def test_shared_helpers_byte_identical_across_templates() -> None:
+    for name in _SHARED_HELPERS:
+        sources = {k: inspect.getsource(getattr(m, name)) for k, m in _MODULES.items()}
+        assert len(set(sources.values())) == 1, name
+
+
+# --------------------------------------------------------------------------- #
+# Missing metadata values: an outcome NA is dropped (never a level), a groups NA
+# raises (never a unit). pandas >= 3 keeps NA as a float through astype(str), so the
+# old ``labels != "nan"`` sentinel silently stopped working.
+# --------------------------------------------------------------------------- #
+_MISSING_VALUES: tuple[object, ...] = (None, np.nan, pd.NA)
+
+
+@pytest.mark.parametrize("module", list(_MODULES.values()), ids=list(_MODULES))
+@pytest.mark.parametrize("missing", _MISSING_VALUES, ids=("None", "nan", "NA"))
+def test_missing_outcome_value_is_dropped(module: Any, missing: object) -> None:
+    for dtype in (object, "string"):
+        series = pd.Series(["A", "B", missing, "A", "B", "A"], dtype=dtype)
+        labels = module._resolve_labels(series, None, None, "grp")
+        assert labels.keep.tolist() == [True, True, False, True, True, True]
+        assert labels.y.tolist() == [0, 1, 0, 1, 0]
+        assert (labels.positive_label, labels.negative_label) == ("B", "A")
+        # LevelMap: a missing value is unassigned, so it is dropped the same way
+        lm = module._resolve_labels(
+            series, module.LevelMap(positive=("B",), negative=("A",)), None, "grp"
+        )
+        assert lm.keep.tolist() == labels.keep.tolist()
+        assert lm.y.tolist() == labels.y.tolist()
+
+
+@pytest.mark.parametrize(
+    "module",
+    [*_MODULES.values(), reg],
+    ids=[*_MODULES, "regression"],
+)
+def test_missing_group_value_raises(module: Any) -> None:
+    metadata = pd.DataFrame({"unit": ["a", "a", "b", "b", None, None, "c", "c"]})
+    keep = np.ones(len(metadata), dtype=bool)
+    with pytest.raises(ValueError, match=r"missing value.*positions \[4, 5\]"):
+        module._resolve_grouping("unit", metadata, keep)
+    # a missing unit on a sample the binarize rule already dropped is not an error
+    keep[4:6] = False
+    assert module._resolve_grouping("unit", metadata, keep) is not None
 
 
 def _batch_design() -> tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -167,7 +167,7 @@ _TIE_TOL = 1e-6
 _SUB_PLATEAU_WARN_FRACTION = 0.25
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm", "version": "0.3"},
+    "template": {"name": "classification-svm", "version": "0.4"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
@@ -326,6 +326,7 @@ class LevelMap:
 
     Levels listed in neither ``positive`` nor ``negative`` are **dropped** (so this also
     expresses "compare these two of k levels, drop the rest"). Levels must not overlap.
+    A missing value is unassigned: dropped and counted in ``n_dropped_unassigned``.
     """
 
     positive: tuple[str, ...]
@@ -507,6 +508,19 @@ class _Labels:
     negative_label: str
 
 
+def _labels_and_missing(series: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """String labels plus a missing mask, robust to pandas' NA handling.
+
+    ``astype(str)`` leaves a missing value as a float ``nan`` (pandas >= 3 string
+    dtype) or as the text ``"nan"`` / ``"<NA>"`` (older object columns), so a string
+    comparison cannot detect it. The mask comes from ``isna()`` first; a missing row
+    gets the empty label and is never compared as a level or a unit.
+    """
+    missing = np.asarray(series.isna().to_numpy(), dtype=bool)
+    labels = np.where(missing, "", series.astype(str).to_numpy()).astype(str)
+    return labels, missing
+
+
 def _resolve_labels(
     series: pd.Series,
     binarize: BinarizeSpec | None,
@@ -530,8 +544,8 @@ def _resolve_already_binary(
             f"binarize=Threshold(cut=...) to split it, or a LevelMap if it is a coded "
             f"factor."
         )
-    labels = series.astype(str).to_numpy()
-    keep = labels != "nan"
+    labels, missing = _labels_and_missing(series)
+    keep = ~missing
     levels = sorted(set(labels[keep].tolist()))
     if len(levels) != 2:
         raise ValueError(
@@ -586,20 +600,20 @@ def _resolve_threshold(series: pd.Series, spec: Threshold, outcome: str) -> _Lab
 
 
 def _resolve_level_map(series: pd.Series, spec: LevelMap, outcome: str) -> _Labels:
-    labels = series.astype(str).to_numpy()
+    labels, missing = _labels_and_missing(series)
     pos_set, neg_set = set(spec.positive), set(spec.negative)
     overlap = pos_set & neg_set
     if overlap:
         raise ValueError(f"LevelMap positive/negative overlap on {sorted(overlap)}.")
-    present = set(labels.tolist())
+    present = set(labels[~missing].tolist())
     unknown = (pos_set | neg_set) - present
     if unknown:
         raise ValueError(
             f"LevelMap references levels {sorted(unknown)} absent from {outcome!r} "
             f"(present: {sorted(present)})."
         )
-    is_pos = np.isin(labels, list(pos_set))
-    is_neg = np.isin(labels, list(neg_set))
+    is_pos = np.isin(labels, list(pos_set)) & ~missing
+    is_neg = np.isin(labels, list(neg_set)) & ~missing
     keep = is_pos | is_neg
     y = is_pos[keep].astype(int)
     return _Labels(
@@ -654,7 +668,15 @@ def _resolve_grouping(
         return None
     if groups not in metadata.columns:
         raise ValueError(f"groups column {groups!r} not in metadata.")
-    g = np.asarray(metadata[groups].astype(str).to_numpy())[keep]
+    labels, missing = _labels_and_missing(metadata[groups])
+    g = labels[keep]
+    missing_kept = np.flatnonzero(missing[keep])
+    if missing_kept.size:
+        raise ValueError(
+            f"groups column {groups!r} has a missing value for {missing_kept.size} "
+            f"analyzed sample(s) (positions {missing_kept[:10].tolist()}): a sample "
+            f"without a unit cannot be assigned to a fold. Fill or drop it upstream."
+        )
     _, counts = np.unique(g, return_counts=True)
     if int(counts.max(initial=0)) <= 1:
         warnings.warn(

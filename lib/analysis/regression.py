@@ -107,7 +107,7 @@ _ZERO_COEF = 1e-10
 _FEATURE_LIST_WARN_FRACTION = 0.5
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "regression", "version": "0.1"},
+    "template": {"name": "regression", "version": "0.2"},
     "kind": "analysis",
     "provides": [
         "GeneralizationTarget",
@@ -329,6 +329,19 @@ def _build_pipeline(
     return Pipeline([("scaler", StandardScaler()), ("en", en)])
 
 
+def _labels_and_missing(series: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """String labels plus a missing mask, robust to pandas' NA handling.
+
+    ``astype(str)`` leaves a missing value as a float ``nan`` (pandas >= 3 string
+    dtype) or as the text ``"nan"`` / ``"<NA>"`` (older object columns), so a string
+    comparison cannot detect it. The mask comes from ``isna()`` first; a missing row
+    gets the empty label and is never compared as a level or a unit.
+    """
+    missing = np.asarray(series.isna().to_numpy(), dtype=bool)
+    labels = np.where(missing, "", series.astype(str).to_numpy()).astype(str)
+    return labels, missing
+
+
 def _resolve_grouping(
     groups: str | None,
     metadata: pd.DataFrame,
@@ -343,7 +356,15 @@ def _resolve_grouping(
         return None
     if groups not in metadata.columns:
         raise ValueError(f"groups column {groups!r} not in metadata.")
-    g = np.asarray(metadata[groups].astype(str).to_numpy())[keep]
+    labels, missing = _labels_and_missing(metadata[groups])
+    g = labels[keep]
+    missing_kept = np.flatnonzero(missing[keep])
+    if missing_kept.size:
+        raise ValueError(
+            f"groups column {groups!r} has a missing value for {missing_kept.size} "
+            f"analyzed sample(s) (positions {missing_kept[:10].tolist()}): a sample "
+            f"without a unit cannot be assigned to a fold. Fill or drop it upstream."
+        )
     _, counts = np.unique(g, return_counts=True)
     if int(counts.max(initial=0)) <= 1:
         warnings.warn(
