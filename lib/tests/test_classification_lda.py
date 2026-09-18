@@ -655,9 +655,16 @@ def test_all_figures_render(
     assert not hasattr(ldafig, "plot_hyperparameter_curve")  # three figures, by design
 
 
+def _caption(fig: Figure) -> str:
+    # the summary is a figure-level caption below the axes (never an axes text)
+    captions = [t for t in fig.texts if "balanced accuracy" in t.get_text()]
+    assert len(captions) == 1
+    return captions[0].get_text()
+
+
 def test_roc_annotates_shrinkage(planted_result: lda.LDAClassificationResult) -> None:
     fig = ldafig.plot_roc(planted_result)
-    texts = " ".join(t.get_text() for t in fig.axes[0].texts)
+    texts = _caption(fig)
     assert "Ledoit-Wolf shrinkage" in texts
     assert "calibrated posterior" in texts
     plt.close(fig)
@@ -669,8 +676,133 @@ def test_null_figure_requires_null() -> None:
     with pytest.raises(ValueError, match="null was not run"):
         ldafig.plot_null(res)
     fig = ldafig.plot_roc(res)  # annotates "null not run"
-    assert "null not run" in " ".join(t.get_text() for t in fig.axes[0].texts)
+    assert "null not run" in _caption(fig)
     plt.close(fig)
+
+
+def _mean_roc_label(fig: Figure) -> str:
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    labels = [
+        t.get_text() for t in legend.get_texts() if t.get_text().startswith("mean ROC")
+    ]
+    assert len(labels) == 1
+    return labels[0]
+
+
+def _line_xy(line: Any) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        np.asarray(line.get_xdata(), dtype=float),
+        np.asarray(line.get_ydata(), dtype=float),
+    )
+
+
+def _is_vline(line: Any) -> bool:
+    xs = _line_xy(line)[0]
+    return xs.size == 2 and bool(xs[0] == xs[1])
+
+
+def test_roc_legend_auc_equals_cv_auc(
+    planted_result: lda.LDAClassificationResult,
+) -> None:
+    # the number on the figure is the number in the finding — not a re-derived one
+    fig = ldafig.plot_roc(planted_result)
+    label = _mean_roc_label(fig)
+    assert (
+        f"AUC = {planted_result.cv_auc:.3f} ± {planted_result.cv_auc_sd:.3f}" in label
+    )
+    plt.close(fig)
+
+
+def test_roc_mean_curve_has_no_origin_notch(
+    planted_result: lda.LDAClassificationResult,
+) -> None:
+    # a near-perfect classifier rises vertically at FPR = 0; the drawn mean curve keeps
+    # that rise instead of being forced back through the origin
+    assert planted_result.cv_auc > 0.9
+    fig = ldafig.plot_roc(planted_result)
+    lines = [
+        ln for ln in fig.axes[0].lines if str(ln.get_label()).startswith("mean ROC")
+    ]
+    assert len(lines) == 1
+    xs, ys = _line_xy(lines[0])
+    assert float(xs[0]) == 0.0
+    assert float(ys[0]) > 0.0
+    assert float(ys[-1]) == 1.0
+    plt.close(fig)
+
+
+def test_roc_annotation_sits_below_axes(
+    planted_result: lda.LDAClassificationResult,
+) -> None:
+    fig = ldafig.plot_roc(planted_result)
+    ax = fig.axes[0]
+    captions = [t for t in fig.texts if "balanced accuracy" in t.get_text()]
+    assert len(captions) == 1
+    assert captions[0].get_position()[1] < ax.get_position().y0
+    assert not ax.texts  # nothing opaque sits over the plot region
+    plt.close(fig)
+
+
+def test_roc_annotation_shows_pooled_repeat_aucs(
+    planted_result: lda.LDAClassificationResult,
+) -> None:
+    res = planted_result
+    fig = ldafig.plot_roc(res)
+    text = _caption(fig)
+    plt.close(fig)
+    # each repeat's mean-of-fold AUC listed, the pooled-OOF range shown — and no
+    # between-repeat SD masquerading as the estimate's uncertainty
+    for a in res.repeat_aucs:
+        assert f"{a:.3f}" in text
+    assert "pooled-OOF AUC by repeat" in text
+    assert f"{min(res.repeat_pooled_aucs):.3f}" in text
+    assert f"{max(res.repeat_pooled_aucs):.3f}" in text
+    assert "per-repeat AUC =" not in text
+    assert "equal-prior cut" in text
+
+
+def test_null_line_at_observed_auc() -> None:
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    res = lda.classify_lda(ds, "grp", run_null=True, n_permutations=3, **_NULL_FAST)
+    assert res.observed_auc is not None
+    fig = ldafig.plot_null(res)
+    vlines = [ln for ln in fig.axes[0].lines if _is_vline(ln)]
+    assert len(vlines) == 1
+    assert float(_line_xy(vlines[0])[0][0]) == pytest.approx(res.observed_auc)
+    plt.close(fig)
+
+
+def test_feature_list_caveat_survives_custom_title(
+    planted_result: lda.LDAClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    res = replace(planted_result, n_features_requested=150, n_features_matched=142)
+    for fig in (
+        ldafig.plot_roc(res, title="MY TITLE"),
+        ldafig.plot_null(res, title="MY TITLE"),
+        ldafig.plot_coefficients(res, title="MY TITLE"),
+    ):
+        sup = fig.get_suptitle()
+        assert "MY TITLE" in sup
+        assert "prior feature list · 142 of 150 matched" in sup
+        plt.close(fig)
+
+
+def test_figure_error_path_closes(
+    planted_result: lda.LDAClassificationResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plt.close("all")
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(ldafig, "_apply_title", boom)
+    for plot in (ldafig.plot_roc, ldafig.plot_null, ldafig.plot_coefficients):
+        with pytest.raises(RuntimeError, match="injected"):
+            plot(planted_result)
+        assert plt.get_fignums() == []  # no figure leaked on the error path
 
 
 def test_coefficient_figure_top_n_defaults_to_top_k(

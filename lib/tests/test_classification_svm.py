@@ -704,6 +704,181 @@ def test_curve_figure_rejects_mismatched_grid(
         svmfig.plot_hyperparameter_curve(bad)
 
 
+def _mean_roc_label(fig: Figure) -> str:
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    labels = [
+        t.get_text() for t in legend.get_texts() if t.get_text().startswith("mean ROC")
+    ]
+    assert len(labels) == 1
+    return labels[0]
+
+
+def _caption(fig: Figure) -> str:
+    captions = [t for t in fig.texts if "balanced accuracy" in t.get_text()]
+    assert len(captions) == 1  # a figure-level caption, not an axes text
+    return captions[0].get_text()
+
+
+def _line_xy(line: Any) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        np.asarray(line.get_xdata(), dtype=float),
+        np.asarray(line.get_ydata(), dtype=float),
+    )
+
+
+def _is_vline(line: Any) -> bool:
+    xs = _line_xy(line)[0]
+    return xs.size == 2 and bool(xs[0] == xs[1])
+
+
+def test_roc_legend_auc_equals_cv_auc(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    # the number on the figure is the number in the finding — not a re-derived one
+    fig = svmfig.plot_roc(planted_result)
+    label = _mean_roc_label(fig)
+    assert (
+        f"AUC = {planted_result.cv_auc:.3f} ± {planted_result.cv_auc_sd:.3f}" in label
+    )
+    plt.close(fig)
+
+
+def test_roc_mean_curve_has_no_origin_notch(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    # a near-perfect classifier rises vertically at FPR = 0; the drawn mean curve keeps
+    # that rise instead of being forced back through the origin
+    assert planted_result.cv_auc > 0.9
+    fig = svmfig.plot_roc(planted_result)
+    lines = [
+        ln for ln in fig.axes[0].lines if str(ln.get_label()).startswith("mean ROC")
+    ]
+    assert len(lines) == 1
+    xs, ys = _line_xy(lines[0])
+    assert float(xs[0]) == 0.0
+    assert float(ys[0]) > 0.0
+    assert float(ys[-1]) == 1.0
+    plt.close(fig)
+
+
+def test_roc_annotation_sits_below_axes(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    fig = svmfig.plot_roc(planted_result)
+    ax = fig.axes[0]
+    captions = [t for t in fig.texts if "balanced accuracy" in t.get_text()]
+    assert len(captions) == 1
+    assert captions[0].get_position()[1] < ax.get_position().y0
+    assert not ax.texts  # nothing opaque sits over the plot region
+    plt.close(fig)
+
+
+def test_roc_annotation_shows_pooled_repeat_aucs(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    res = planted_result
+    fig = svmfig.plot_roc(res)
+    text = _caption(fig)
+    plt.close(fig)
+    # each repeat's mean-of-fold AUC listed, the pooled-OOF range shown — and no
+    # between-repeat SD masquerading as the estimate's uncertainty
+    for a in res.repeat_aucs:
+        assert f"{a:.3f}" in text
+    assert "pooled-OOF AUC by repeat" in text
+    assert f"{min(res.repeat_pooled_aucs):.3f}" in text
+    assert f"{max(res.repeat_pooled_aucs):.3f}" in text
+    assert "per-repeat AUC =" not in text
+    assert "scores = SVM margin (uncalibrated)" in text
+
+
+def test_null_line_at_observed_auc() -> None:
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    res = svm.classify_svm(ds, "grp", run_null=True, n_permutations=3, **_NULL_FAST)
+    assert res.observed_auc is not None
+    fig = svmfig.plot_null(res)
+    vlines = [ln for ln in fig.axes[0].lines if _is_vline(ln)]
+    assert len(vlines) == 1
+    assert float(_line_xy(vlines[0])[0][0]) == pytest.approx(res.observed_auc)
+    plt.close(fig)
+
+
+def test_curve_ylabel_names_tuning_metric(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    fig = svmfig.plot_hyperparameter_curve(planted_result)
+    assert fig.axes[0].get_ylabel() == "mean inner-CV AUC"
+    plt.close(fig)
+    fig = svmfig.plot_hyperparameter_curve(
+        replace(planted_result, tuning_metric="balanced_accuracy")
+    )
+    assert fig.axes[0].get_ylabel() == "mean inner-CV balanced accuracy"
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    labels = [t.get_text() for t in legend.get_texts()]
+    assert "mean inner-CV balanced accuracy" in labels
+    plt.close(fig)
+
+
+def test_curve_fold_rug_in_own_axes(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    res = planted_result
+    fig = svmfig.plot_hyperparameter_curve(res)
+    assert len(fig.axes) == 2  # the curve + its own short rug axes beneath
+    curve, rug = fig.axes
+    assert rug.get_position().y1 <= curve.get_position().y0
+    counts = [int(t.get_text()) for t in rug.texts]
+    assert sum(counts) == len(res.fold_predictions)  # every fold counted once
+    assert len(counts) == len({f.best_c for f in res.fold_predictions})
+    assert curve.get_xlabel() == "" and rug.get_xlabel().startswith("C ")
+    assert rug.get_xscale() == "log"  # shares the curve's log x
+    legend = curve.get_legend()
+    assert legend is not None
+    assert any(t.get_text().startswith("per-fold tuned C") for t in legend.get_texts())
+    plt.close(fig)
+
+
+def test_feature_list_caveat_survives_custom_title(
+    planted_result: svm.SVMClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    res = replace(planted_result, n_features_requested=150, n_features_matched=142)
+    for fig in (
+        svmfig.plot_roc(res, title="MY TITLE"),
+        svmfig.plot_null(res, title="MY TITLE"),
+        svmfig.plot_coefficients(res, title="MY TITLE"),
+        svmfig.plot_hyperparameter_curve(res, title="MY TITLE"),
+    ):
+        sup = fig.get_suptitle()
+        assert "MY TITLE" in sup
+        assert "prior feature list · 142 of 150 matched" in sup
+        plt.close(fig)
+
+
+def test_figure_error_path_closes(
+    planted_result: svm.SVMClassificationResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plt.close("all")
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(svmfig, "_apply_title", boom)
+    for plot in (
+        svmfig.plot_roc,
+        svmfig.plot_null,
+        svmfig.plot_coefficients,
+        svmfig.plot_hyperparameter_curve,
+    ):
+        with pytest.raises(RuntimeError, match="injected"):
+            plot(planted_result)
+        assert plt.get_fignums() == []  # no figure leaked on the error path
+
+
 # --------------------------------------------------------------------------- #
 # Prior feature-list restriction (leakage-safe; matched/unmatched counts recorded)
 # --------------------------------------------------------------------------- #

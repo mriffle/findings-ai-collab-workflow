@@ -13,11 +13,13 @@ fourth). The shrinkage diagnostic lives in the ROC annotation instead.
 
   * :func:`plot_roc` — the mean ROC across outer CV folds with a ±1 SD band and a
     chance diagonal, drawn from the **log posterior-odds** (calibrated scores; AUC is
-    rank-based). Balanced accuracy (log-odds thresholded at the equal-prior cut),
-    average precision, per-class N, the per-repeat AUC, and the all-data **per-class
-    Ledoit-Wolf shrinkage** are annotated. The legend sits on-axes (lower-right, where
-    a good classifier leaves space) — a documented exception to the separate-legend
-    convention (conventions/visualization.md).
+    rank-based); the legend's AUC is the result's CV AUC (the number in the finding).
+    Balanced accuracy (log-odds thresholded at the equal-prior cut), average
+    precision, per-class N, the per-repeat mean-of-fold and **pooled-OOF** AUCs, the
+    all-data **per-class Ledoit-Wolf shrinkage** and the null verdict sit in a caption
+    strip **below** the axes, so nothing opaque covers the plot region. The legend
+    sits on-axes (lower-right, where a good classifier leaves space) — a documented
+    exception to the separate-legend convention (conventions/visualization.md).
   * :func:`plot_null` — the label-shuffle null AUC histogram with the observed AUC
     marked and the empirical p. **Conditional:** only meaningful when the null was run
     (``run_null=True``); it raises otherwise.
@@ -43,12 +45,12 @@ from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-lda-figures", "version": "0.2"},
+    "template": {"name": "classification-lda-figures", "version": "0.3"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -63,8 +65,10 @@ __script_meta__: dict[str, object] = {
     "description": (
         "Three result figures for an LDAClassificationResult (no tuning figure — the "
         "shrinkage is analytic): ROC +-SD across outer folds from the calibrated "
-        "log posterior-odds (legend on-axes; per-repeat AUC and the per-class "
-        "Ledoit-Wolf shrinkage annotated), the label-shuffle null AUC histogram "
+        "log posterior-odds (legend on-axes carrying the result's CV AUC; the "
+        "summary — per-repeat mean-of-fold + pooled-OOF AUCs, the per-class "
+        "Ledoit-Wolf shrinkage, the null verdict — in a caption strip below the "
+        "axes, never over the plot), the label-shuffle null AUC histogram "
         "(conditional on the null being run; shrinkage re-estimated per draw), and "
         "the top-N signed-weight plot (final weight + resample IQR, colored by top-k "
         "membership frequency on viridis — the dense-model stability read; top_n "
@@ -90,29 +94,23 @@ def plot_roc(result: LDAClassificationResult, *, title: str | None = None) -> Fi
     """Mean ROC (± 1 SD) across outer CV folds, with a chance diagonal.
 
     Each outer fold contributes one ROC curve from its held-out **log-odds**; the
-    curves are interpolated onto a common FPR grid and averaged. The legend (chance /
-    mean ROC / ±1 SD) is on-axes; balanced accuracy, average precision, per-class N,
-    the per-repeat AUC, and the all-data shrinkage intensities are annotated.
+    curves are interpolated onto a common FPR grid (each fold's vertical rises
+    preserved — see :func:`_interp_tpr`) and averaged. The legend (chance / mean ROC /
+    ±1 SD) is on-axes and its AUC is the result's ``cv_auc`` ± ``cv_auc_sd``; balanced
+    accuracy, average precision, per-class N, the per-repeat mean-of-fold and
+    pooled-OOF AUCs, the all-data shrinkage intensities and the null verdict form a
+    caption strip below the axes.
     """
     if not result.fold_predictions:
         raise ValueError("result has no fold predictions to draw a ROC from.")
-    tprs: list[np.ndarray] = []
-    aucs: list[float] = []
-    for fold in result.fold_predictions:
-        fpr, tpr, _ = roc_curve(fold.y_true, fold.y_score)
-        interp = np.interp(_ROC_GRID, fpr, tpr)
-        interp[0] = 0.0
-        tprs.append(interp)
-        aucs.append(float(auc(fpr, tpr)))
+    tprs = [_interp_tpr(fold.y_true, fold.y_score) for fold in result.fold_predictions]
     tpr_stack = np.asarray(tprs, dtype=float)
     mean_tpr = tpr_stack.mean(axis=0)
-    mean_tpr[-1] = 1.0
     sd_tpr = tpr_stack.std(axis=0)
-    mean_auc = float(np.mean(aucs))
-    sd_auc = float(np.std(aucs))
+    summary = _roc_summary(result)
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(6.2, 6.2))
+        fig, ax, caption_y = _roc_figure(summary)
         try:
             ax.plot([0, 1], [0, 1], "--", color=_CHANCE_COLOR, label="chance", zorder=1)
             ax.plot(
@@ -120,7 +118,13 @@ def plot_roc(result: LDAClassificationResult, *, title: str | None = None) -> Fi
                 mean_tpr,
                 color=_ROC_COLOR,
                 lw=2,
-                label=f"mean ROC (AUC = {mean_auc:.3f} ± {sd_auc:.3f})",
+                # The number on the figure is the number in the finding: the result's
+                # nested-CV AUC (mean ± SD of the per-fold AUCs), not an AUC re-derived
+                # from the drawn mean curve, which is a different quantity.
+                label=(
+                    f"mean ROC (AUC = {result.cv_auc:.3f} ± {result.cv_auc_sd:.3f}, "
+                    "mean of per-fold AUCs)"
+                ),
                 zorder=3,
             )
             ax.fill_between(
@@ -137,7 +141,16 @@ def plot_roc(result: LDAClassificationResult, *, title: str | None = None) -> Fi
             ax.set_xlabel("False positive rate")
             ax.set_ylabel("True positive rate")
             ax.legend(loc="lower right", fontsize=9)
-            _roc_annotation(ax, result)
+            fig.text(
+                0.5,
+                caption_y,
+                summary,
+                ha="center",
+                va="top",
+                multialignment="left",
+                fontsize=_ROC_CAPTION_FONTSIZE,
+                linespacing=1.3,
+            )
             _apply_title(fig, title, _roc_default_title(result), result)
         except BaseException:
             plt.close(fig)
@@ -145,19 +158,22 @@ def plot_roc(result: LDAClassificationResult, *, title: str | None = None) -> Fi
     return fig
 
 
-def _roc_annotation(ax: Axes, result: LDAClassificationResult) -> None:
+def _roc_summary(result: LDAClassificationResult) -> str:
+    """The ROC's caption-strip text: the numbers a reader needs beside the curve.
+
+    The per-repeat lines list each repeat's mean-of-fold AUC and the range of the
+    **pooled out-of-fold** AUC per repeat (one ROC over a repeat's concatenated
+    held-out log-odds — the user's own protocol). A between-repeat SD is deliberately
+    not shown: it is partition noise, far tighter than the fold SD, and reads as the
+    estimate's uncertainty when it is not.
+    """
     text = (
-        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (equal-prior cut)\n"
-        f"average precision = {result.cv_average_precision:.3f}\n"
+        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (equal-prior cut)   "
+        f"|   average precision = {result.cv_average_precision:.3f}\n"
         f"{result.positive_label}: N={result.n_positive}  |  "
         f"{result.negative_label}: N={result.n_negative}"
     )
-    if len(result.repeat_aucs) > 1:
-        rep = np.asarray(result.repeat_aucs, dtype=float)
-        text += (
-            f"\nper-repeat AUC = {rep.mean():.3f} ± {rep.std():.3f} "
-            f"({len(rep)} repeats)"
-        )
+    text += _repeat_lines(result.repeat_aucs, result.repeat_pooled_aucs)
     text += "\nscores = LDA log-odds (calibrated posterior)"
     text += (
         f"\nLedoit-Wolf shrinkage λ = {result.shrinkage_negative:.2f} / "
@@ -170,16 +186,65 @@ def _roc_annotation(ax: Axes, result: LDAClassificationResult) -> None:
         obs = result.observed_auc
         obs_txt = f" (null-CV observed AUC {obs:.3f})" if obs is not None else ""
         text += f"\nvs shuffle null: p = {result.null_p:.4f}{obs_txt}"
-    ax.text(
-        0.97,
-        0.30,
-        text,
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=8,
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "lightgray"},
-    )
+    return text
+
+
+def _repeat_lines(
+    repeat_aucs: tuple[float, ...], repeat_pooled_aucs: tuple[float, ...]
+) -> str:
+    """Two short caption lines: mean-of-fold AUC per repeat, pooled-OOF AUC range."""
+    text = ""
+    if len(repeat_aucs) > 1:
+        text += "\nmean-of-fold AUC by repeat: " + ", ".join(
+            f"{a:.3f}" for a in repeat_aucs
+        )
+    if repeat_pooled_aucs:
+        lo, hi = min(repeat_pooled_aucs), max(repeat_pooled_aucs)
+        span = f"{lo:.3f} to {hi:.3f}" if len(repeat_pooled_aucs) > 1 else f"{lo:.3f}"
+        text += f"\npooled-OOF AUC by repeat: {span}"
+    return text
+
+
+def _interp_tpr(y_true: np.ndarray, y_score: np.ndarray) -> np.ndarray:
+    """One fold's TPR on the common FPR grid, keeping every vertical rise.
+
+    ``roc_curve`` repeats an FPR value wherever the curve rises vertically (several
+    thresholds at one false-positive count — including the rise out of the origin at
+    FPR = 0). ``np.interp`` at a repeated x returns one of the tied y values
+    arbitrarily, so each FPR is first collapsed to its **maximum** TPR: the
+    interpolated curve then passes through the top of every vertical segment, and a
+    fold that separates perfectly is drawn as perfect (TPR = 1 at FPR = 0) instead of
+    being notched back to the origin. Nothing is forced — the curve starts and ends
+    where the data put it.
+    """
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    uniq, inverse = np.unique(fpr, return_inverse=True)
+    top = np.full(uniq.shape, -np.inf)
+    np.maximum.at(top, inverse, tpr)
+    return np.asarray(np.interp(_ROC_GRID, uniq, top), dtype=float)
+
+
+_ROC_CAPTION_FONTSIZE = 8
+_ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
+_ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
+_ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
+_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+
+
+def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
+    """A square ROC axes over a caption strip sized to hold ``summary``.
+
+    The summary is a figure-level caption **below** the axes — never an opaque box
+    over the plot region, where it would hide exactly what a reader most needs to see
+    for a near-chance classifier: the mean curve, its ±SD band and the chance
+    diagonal. Returns the figure, the axes and the caption's top y (figure fraction).
+    """
+    n_lines = summary.count("\n") + 1
+    strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
+    height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
+    fig, ax = plt.subplots(figsize=(6.2, height))
+    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
 def _roc_default_title(result: LDAClassificationResult) -> str:

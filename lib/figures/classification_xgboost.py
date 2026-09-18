@@ -9,22 +9,26 @@ Four figures read a :class:`~analysis.classification_xgboost.XGBClassificationRe
 the tree counterparts of the elastic-net classifier figures:
 
   * :func:`plot_roc` — the mean ROC across outer nested-CV folds with a ±1 SD band and a
-    chance diagonal; balanced accuracy, average precision, and per-class N annotated.
-    Its legend sits on-axes (lower-right) — the documented legend exception, like the
-    elastic-net ROC (conventions/visualization.md).
+    chance diagonal; the legend's AUC is the result's nested-CV AUC (the number in
+    the finding). Balanced accuracy, average precision, per-class N and the null
+    verdict sit in a caption strip **below** the axes, so nothing opaque covers the
+    plot region. Its legend sits on-axes (lower-right) — the documented legend
+    exception, like the elastic-net ROC (conventions/visualization.md).
   * :func:`plot_null` — the label-shuffle null AUC histogram with the observed AUC and
     the empirical p. **Conditional:** only meaningful when the null was run
     (``run_null=True``); it raises otherwise.
   * :func:`plot_importance` — the top-N features by **importance** (``total_gain``
-    by default), each a diamond
-    at its all-data importance over its resample IQR, colored by **selection frequency**
-    (viridis). **Unsigned** — importances are non-negative, so there is **no zero line**
-    and the axis starts at 0 (a magnitude view; this is the divergence from the
-    elastic-net signed coefficient plot). It shares a *skeleton* with the Boruta
-    importance plot, not an identical look.
-  * :func:`plot_hyperparameter_heatmap` — the all-data tuning surface (mean inner-CV AUC
-    over the ``max_depth`` x ``learning_rate`` grid) with the selected cell boxed. A
-    diagnostic.
+    by default), each a diamond at its all-data importance over the IQR of its
+    importance across the resamples that **selected** it (the analysis masks the
+    non-selecting resamples before taking quartiles, so a feature selected once draws
+    a zero-width bar), colored by **selection frequency** (viridis). **Unsigned** —
+    importances are non-negative, so there is **no zero line** and the axis starts at
+    0 (a magnitude view; this is the divergence from the elastic-net signed
+    coefficient plot). It shares a *skeleton* with the Boruta importance plot, not an
+    identical look.
+  * :func:`plot_hyperparameter_heatmap` — the all-data tuning surface (the mean
+    inner-CV ``tuning_metric``, AUC by default, over the ``max_depth`` x
+    ``learning_rate`` grid) with the selected cell boxed. A diagnostic.
 
 Colorbars sit beside the axes (they don't overlap the data), so these figures pass no
 separate legend figure to :func:`figures.figure_io.save_figure`.
@@ -42,12 +46,12 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-xgboost-figures", "version": "0.2"},
+    "template": {"name": "classification-xgboost-figures", "version": "0.3"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -63,14 +67,16 @@ __script_meta__: dict[str, object] = {
     "seeded_from": None,
     "description": (
         "Four result figures for an XGBClassificationResult: ROC +-SD across outer "
-        "folds (legend on-axes), the label-shuffle null AUC histogram (conditional on "
-        "the null being run), the top-N importance plot (diamond = all-data "
-        "importance, "
-        "resample IQR, colored by selection frequency on viridis; UNSIGNED so no zero "
-        "line and the axis starts at 0 — the divergence from the signed coefficient "
-        "plot), and the max_depth x learning_rate hyperparameter heatmap with the "
-        "selected cell boxed. Dual-export via figure-io; colorbars beside the axes (no "
-        "separate legend figure). Study-agnostic; fail-loud."
+        "folds (legend on-axes carrying the result's nested-CV AUC; the summary "
+        "numbers in a caption strip below the axes, never over the plot), the "
+        "label-shuffle null AUC histogram (conditional on the null being run), the "
+        "top-N importance plot (diamond = all-data importance, bar = IQR over the "
+        "resamples that selected it, colored by selection frequency on viridis; "
+        "UNSIGNED so no zero line and the axis starts at 0 — the divergence from the "
+        "signed coefficient plot), and the max_depth x learning_rate hyperparameter "
+        "heatmap with the selected cell boxed and the tuning metric named. "
+        "Dual-export via figure-io; colorbars beside the axes (no separate legend "
+        "figure). Study-agnostic; fail-loud."
     ),
 }
 
@@ -93,28 +99,21 @@ def plot_roc(result: XGBClassificationResult, *, title: str | None = None) -> Fi
     """Mean ROC (± 1 SD) across outer nested-CV folds, with a chance diagonal.
 
     Each outer fold contributes one ROC curve; the curves are interpolated onto a common
-    FPR grid and averaged. The legend (chance / mean ROC / ±1 SD) is on-axes; balanced
-    accuracy, average precision, and per-class N are annotated.
+    FPR grid (each fold's vertical rises preserved — see :func:`_interp_tpr`) and
+    averaged. The legend (chance / mean ROC / ±1 SD) is on-axes and its AUC is the
+    result's ``cv_auc`` ± ``cv_auc_sd``; balanced accuracy, average precision,
+    per-class N and the null verdict form a caption strip below the axes.
     """
     if not result.fold_predictions:
         raise ValueError("result has no fold predictions to draw a ROC from.")
-    tprs: list[np.ndarray] = []
-    aucs: list[float] = []
-    for fold in result.fold_predictions:
-        fpr, tpr, _ = roc_curve(fold.y_true, fold.y_prob)
-        interp = np.interp(_ROC_GRID, fpr, tpr)
-        interp[0] = 0.0
-        tprs.append(interp)
-        aucs.append(float(auc(fpr, tpr)))
+    tprs = [_interp_tpr(fold.y_true, fold.y_prob) for fold in result.fold_predictions]
     tpr_stack = np.asarray(tprs, dtype=float)
     mean_tpr = tpr_stack.mean(axis=0)
-    mean_tpr[-1] = 1.0
     sd_tpr = tpr_stack.std(axis=0)
-    mean_auc = float(np.mean(aucs))
-    sd_auc = float(np.std(aucs))
+    summary = _roc_summary(result)
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(6.2, 6.2))
+        fig, ax, caption_y = _roc_figure(summary)
         try:
             ax.plot([0, 1], [0, 1], "--", color=_CHANCE_COLOR, label="chance", zorder=1)
             ax.plot(
@@ -122,7 +121,13 @@ def plot_roc(result: XGBClassificationResult, *, title: str | None = None) -> Fi
                 mean_tpr,
                 color=_ROC_COLOR,
                 lw=2,
-                label=f"mean ROC (AUC = {mean_auc:.3f} ± {sd_auc:.3f})",
+                # The number on the figure is the number in the finding: the result's
+                # nested-CV AUC (mean ± SD of the per-fold AUCs), not an AUC re-derived
+                # from the drawn mean curve, which is a different quantity.
+                label=(
+                    f"mean ROC (AUC = {result.cv_auc:.3f} ± {result.cv_auc_sd:.3f}, "
+                    "mean of per-fold AUCs)"
+                ),
                 zorder=3,
             )
             ax.fill_between(
@@ -139,7 +144,16 @@ def plot_roc(result: XGBClassificationResult, *, title: str | None = None) -> Fi
             ax.set_xlabel("False positive rate")
             ax.set_ylabel("True positive rate")
             ax.legend(loc="lower right", fontsize=9)
-            _roc_annotation(ax, result)
+            fig.text(
+                0.5,
+                caption_y,
+                summary,
+                ha="center",
+                va="top",
+                multialignment="left",
+                fontsize=_ROC_CAPTION_FONTSIZE,
+                linespacing=1.3,
+            )
             _apply_title(fig, title, _roc_default_title(result), result)
         except BaseException:
             plt.close(fig)
@@ -147,9 +161,10 @@ def plot_roc(result: XGBClassificationResult, *, title: str | None = None) -> Fi
     return fig
 
 
-def _roc_annotation(ax: Axes, result: XGBClassificationResult) -> None:
+def _roc_summary(result: XGBClassificationResult) -> str:
+    """The ROC's caption-strip text: the numbers a reader needs beside the curve."""
     text = (
-        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}\n"
+        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}   |   "
         f"average precision = {result.cv_average_precision:.3f}\n"
         f"{result.positive_label}: N={result.n_positive}  |  "
         f"{result.negative_label}: N={result.n_negative}"
@@ -162,16 +177,49 @@ def _roc_annotation(ax: Axes, result: XGBClassificationResult) -> None:
             f" (fixed-hyperparameter observed AUC {obs:.3f})" if obs is not None else ""
         )
         text += f"\nvs shuffle null: p = {result.null_p:.4f}{obs_txt}"
-    ax.text(
-        0.97,
-        0.30,
-        text,
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=8,
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "lightgray"},
-    )
+    return text
+
+
+def _interp_tpr(y_true: np.ndarray, y_score: np.ndarray) -> np.ndarray:
+    """One fold's TPR on the common FPR grid, keeping every vertical rise.
+
+    ``roc_curve`` repeats an FPR value wherever the curve rises vertically (several
+    thresholds at one false-positive count — including the rise out of the origin at
+    FPR = 0). ``np.interp`` at a repeated x returns one of the tied y values
+    arbitrarily, so each FPR is first collapsed to its **maximum** TPR: the
+    interpolated curve then passes through the top of every vertical segment, and a
+    fold that separates perfectly is drawn as perfect (TPR = 1 at FPR = 0) instead of
+    being notched back to the origin. Nothing is forced — the curve starts and ends
+    where the data put it.
+    """
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    uniq, inverse = np.unique(fpr, return_inverse=True)
+    top = np.full(uniq.shape, -np.inf)
+    np.maximum.at(top, inverse, tpr)
+    return np.asarray(np.interp(_ROC_GRID, uniq, top), dtype=float)
+
+
+_ROC_CAPTION_FONTSIZE = 8
+_ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
+_ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
+_ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
+_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+
+
+def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
+    """A square ROC axes over a caption strip sized to hold ``summary``.
+
+    The summary is a figure-level caption **below** the axes — never an opaque box
+    over the plot region, where it would hide exactly what a reader most needs to see
+    for a near-chance classifier: the mean curve, its ±SD band and the chance
+    diagonal. Returns the figure, the axes and the caption's top y (figure fraction).
+    """
+    n_lines = summary.count("\n") + 1
+    strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
+    height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
+    fig, ax = plt.subplots(figsize=(6.2, height))
+    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
 def _roc_default_title(result: XGBClassificationResult) -> str:
@@ -293,7 +341,8 @@ def plot_importance(
                 fig,
                 title,
                 f"Top {shown} features of {len(table)} "
-                f"(diamond = final {result.importance_type}, bar = resample IQR)",
+                f"(diamond = final {result.importance_type}, bar = IQR over the "
+                f"resamples that selected it)",
                 result,
             )
             mappable = ScalarMappable(norm=norm, cmap=cmap)
@@ -309,10 +358,30 @@ def plot_importance(
 # --------------------------------------------------------------------------- #
 # Hyperparameter heatmap
 # --------------------------------------------------------------------------- #
+_METRIC_LABELS = {
+    "roc_auc": "AUC",
+    "balanced_accuracy": "balanced accuracy",
+    "average_precision": "average precision",
+}
+
+
+def _metric_label(metric: str) -> str:
+    """Axis wording for a scikit-learn scoring name (the raw name if unmapped).
+
+    ``tuning_metric`` is a public parameter, so the tuning figure must label what
+    was actually optimised rather than assume AUC.
+    """
+    return _METRIC_LABELS.get(metric, metric)
+
+
 def plot_hyperparameter_heatmap(
     result: XGBClassificationResult, *, title: str | None = None
 ) -> Figure:
-    """The all-data tuning surface (mean inner-CV AUC) with the selected cell boxed."""
+    """The all-data tuning surface with the selected cell boxed.
+
+    The colour scale is the mean inner-CV score of the result's ``tuning_metric``
+    (AUC by default), named on the colorbar.
+    """
     grid = np.asarray(result.grid_scores, dtype=float)
     n_depth = len(result.max_depth_grid)
     n_lr = len(result.learning_rate_grid)
@@ -362,7 +431,13 @@ def plot_hyperparameter_heatmap(
                     lw=3,
                 )
             )
-            fig.colorbar(image, ax=ax, label="mean CV AUC", fraction=0.046, pad=0.04)
+            fig.colorbar(
+                image,
+                ax=ax,
+                label=f"mean inner-CV {_metric_label(result.tuning_metric)}",
+                fraction=0.046,
+                pad=0.04,
+            )
             _apply_title(fig, title, "Hyperparameter search (all-data)", result)
         except BaseException:
             plt.close(fig)
