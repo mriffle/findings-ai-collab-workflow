@@ -701,3 +701,67 @@ def test_grouped_null_rejects_mixed_label_unit() -> None:
     g2 = np.array(["a", "a", "b", "b", "c", "c"])
     perm = xgb._permute_labels(y2, g2, np.random.default_rng(0))
     assert perm.sum() == 4
+
+
+# --------------------------------------------------------------------------- #
+# v0.4: total_gain default, int max_depth, imbalance exercised, default n_jobs
+# --------------------------------------------------------------------------- #
+def test_default_importance_type_is_total_gain() -> None:
+    ds = _planted(n=40, p=60, n_signal=4, seed=0)
+    res = xgb.classify_xgboost(ds, "grp", random_state=0, **_FAST)
+    assert res.importance_type == "total_gain"
+    gain = xgb.classify_xgboost(
+        ds, "grp", random_state=0, importance_type="gain", **_FAST
+    )
+    assert gain.importance_type == "gain"
+    # the two measures are different numbers (per-split average vs sum), even if the
+    # ranking happens to agree on a small planted set
+    merged = res.importances.merge(
+        gain.importances, on="feature", suffixes=("_t", "_g")
+    )
+    assert not np.allclose(merged["importance_t"], merged["importance_g"])
+
+
+def test_best_params_max_depth_is_int_and_refits() -> None:
+    from xgboost import XGBClassifier
+
+    ds = _planted(n=40, p=60, n_signal=4, seed=0)
+    res = xgb.classify_xgboost(ds, "grp", random_state=0, **_FAST)
+    assert isinstance(res.best_params["max_depth"], int)
+    assert isinstance(res.best_params["learning_rate"], float)
+    y = (ds.metadata["grp"] == "B").to_numpy().astype(int)
+    XGBClassifier(n_estimators=5, **res.best_params).fit(ds.abundances, y)  # accepted
+
+
+def test_imbalanced_classes_use_fold_local_scale_pos_weight() -> None:
+    """A 12-vs-24 design: scale_pos_weight != 1 in every fold, the run completes, and
+    the balanced-accuracy cut at 0.5 is the equal-prior decision under that weight."""
+    ds = _planted(n=48, p=60, n_signal=4, seed=0)
+    keep = np.r_[
+        np.flatnonzero(ds.metadata["grp"] == "B")[:12],
+        np.flatnonzero(ds.metadata["grp"] == "A")[:36],
+    ]
+    sub = dl.Dataset(
+        abundances=ds.abundances[keep],
+        feature_names=ds.feature_names,
+        feature_metadata=ds.feature_metadata,
+        metadata=ds.metadata.iloc[keep].reset_index(drop=True),
+        scale=ds.scale,
+    )
+    y = (sub.metadata["grp"] == "B").to_numpy().astype(int)
+    assert xgb._scale_pos_weight(y) == pytest.approx(2.0)
+    res = xgb.classify_xgboost(sub, "grp", random_state=0, **_FAST)
+    assert (res.n_positive, res.n_negative) == (12, 24)
+    assert 0.0 <= res.cv_balanced_accuracy <= 1.0
+    assert res.cv_auc > 0.6  # the planted signal survives the imbalance
+
+
+def test_determinism_at_default_n_jobs() -> None:
+    ds = _planted(n=40, p=60, n_signal=4, seed=0)
+    kw = {k: v for k, v in _FAST.items() if k != "n_jobs"}
+    a = xgb.classify_xgboost(ds, "grp", random_state=0, **kw)
+    b = xgb.classify_xgboost(ds, "grp", random_state=0, **kw)
+    assert a.cv_auc == b.cv_auc
+    assert a.best_params == b.best_params
+    np.testing.assert_array_equal(a.grid_scores, b.grid_scores)
+    pd.testing.assert_frame_equal(a.importances, b.importances)

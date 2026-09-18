@@ -15,7 +15,8 @@ the tree counterparts of the elastic-net classifier figures:
   * :func:`plot_null` — the label-shuffle null AUC histogram with the observed AUC and
     the empirical p. **Conditional:** only meaningful when the null was run
     (``run_null=True``); it raises otherwise.
-  * :func:`plot_importance` — the top-N features by **gain importance**, each a diamond
+  * :func:`plot_importance` — the top-N features by **importance** (``total_gain``
+    by default), each a diamond
     at its all-data importance over its resample IQR, colored by **selection frequency**
     (viridis). **Unsigned** — importances are non-negative, so there is **no zero line**
     and the axis starts at 0 (a magnitude view; this is the divergence from the
@@ -63,7 +64,8 @@ __script_meta__: dict[str, object] = {
     "description": (
         "Four result figures for an XGBClassificationResult: ROC +-SD across outer "
         "folds (legend on-axes), the label-shuffle null AUC histogram (conditional on "
-        "the null being run), the top-N gain-importance plot (diamond = all-data gain, "
+        "the null being run), the top-N importance plot (diamond = all-data "
+        "importance, "
         "resample IQR, colored by selection frequency on viridis; UNSIGNED so no zero "
         "line and the axis starts at 0 — the divergence from the signed coefficient "
         "plot), and the max_depth x learning_rate hyperparameter heatmap with the "
@@ -237,20 +239,22 @@ def plot_null(result: XGBClassificationResult, *, title: str | None = None) -> F
 def plot_importance(
     result: XGBClassificationResult, *, top_n: int = 25, title: str | None = None
 ) -> Figure:
-    """Top-N features by gain importance, colored by selection frequency.
+    """Top-N features by importance, colored by selection frequency.
 
-    Each feature is a diamond at its **all-data gain importance** over a bar spanning
+    Each feature is a diamond at its **all-data importance** (``importance_type``,
+    ``total_gain`` by default) over a bar spanning
     its resample IQR (``importance_q25``..``importance_q75``), colored by **selection
     frequency** (viridis). Importances are **unsigned** (non-negative), so there is no
     zero line and the axis starts at 0 — a magnitude view. Selected-only — features with
-    zero gain in the final model do not appear.
+    zero importance in the final model do not appear.
     """
     if top_n <= 0:
         raise ValueError(f"top_n must be positive; got {top_n}.")
     table = result.importances
     if len(table) == 0:
         raise ValueError(
-            "no features had non-zero gain (nothing was selected); nothing to plot."
+            "no features had non-zero importance (nothing was selected); nothing to "
+            "plot."
         )
     # Largest importance at the top: take the head, then reverse so y increases upward.
     sub = table.head(top_n).iloc[::-1].reset_index(drop=True)
@@ -289,7 +293,7 @@ def plot_importance(
                 fig,
                 title,
                 f"Top {shown} features of {len(table)} "
-                f"(diamond = final gain, bar = resample IQR)",
+                f"(diamond = final {result.importance_type}, bar = resample IQR)",
                 result,
             )
             mappable = ScalarMappable(norm=norm, cmap=cmap)

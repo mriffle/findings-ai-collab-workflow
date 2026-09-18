@@ -28,7 +28,7 @@ shape as the elastic-net classifier* so the readouts line up:
     ``validated``, skip it and the finding is capped at ``exploratory`` (importances
     flagged "not tested against a null").
   * **All-data importances** — tune on all data, refit on all data; the reported
-    **gain-based** importances (magnitude = usefulness for prediction; unsigned).
+    importances (``total_gain`` by default — the summed split gain; unsigned).
   * **Cross-fold stability** — a dedicated fixed-hyperparameter resampling loop giving
     each feature a **selection frequency** (fraction of resamples non-zero) and
     an importance distribution (median + IQR).
@@ -44,7 +44,7 @@ different animal):
   * **Class imbalance via ``scale_pos_weight``** (``n_neg/n_pos``), recomputed **per
     fold** (mirrors how ``class_weight="balanced"`` is fold-local inside a sklearn
     pipeline), not ``class_weight``.
-  * **Unsigned gain importance**, so there is **no sign consistency** and the importance
+  * **Unsigned importance**, so there is **no sign consistency** and the importance
     plot has no zero line — a magnitude view, closer in spirit to the Boruta importance
     plot than to the signed coefficient plot.
   * **A 2-D tuning grid** (``max_depth`` x ``learning_rate``; the other tree knobs are
@@ -298,14 +298,16 @@ class XGBClassificationResult:
     cv_auc, cv_auc_sd, cv_balanced_accuracy, cv_average_precision:
         Nested-CV performance (mean over outer folds; ``_sd`` is the fold SD of AUC).
     best_params:
-        The all-data-tuned hyperparameters ``{"max_depth", "learning_rate"}`` (also
-        used for the stability loop and null).
+        The all-data-tuned hyperparameters ``{"max_depth": int, "learning_rate":
+        float}`` (also used for the stability loop and null). ``max_depth`` is an
+        ``int`` so the dict refits directly (XGBoost rejects ``max_depth=3.0``).
     grid_scores, max_depth_grid, learning_rate_grid:
         The all-data tuning surface — ``grid_scores`` is
         ``(len(max_depth_grid), len(learning_rate_grid))`` mean inner-CV AUC; the
         hyperparameter heatmap reads these.
     importance_type:
-        The XGBoost importance measure reported (default ``"gain"``).
+        The XGBoost importance measure reported (default ``"total_gain"``; v0.4 — the
+        earlier ``"gain"`` default was the per-split average).
     null_aucs, observed_auc, null_p:
         The label-shuffle null (fixed-hyperparameter procedure): the permutation AUC
         distribution, the observed AUC computed by the *same* procedure, and the
@@ -339,7 +341,7 @@ class XGBClassificationResult:
     cv_auc_sd: float
     cv_balanced_accuracy: float
     cv_average_precision: float
-    best_params: dict[str, float]
+    best_params: dict[str, int | float]
     grid_scores: np.ndarray
     max_depth_grid: tuple[int, ...]
     learning_rate_grid: tuple[float, ...]
@@ -551,7 +553,11 @@ def _make_xgb(
 
 
 def _importances(model: XGBClassifier) -> np.ndarray:
-    """Gain-based importances (>= 0, sum to 1; unused features are exactly 0)."""
+    """The configured importance (>= 0, normalized to sum 1; unused features are 0).
+
+    ``feature_importances_`` honours ``importance_type``: ``total_gain`` (default)
+    sums a feature's split gains, ``gain`` averages them per split.
+    """
     return np.asarray(model.feature_importances_, dtype=float).ravel()
 
 
@@ -1138,7 +1144,7 @@ def classify_xgboost(
     reg_alpha: float = 0.0,
     reg_lambda: float = 1.0,
     gamma: float = 0.0,
-    importance_type: str = "gain",
+    importance_type: str = "total_gain",
     select: Selection = "best",
     tuning_metric: str = "roc_auc",
     n_splits: int = 5,
@@ -1190,11 +1196,25 @@ def classify_xgboost(
         The 2-D tuning grid (tree depth x step size). The remaining XGBoost knobs
         (``n_estimators``, ``subsample``, ``colsample_bytree``, ``min_child_weight``,
         ``reg_alpha``, ``reg_lambda``, ``gamma``) are held-constant scalar arguments so
-        the search stays 2-D (tractable nested CV + a 2-D heatmap). Widen the grid if a
-        study warrants it.
+        the search stays 2-D (tractable nested CV + a 2-D heatmap). Two things to
+        know at proteomics *n*: the depth axis is often **degenerate** — with
+        ``min_child_weight=1`` under the logistic loss a leaf needs a hessian sum
+        ``sum p(1-p) >= 1`` (at least four rows, more once predictions saturate), so
+        ~30 training rows rarely realise depth beyond 2-3 and deeper cells score
+        identically (flat heatmap rows; the tie-break, not evidence, picks the depth);
+        and the same interaction is the **implicit stopping rule** — as predictions
+        saturate the hessian shrinks below ``min_child_weight`` and later rounds add no
+        splits (at n = 40, p = 5,000 only ~24 of 300 rounds split at rate 0.3), which
+        is what keeps a fixed ``n_estimators`` with no early stopping from overfitting.
+        A project copy that lowers ``min_child_weight`` or raises ``n_estimators``
+        changes that regime; widening the depth grid cannot help.
     importance_type:
-        The XGBoost feature-importance measure (``"gain"`` default; also ``"weight"``,
-        ``"cover"``, ``"total_gain"``, ``"total_cover"``).
+        The XGBoost feature-importance measure (``"total_gain"`` default; also
+        ``"gain"``, ``"weight"``, ``"cover"``, ``"total_cover"``). ``gain`` is the
+        *average* gain per split, which lets a noise feature used in one lucky early
+        split outrank a signal feature used in thirty; ``total_gain`` sums over splits.
+        Recorded on the result; a fingerprint param (a different measure is a
+        different ranking).
     select:
         ``"best"`` (highest inner-CV score) or ``"smoothed"`` (neighborhood-smoothed,
         plateau-seeking) cell selection.
@@ -1409,7 +1429,7 @@ def classify_xgboost(
         cv_auc_sd=cv_auc_sd,
         cv_balanced_accuracy=cv_acc,
         cv_average_precision=cv_ap,
-        best_params={"max_depth": float(best_depth), "learning_rate": best_lr},
+        best_params={"max_depth": int(best_depth), "learning_rate": float(best_lr)},
         grid_scores=grid_scores,
         max_depth_grid=depth_grid_t,
         learning_rate_grid=lr_grid_t,
