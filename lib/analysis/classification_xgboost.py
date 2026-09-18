@@ -585,7 +585,9 @@ def _resolve_grouping(
     if int(counts.max(initial=0)) <= 1:
         warnings.warn(
             f"groups column {groups!r} has no repeated units (each appears once), "
-            f"so a held-out sample is already a held-out unit; using row-level CV.",
+            f"so a held-out sample is already a held-out unit; using row-level CV. "
+            f"The claimed generalization_target still holds and is recorded with "
+            f"grouped=False.",
             SingletonGroupsWarning,
             stacklevel=3,
         )
@@ -1254,6 +1256,18 @@ def classify_xgboost(
         raise ValueError(
             f"null_permutation must be 'units' or 'within_units'; "
             f"got {null_permutation!r}."
+        )
+    if generalization_target not in ("samples", "individuals", "batches"):
+        raise ValueError(
+            f"generalization_target must be 'samples', 'individuals' or 'batches'; "
+            f"got {generalization_target!r}."
+        )
+    if generalization_target != "samples" and groups is None:
+        raise ValueError(
+            f"generalization_target={generalization_target!r} claims performance on "
+            f"unseen {generalization_target}, which needs the unit column: pass "
+            f"groups=<column>. Leave groups unset only with "
+            f"generalization_target='samples'."
         )
     if n_splits < 2 or n_repeats < 1 or stability_repeats < 1:
         raise ValueError(

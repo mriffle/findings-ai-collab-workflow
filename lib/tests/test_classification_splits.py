@@ -792,3 +792,28 @@ def test_cv_counts_are_validated(module: Any) -> None:
     ):
         with pytest.raises(ValueError, match="must be >= "):
             _run_tuned(module, ds, **base, **bad)
+
+
+# --------------------------------------------------------------------------- #
+# A claimed generalization target needs the unit column that would hold it out
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("module", list(_FIVE.values()), ids=list(_FIVE))
+def test_target_without_groups_raises(module: Any) -> None:
+    ds = _replicated_units()
+    for target in ("individuals", "batches"):
+        with pytest.raises(ValueError, match="pass groups="):
+            _run_tuned(module, ds, groups=None, generalization_target=target)
+    with pytest.raises(ValueError, match="generalization_target must be"):
+        _run_tuned(module, ds, groups=None, generalization_target="cohorts")
+    # all-singleton units: row-level CV is used, the claim still holds, the record
+    # says grouped=False — and the warning says so
+    single = _replicated_units()
+    single.metadata["animal"] = [f"s{i}" for i in range(len(single.metadata))]
+    with (
+        pytest.warns(module.SingletonGroupsWarning, match="still holds"),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = _run_tuned(module, single, generalization_target="individuals")
+    assert res.grouped is False
+    assert res.generalization_target == "individuals"
