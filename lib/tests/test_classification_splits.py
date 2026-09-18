@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import warnings
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -357,6 +358,9 @@ def _run_tuned(module: Any, ds: dl.Dataset, **extra: Any) -> Any:
         )
     if module is svm:
         return svm.classify_svm(ds, "grp", c_grid=[0.1, 1.0], top_k=5, **common)
+    if module is lda:
+        common.pop("n_jobs")  # nothing to parallelize
+        return lda.classify_lda(ds, "grp", top_k=5, **common)
     if module is xgb:
         return xgb.classify_xgboost(
             ds,
@@ -692,3 +696,99 @@ def test_grid_scores_pinned_to_search_params(module: Any) -> None:
             rows[i],
             cols[j],
         )
+
+
+# --------------------------------------------------------------------------- #
+# The null path (v0.4): a fold the scorer cannot score raises, a non-finite score
+# never becomes a permutation p, and the counts are validated up front
+# --------------------------------------------------------------------------- #
+_FIVE: dict[str, Any] = {**_MODULES, "regression": reg}
+_ENTRY: dict[str, Any] = {
+    "elastic-net": clf.classify,
+    "xgboost": xgb.classify_xgboost,
+    "svm": svm.classify_svm,
+    "lda": lda.classify_lda,
+    "regression": reg.regress,
+}
+
+
+def _config(module: Any, **over: Any) -> Any:
+    """A template's private ``_Config`` from its public defaults (+ overrides)."""
+    entry = _ENTRY[next(k for k, m in _FIVE.items() if m is module)]
+    defaults = {k: v.default for k, v in inspect.signature(entry).parameters.items()}
+    alias = {"l1_grid": "l1_ratios"}
+    values = {}
+    for f in dataclasses.fields(module._Config):
+        src = over.get(
+            f.name, defaults.get(f.name, defaults.get(alias.get(f.name, "")))
+        )
+        values[f.name] = tuple(src) if isinstance(src, list) else src
+    return module._Config(**values)
+
+
+def _two_pure_units() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=(12, 8))
+    y = np.repeat([0, 1], 6)
+    groups = np.repeat(["u0", "u1"], 6)
+    return x, y, groups
+
+
+@pytest.mark.parametrize("module", list(_FIVE.values()), ids=list(_FIVE))
+def test_null_scorer_refuses_a_fold_it_cannot_score(module: Any) -> None:
+    """Two single-class units under 2-fold grouped CV: each null test fold holds one
+    class. scikit-learn scores that as NaN with a warning; the scorer raises instead
+    (a NaN observed AUC would have read as p = 1 / (n_permutations + 1))."""
+    x, y, groups = _two_pure_units()
+    cfg = _config(module, n_splits=2, null_repeats=1, n_jobs=1, random_state=0)
+    call: Callable[[], float]
+    if module is clf:
+        call = lambda: clf._fixed_cv_auc(x, y, groups, 1.0, 0.5, cfg)  # noqa: E731
+    elif module is svm:
+        call = lambda: svm._fixed_cv_auc(x, y, groups, 1.0, cfg)  # noqa: E731
+    elif module is xgb:
+        call = lambda: xgb._fixed_cv_auc(x, y, groups, 2, 0.3, cfg)  # noqa: E731
+    elif module is lda:
+        call = lambda: lda._cv_auc(x, y, groups, cfg)  # noqa: E731
+    else:
+        yy = y.astype(float)
+        call = lambda: reg._fixed_cv_r2(x, yy, groups, 0.1, 0.5, cfg)  # noqa: E731
+    with pytest.raises(ValueError, match="null-CV test fold holds a"):
+        call()
+
+
+@pytest.mark.parametrize("module", list(_FIVE.values()), ids=list(_FIVE))
+def test_non_finite_null_score_raises(module: Any, monkeypatch: Any) -> None:
+    """A NaN from the scorer must not become a permutation p."""
+    scorer = (
+        "_cv_auc"
+        if module is lda
+        else ("_fixed_cv_r2" if module is reg else "_fixed_cv_auc")
+    )
+    monkeypatch.setattr(module, scorer, lambda *a, **k: float("nan"))
+    ds = _replicated_units()
+    with pytest.raises(ValueError, match="not finite"):
+        _run_tuned(
+            module,
+            ds,
+            groups=None,
+            generalization_target="samples",
+            run_null=True,
+            n_permutations=2,
+            null_repeats=1,
+        )
+
+
+@pytest.mark.parametrize("module", list(_FIVE.values()), ids=list(_FIVE))
+def test_cv_counts_are_validated(module: Any) -> None:
+    ds = _replicated_units()
+    base: dict[str, Any] = {"groups": None, "generalization_target": "samples"}
+    for bad in (
+        {"n_permutations": 0},
+        {"null_repeats": 0},
+        {"n_splits": 1},
+        {"n_repeats": 0},
+        {"stability_repeats": 0},
+    ):
+        with pytest.raises(ValueError, match="must be >= "):
+            _run_tuned(module, ds, **base, **bad)

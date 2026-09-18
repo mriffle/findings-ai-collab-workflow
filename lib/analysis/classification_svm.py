@@ -1077,11 +1077,23 @@ def _fixed_cv_auc(
     model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     if groups is None:
         scores = cross_val_score(
-            model, x, y, cv=cv, scoring="roc_auc", n_jobs=cfg.n_jobs
+            model,
+            x,
+            y,
+            cv=cv,
+            scoring="roc_auc",
+            n_jobs=cfg.n_jobs,
+            error_score="raise",
         )
         return float(np.mean(scores))
     aucs: list[float] = []
     for train, test in _split(cv, x, y, groups):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"null-CV test fold holds a single class (n={len(test)}), so its AUC "
+                f"is undefined. A unit-level permutation under grouped CV can move a "
+                f"whole class into one fold — lower n_splits or use more units."
+            )
         model.fit(x[train], y[train])
         aucs.append(float(roc_auc_score(y[test], _scores(model, x[test]))))
     return float(np.mean(aucs))
@@ -1182,6 +1194,11 @@ def _null_distribution(
 ) -> tuple[np.ndarray, float, float]:
     """Label-shuffle null (fixed C) -> null_aucs, observed, p."""
     observed = _fixed_cv_auc(x, y, groups, best_c, cfg)
+    if not np.isfinite(observed):
+        raise ValueError(
+            "the observed null-CV score is not finite; a permutation p cannot be "
+            "formed from it (a NaN would read as p = 1 / (n_permutations + 1))."
+        )
     rng = np.random.default_rng(cfg.random_state)
     nulls = np.array(
         [
@@ -1196,6 +1213,11 @@ def _null_distribution(
         ],
         dtype=float,
     )
+    if not np.all(np.isfinite(nulls)):
+        raise ValueError(
+            "a null draw produced a non-finite score; a permutation p cannot be formed "
+            "(a NaN draw would silently count as 'not above the observed')."
+        )
     p = float((np.sum(nulls >= observed) + 1) / (cfg.n_permutations + 1))
     return nulls, observed, p
 
@@ -1417,6 +1439,18 @@ def classify_svm(
         raise ValueError(
             f"null_permutation must be 'units' or 'within_units'; "
             f"got {null_permutation!r}."
+        )
+    if n_splits < 2 or n_repeats < 1 or stability_repeats < 1:
+        raise ValueError(
+            f"n_splits must be >= 2 and n_repeats / stability_repeats >= 1; got "
+            f"n_splits={n_splits}, n_repeats={n_repeats}, "
+            f"stability_repeats={stability_repeats}."
+        )
+    if n_permutations < 1 or null_repeats < 1:
+        raise ValueError(
+            f"n_permutations and null_repeats must be >= 1 (a null with no draws "
+            f"would still read as licensed); got n_permutations={n_permutations}, "
+            f"null_repeats={null_repeats}."
         )
 
     metadata = dataset.metadata
