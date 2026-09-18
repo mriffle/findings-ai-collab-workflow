@@ -261,9 +261,19 @@ def test_within_unit_permutation_keeps_grouped_folds_fixed() -> None:
 # The tuning block (v0.4): the inner tuning CV is grouped whenever the outer CV is,
 # and the tuning table is indexed by the recorded parameter values, never by position
 # --------------------------------------------------------------------------- #
-_TUNED: dict[str, Any] = {"elastic-net": clf, "xgboost": xgb, "regression": reg}
-_TUNING_HELPERS = ("_make_inner_cv", "_check_inner_folds")
+_TUNED: dict[str, Any] = {
+    "elastic-net": clf,
+    "svm": svm,
+    "xgboost": xgb,
+    "regression": reg,
+}
+_TUNING_HELPERS = (
+    "_make_inner_cv",
+    "_check_inner_folds",
+    "_check_class_sizes_for_nested_cv",
+)
 _GRID_HELPERS = ("_grid_table",)
+_GRID_2D: dict[str, Any] = {k: m for k, m in _TUNED.items() if k != "svm"}
 
 
 def test_tuning_helpers_byte_identical_across_classifiers() -> None:
@@ -275,7 +285,7 @@ def test_tuning_helpers_byte_identical_across_classifiers() -> None:
         }
         assert len(set(sources.values())) == 1, name
     for name in _GRID_HELPERS:
-        sources = {k: inspect.getsource(getattr(m, name)) for k, m in _TUNED.items()}
+        sources = {k: inspect.getsource(getattr(m, name)) for k, m in _GRID_2D.items()}
         assert len(set(sources.values())) == 1, name
 
 
@@ -345,6 +355,8 @@ def _run_tuned(module: Any, ds: dl.Dataset, **extra: Any) -> Any:
             tol=1e-3,
             **common,
         )
+    if module is svm:
+        return svm.classify_svm(ds, "grp", c_grid=[0.1, 1.0], top_k=5, **common)
     if module is xgb:
         return xgb.classify_xgboost(
             ds,
@@ -421,6 +433,9 @@ def test_grouped_inner_cv_does_not_leak_replicates(module: Any) -> None:
         if module is clf:
             est = module._build_pipeline(None, 0.5, 2000, 1e-3, 0)
             grid = {"lr__C": [0.1, 1.0], "lr__l1_ratio": [0.5, 1.0]}
+        elif module is svm:
+            est = module._build_pipeline(0.1, 1e-3, -1)
+            grid = {"svm__C": [0.1, 1.0]}
         else:
             defaults = {
                 k: v.default
@@ -474,7 +489,7 @@ def test_grid_table_is_index_based() -> None:
 
     natural = list(range(len(cells)))
     shuffled = [5, 0, 3, 1, 4, 2]
-    for module in _TUNED.values():
+    for module in _GRID_2D.values():
         for order in (natural, shuffled):
             table = module._grid_table(results(order), "param_a", rows, "param_b", cols)
             np.testing.assert_array_equal(table, expected)
@@ -502,7 +517,7 @@ def test_select_cell_masks_failed_cells_and_refuses_all_nan() -> None:
             module._select_cell(np.full((2, 2), np.nan), rows, (0.5, 1.0), "best")
 
 
-@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+@pytest.mark.parametrize("module", list(_GRID_2D.values()), ids=list(_GRID_2D))
 def test_smoothed_selection_used_in_outer_folds(module: Any, monkeypatch: Any) -> None:
     ds = _replicated_units()
     real = module._select_cell
@@ -540,7 +555,7 @@ def test_smoothed_selection_used_in_outer_folds(module: Any, monkeypatch: Any) -
     assert seen == ["smoothed"] * 4
 
 
-@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+@pytest.mark.parametrize("module", list(_GRID_2D.values()), ids=list(_GRID_2D))
 def test_select_is_validated(module: Any) -> None:
     ds = _replicated_units()
     with pytest.raises(ValueError, match="select must be"):

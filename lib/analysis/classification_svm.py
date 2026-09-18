@@ -247,7 +247,8 @@ class CGridEdgeWarning(UserWarning):
     regularized point on the plateau" is only the most regularized point *tried*
     (extend ``c_grid`` downward; the knee scales roughly with ``1 / n_features``). At
     the **upper** edge the curve was still rising — extend it upward. Either way the
-    grid did not bracket the optimum, and the C-curve figure will show it.
+    grid did not bracket the optimum, and the C-curve figure will show it. Keyed on
+    the unsmoothed inner-CV curve (``plateau_start_c``), whatever ``select`` is.
     """
 
 
@@ -485,6 +486,8 @@ class SVMClassificationResult:
     n_folds_sub_plateau: int | None = None
     null_permutation: str | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
+    tuning_metric: str = "roc_auc"
+    inner_cv_grouped: bool = False
 
     @property
     def validated_eligible(self) -> bool:
@@ -780,18 +783,57 @@ def _select_c(
     return c_grid[idx]
 
 
+def _make_inner_cv(
+    grouped: bool, n_splits: int, random_state: int
+) -> StratifiedKFold | StratifiedGroupKFold:
+    """The inner tuning splitter: group-aware whenever the outer CV is.
+
+    A row-level inner split under a grouped outer CV puts a unit's replicates on both
+    sides of a tuning fold, so the tuning surface is inflated (AUC near 1 on pure
+    noise) and the selected hyperparameters reward memorizing the unit rather than
+    generalizing to a new one. The seed fixes the inner folds, so GridSearchCV reuses
+    exactly the folds :func:`_check_inner_folds` inspected.
+    """
+    if grouped:
+        return StratifiedGroupKFold(
+            n_splits=n_splits, shuffle=True, random_state=random_state
+        )
+    return StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+
+def _check_inner_folds(
+    inner: StratifiedKFold | StratifiedGroupKFold,
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+) -> None:
+    """Refuse an inner tuning fold whose test half holds a single class.
+
+    Its score is undefined, and GridSearchCV would otherwise carry a NaN into the
+    tuning surface or fail deep inside. Under grouped CV this happens when a unit
+    carries most of one class; the fix is fewer splits or more units, said plainly.
+    """
+    for j, (_, test) in enumerate(inner.split(x, y, groups)):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"inner tuning fold {j} holds a single class (n={len(test)}), so the "
+                f"tuning score is undefined. With grouped CV this happens when a unit "
+                f"carries most of one class — lower n_splits or use more units."
+            )
+
+
 def _tune_c(
-    x: np.ndarray, y: np.ndarray, cfg: _Config
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
 ) -> tuple[float, np.ndarray, np.ndarray]:
     """Inner-CV grid search over C -> (selected C, mean scores, SD over inner folds).
 
     ``refit=False``: the pipeline is refitted by the caller at the C chosen by
     :func:`_select_c`, so the ``select`` rule (and the smallest-C tie-break) governs
-    every fit, not GridSearchCV's own argmax.
+    every fit, not GridSearchCV's own argmax. The inner splitter is grouped whenever
+    ``groups`` is given (:func:`_make_inner_cv`).
     """
-    inner = StratifiedKFold(
-        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
-    )
+    inner = _make_inner_cv(groups is not None, cfg.n_splits, cfg.random_state)
+    _check_inner_folds(inner, x, y, groups)
     search = GridSearchCV(
         _build_pipeline(cfg.c_grid[0], cfg.tol, cfg.max_iter),
         {"svm__C": list(cfg.c_grid)},
@@ -800,7 +842,7 @@ def _tune_c(
         n_jobs=cfg.n_jobs,
         refit=False,
     )
-    search.fit(x, y)
+    search.fit(x, y, groups=groups)
     tried = np.asarray(search.cv_results_["param_svm__C"], dtype=float)
     if tried.shape != (len(cfg.c_grid),) or not np.allclose(tried, cfg.c_grid):
         raise RuntimeError(
@@ -850,7 +892,8 @@ def _nested_performance(
                 f"most of one class — use more units per fold (lower n_splits) or "
                 f"row-level CV."
             )
-        best_c, _, _ = _tune_c(x[train], y[train], cfg)
+        groups_train = None if groups is None else groups[train]
+        best_c, _, _ = _tune_c(x[train], y[train], groups_train, cfg)
         model = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
         model.fit(x[train], y[train])
         score = _scores(model, x[test])
@@ -906,11 +949,19 @@ class _AllDataFit:
     n_support_positive: int
 
 
-def _all_data_fit(x: np.ndarray, y: np.ndarray, cfg: _Config) -> _AllDataFit:
-    """Tune C on all data + refit -> best C, standardized weights, curve, SV counts."""
-    best_c, means, sds = _tune_c(x, y, cfg)
-    _warn_if_grid_edge(best_c, cfg.c_grid)
+def _all_data_fit(
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
+) -> _AllDataFit:
+    """Tune C on all data + refit -> best C, standardized weights, curve, SV counts.
+
+    The grid-edge warning is keyed on the *unsmoothed* plateau start, not the
+    (possibly smoothed) pick: 3-point smoothing averages an edge with two values and
+    an interior point with three, which systematically favours an edge pick, so a
+    smoothed pick at the top of the grid is not evidence the curve was still rising.
+    """
+    best_c, means, sds = _tune_c(x, y, groups, cfg)
     plateau_start = _select_c(means, cfg.c_grid, "best")  # unsmoothed, smallest-C
+    _warn_if_grid_edge(plateau_start, cfg.c_grid)
     final = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     final.fit(x, y)
     svm = final.named_steps["svm"]
@@ -1354,6 +1405,11 @@ def classify_svm(
         raise ValueError(f"top_k must be >= 1; got {top_k}.")
     if select not in ("best", "smoothed"):
         raise ValueError(f"select must be 'best' or 'smoothed'; got {select!r}.")
+    if select == "smoothed" and len(c_grid_t) < 3:
+        raise ValueError(
+            "select='smoothed' needs a c_grid of at least 3 values: on 2 points the "
+            "smoothed curve is flat and the first C is always chosen."
+        )
     if max_iter != -1 and max_iter < 1:
         raise ValueError(f"max_iter must be -1 (no cap) or >= 1; got {max_iter}.")
 
@@ -1466,7 +1522,7 @@ def classify_svm(
     )
 
     perf = _nested_performance(x, y, groups_kept, cfg)
-    fit = _all_data_fit(x, y, cfg)
+    fit = _all_data_fit(x, y, groups_kept, cfg)
     n_sub_plateau = _count_sub_plateau(perf.folds, fit.plateau_start_c)
     if _should_warn_tuning_noise(fit.plateau_start_c, c_grid_t):
         _warn_if_tuning_noisy(n_sub_plateau, len(perf.folds))
@@ -1520,6 +1576,8 @@ def classify_svm(
         n_folds_sub_plateau=n_sub_plateau,
         null_permutation=null_scheme,
         feature_names=kept_features,
+        tuning_metric=tuning_metric,
+        inner_cv_grouped=grouped,
     )
 
 
@@ -1538,12 +1596,12 @@ def _check_scale(scale: str) -> None:
 def _check_class_sizes_for_nested_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
     """Each class must keep >= n_splits samples inside every outer *training* fold.
 
-    The inner ``StratifiedKFold(n_splits)`` runs on the outer training fold, which has
-    lost up to ``ceil(min_class / n_splits)`` minority samples to the outer test fold;
-    guarding only ``min_class >= n_splits`` lets the inner CV fail deep inside with an
-    all-NaN tuning surface. The bound is exact for row-level stratified folds; under
-    grouped CV a whole minority unit can leave with the test fold, so the inner CV can
-    still fail — loudly (``_select_c`` refuses an all-NaN surface), never silently.
+    The inner tuning CV runs on the outer training fold, which has lost up to
+    ``ceil(min_class / n_splits)`` minority samples to the outer test fold; guarding
+    only ``min_class >= n_splits`` would let the inner CV fail deep inside. The bound
+    is exact for row-level stratified folds. Under grouped CV (outer and inner folds
+    alike) it is necessary, not sufficient — a whole minority unit can leave with a
+    test fold — and the inner-fold check refuses such a split loudly, never silently.
     """
     min_class = min(n_pos, n_neg)
     inner_min = min_class - math.ceil(min_class / n_splits)

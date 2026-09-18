@@ -22,6 +22,8 @@ should surface.
 
 from __future__ import annotations
 
+import dataclasses
+import inspect
 import warnings
 from pathlib import Path
 from typing import Any
@@ -887,18 +889,20 @@ def test_within_unit_null_guards() -> None:
     # a bad scheme name
     with pytest.raises(ValueError, match="null_permutation must be"):
         svm.classify_svm(ds, "grp", null_permutation="rows", **_NULL_FAST)  # type: ignore[arg-type]
-    # too few distinct arrangements for n_permutations: warns, still runs. Two batches
-    # of 2/2 -> C(4,2)^2 = 36 arrangements < 37 requested.
+    # too few distinct arrangements for n_permutations: warns, still runs. Four batches
+    # of 1/1 -> C(2,1)^4 = 16 arrangements < 17 requested. (Four units, not two: the
+    # inner tuning CV is grouped too, so every outer training fold needs >= n_splits
+    # units to partition.)
     small = _planted(n=8, p=10, n_signal=3, seed=0)
-    small.metadata["batch"] = ["a"] * 4 + ["b"] * 4
-    with pytest.warns(svm.NullPermutationWarning, match="36 distinct"):
+    small.metadata["batch"] = ["a", "a", "b", "b", "c", "c", "d", "d"]
+    with pytest.warns(svm.NullPermutationWarning, match="16 distinct"):
         res = svm.classify_svm(
             small,
             "grp",
             groups="batch",
             run_null=True,
             null_permutation="within_units",
-            n_permutations=37,
+            n_permutations=17,
             **{**_NULL_FAST, "n_splits": 2},
         )
     assert res.null_permutation == "within_units"
@@ -1049,3 +1053,38 @@ def test_smoke_5xfad_cohort_held_out_within_unit_null() -> None:
     assert res.observed_auc == pytest.approx(0.84, abs=0.05)
     assert abs(float(np.mean(res.null_aucs)) - 0.5) < 0.05
     assert res.null_p is not None and res.null_p < 0.05
+
+
+def test_smoothed_edge_warning_keys_on_raw_curve(monkeypatch: Any) -> None:
+    """Under select="smoothed" the edge warning follows the unsmoothed plateau start.
+
+    Raw curve [0.80, 0.90, 0.95, 0.94] on (0.01, 0.1, 1, 10): the raw pick is the
+    interior C = 1 (no edge), while 3-point smoothing scores the top edge higher
+    (mean of two) — the old code warned "extend c_grid upward" on a curve that had
+    already plateaued.
+    """
+    ds = _planted(n=24, p=10, n_signal=3, seed=0)
+    x = ds.abundances
+    y = (ds.metadata["grp"] == "B").to_numpy().astype(int)
+    defaults = {
+        k: v.default for k, v in inspect.signature(svm.classify_svm).parameters.items()
+    }
+    defaults.update(c_grid=(0.01, 0.1, 1.0, 10.0), select="smoothed", n_jobs=1)
+    cfg = svm._Config(
+        **{f.name: defaults[f.name] for f in dataclasses.fields(svm._Config)}
+    )
+    raw = np.array([0.80, 0.90, 0.95, 0.94])
+    assert svm._select_c(raw, cfg.c_grid, "smoothed") == 10.0  # the smoothed pick
+    monkeypatch.setattr(
+        svm, "_tune_c", lambda x, y, groups, cfg: (10.0, raw, np.zeros(4))
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", category=svm.CGridEdgeWarning)
+        fit = svm._all_data_fit(x, y, None, cfg)
+    assert (fit.best_c, fit.plateau_start_c) == (10.0, 1.0)
+
+
+def test_smoothed_needs_three_grid_points() -> None:
+    ds = _planted(n=24, p=10, n_signal=3, seed=0)
+    with pytest.raises(ValueError, match="at least 3 values"):
+        svm.classify_svm(ds, "grp", c_grid=[0.1, 1.0], select="smoothed", n_jobs=1)
