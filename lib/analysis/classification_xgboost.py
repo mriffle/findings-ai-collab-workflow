@@ -78,9 +78,9 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -364,6 +364,8 @@ class XGBClassificationResult:
     n_features_matched: int | None = None
     null_permutation: str | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
+    tuning_metric: str = "roc_auc"
+    inner_cv_grouped: bool = False
 
     @property
     def validated_eligible(self) -> bool:
@@ -672,14 +674,98 @@ def _select_cell(
     learning_rate_grid: tuple[float, ...],
     select: Selection,
 ) -> tuple[int, float]:
+    """The best (or neighbourhood-smoothed best) cell of the inner-CV surface.
+
+    A cell whose own inner fit failed (NaN score) is never a candidate, even if
+    smoothing gave it a finite neighbour mean; an all-NaN surface raises. Ties break
+    to the first cell in row-major order (the shallowest depth at the lowest learning
+    rate), which is also GridSearchCV's own first-max rule, so ``select="best"``
+    reproduces its choice exactly.
+    """
     surface = _neighborhood_smooth(grid_scores) if select == "smoothed" else grid_scores
+    surface = np.where(np.isfinite(grid_scores), surface, np.nan)
+    if not np.any(np.isfinite(surface)):
+        raise ValueError("inner-CV scores are all non-finite; cannot select a cell.")
     row, col = np.unravel_index(int(np.nanargmax(surface)), surface.shape)
     return int(max_depth_grid[row]), float(learning_rate_grid[col])
 
 
-# --------------------------------------------------------------------------- #
-# Internal: the three CV uses
-# --------------------------------------------------------------------------- #
+def _grid_table(
+    cv_results: Mapping[str, Any],
+    row_key: str,
+    row_grid: tuple[float, ...],
+    col_key: str,
+    col_grid: tuple[float, ...],
+) -> np.ndarray:
+    """Arrange GridSearchCV's flat ``mean_test_score`` as a ``(rows, cols)`` table.
+
+    Indexed by the parameter values GridSearchCV records for each result — never by
+    position. ``ParameterGrid`` enumerates parameters in *sorted key* order, so a
+    positional reshape is right only when the key names happen to sort the way the
+    table is laid out; looking the values up makes the layout independent of naming.
+    Raises if a cell is written twice or left unfilled.
+    """
+    row_index = {float(v): i for i, v in enumerate(row_grid)}
+    col_index = {float(v): j for j, v in enumerate(col_grid)}
+    scores = np.asarray(cv_results["mean_test_score"], dtype=float)
+    rows = np.asarray(cv_results[row_key], dtype=float)
+    cols = np.asarray(cv_results[col_key], dtype=float)
+    table = np.full((len(row_grid), len(col_grid)), np.nan)
+    filled = np.zeros(table.shape, dtype=bool)
+    for score, r, c in zip(scores, rows, cols, strict=True):
+        if float(r) not in row_index or float(c) not in col_index:
+            raise RuntimeError(
+                f"GridSearchCV evaluated a parameter pair ({r}, {c}) not in the grid."
+            )
+        i, j = row_index[float(r)], col_index[float(c)]
+        if filled[i, j]:
+            raise RuntimeError(f"GridSearchCV reported the cell ({r}, {c}) twice.")
+        table[i, j] = score
+        filled[i, j] = True
+    if not filled.all():
+        raise RuntimeError("GridSearchCV left grid cells unevaluated; cannot align.")
+    return table
+
+
+def _make_inner_cv(
+    grouped: bool, n_splits: int, random_state: int
+) -> StratifiedKFold | StratifiedGroupKFold:
+    """The inner tuning splitter: group-aware whenever the outer CV is.
+
+    A row-level inner split under a grouped outer CV puts a unit's replicates on both
+    sides of a tuning fold, so the tuning surface is inflated (AUC near 1 on pure
+    noise) and the selected hyperparameters reward memorizing the unit rather than
+    generalizing to a new one. The seed fixes the inner folds, so GridSearchCV reuses
+    exactly the folds :func:`_check_inner_folds` inspected.
+    """
+    if grouped:
+        return StratifiedGroupKFold(
+            n_splits=n_splits, shuffle=True, random_state=random_state
+        )
+    return StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+
+def _check_inner_folds(
+    inner: StratifiedKFold | StratifiedGroupKFold,
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+) -> None:
+    """Refuse an inner tuning fold whose test half holds a single class.
+
+    Its score is undefined, and GridSearchCV would otherwise carry a NaN into the
+    tuning surface or fail deep inside. Under grouped CV this happens when a unit
+    carries most of one class; the fix is fewer splits or more units, said plainly.
+    """
+    for j, (_, test) in enumerate(inner.split(x, y, groups)):
+        if len(np.unique(y[test])) < 2:
+            raise ValueError(
+                f"inner tuning fold {j} holds a single class (n={len(test)}), so the "
+                f"tuning score is undefined. With grouped CV this happens when a unit "
+                f"carries most of one class — lower n_splits or use more units."
+            )
+
+
 def _param_grid(cfg: _Config) -> dict[str, list[int] | list[float]]:
     # max_depth must stay int (XGBoost rejects a float); learning_rate is float.
     return {
@@ -688,18 +774,61 @@ def _param_grid(cfg: _Config) -> dict[str, list[int] | list[float]]:
     }
 
 
+def _tune(
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
+) -> tuple[int, float, np.ndarray]:
+    """Inner-CV grid search -> (best_depth, best_lr, the (depth x rate) score table).
+
+    ``refit=False``: the caller refits at the cell :func:`_select_cell` chose, so the
+    ``select`` rule governs every fit — the outer folds and the all-data model alike —
+    not GridSearchCV's own argmax. The inner splitter is grouped whenever ``groups``
+    is given (:func:`_make_inner_cv`). The table is built from the parameter values
+    GridSearchCV records (``ParameterGrid`` enumerates ``learning_rate`` *outer* and
+    ``max_depth`` fastest — sorted key order — so a positional reshape scrambles it).
+    """
+    inner = _make_inner_cv(groups is not None, cfg.n_splits, cfg.random_state)
+    _check_inner_folds(inner, x, y, groups)
+    spw = _scale_pos_weight(y)
+    base = _make_xgb(
+        cfg.max_depth_grid[0], cfg.learning_rate_grid[0], spw, cfg, n_jobs=1
+    )
+    search = GridSearchCV(
+        base,
+        _param_grid(cfg),
+        cv=inner,
+        scoring=cfg.tuning_metric,
+        n_jobs=cfg.n_jobs,
+        refit=False,
+    )
+    search.fit(x, y, groups=groups)
+    grid_scores = _grid_table(
+        search.cv_results_,
+        "param_max_depth",
+        cfg.max_depth_grid,
+        "param_learning_rate",
+        cfg.learning_rate_grid,
+    )
+    best_depth, best_lr = _select_cell(
+        grid_scores, cfg.max_depth_grid, cfg.learning_rate_grid, cfg.select
+    )
+    return best_depth, best_lr, grid_scores
+
+
+# --------------------------------------------------------------------------- #
+# Internal: the three CV uses
+# --------------------------------------------------------------------------- #
 def _nested_performance(
     x: np.ndarray,
     y: np.ndarray,
     groups: np.ndarray | None,
     cfg: _Config,
 ) -> tuple[list[FoldPrediction], float, float, float, float]:
-    """Tune-in-fold repeated stratified CV -> per-fold ROC input + AUC/balacc/AP."""
+    """Tune-in-fold repeated stratified CV -> per-fold ROC input + AUC/balacc/AP.
+
+    Each outer fold: tune on the training fold (inner CV, grouped like the outer),
+    refit at the selected cell on the training fold, score the untouched test fold.
+    """
     outer = _make_cv(cfg.n_splits, cfg.n_repeats, groups is not None, cfg.random_state)
-    param_grid = _param_grid(cfg)
-    inner = StratifiedKFold(
-        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
-    )
     folds: list[FoldPrediction] = []
     aucs: list[float] = []
     accs: list[float] = []
@@ -712,15 +841,12 @@ def _nested_performance(
                 f"most of one class — use more units per fold (lower n_splits) or "
                 f"row-level CV."
             )
+        groups_train = None if groups is None else groups[train]
+        best_depth, best_lr, _ = _tune(x[train], y[train], groups_train, cfg)
         spw = _scale_pos_weight(y[train])
-        base = _make_xgb(
-            cfg.max_depth_grid[0], cfg.learning_rate_grid[0], spw, cfg, n_jobs=1
-        )
-        search = GridSearchCV(
-            base, param_grid, cv=inner, scoring=cfg.tuning_metric, n_jobs=cfg.n_jobs
-        )
-        search.fit(x[train], y[train])
-        prob = np.asarray(search.predict_proba(x[test]), dtype=float)[:, 1]
+        model = _make_xgb(best_depth, best_lr, spw, cfg, n_jobs=cfg.n_jobs)
+        model.fit(x[train], y[train])
+        prob = np.asarray(model.predict_proba(x[test]), dtype=float)[:, 1]
         folds.append(
             FoldPrediction(
                 y_true=y[test].copy(),
@@ -743,28 +869,11 @@ def _nested_performance(
 
 
 def _all_data_fit(
-    x: np.ndarray, y: np.ndarray, cfg: _Config
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
 ) -> tuple[int, float, np.ndarray, np.ndarray]:
     """Tune (max_depth, learning_rate) on all data + refit -> best + importance/grid."""
-    param_grid = _param_grid(cfg)
-    inner = StratifiedKFold(
-        n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state
-    )
-    spw = _scale_pos_weight(y)
-    base = _make_xgb(
-        cfg.max_depth_grid[0], cfg.learning_rate_grid[0], spw, cfg, n_jobs=1
-    )
-    search = GridSearchCV(
-        base, param_grid, cv=inner, scoring=cfg.tuning_metric, n_jobs=cfg.n_jobs
-    )
-    search.fit(x, y)
-    grid_scores = np.asarray(
-        search.cv_results_["mean_test_score"], dtype=float
-    ).reshape(len(cfg.max_depth_grid), len(cfg.learning_rate_grid))
-    best_depth, best_lr = _select_cell(
-        grid_scores, cfg.max_depth_grid, cfg.learning_rate_grid, cfg.select
-    )
-    final = _make_xgb(best_depth, best_lr, spw, cfg, n_jobs=cfg.n_jobs)
+    best_depth, best_lr, grid_scores = _tune(x, y, groups, cfg)
+    final = _make_xgb(best_depth, best_lr, _scale_pos_weight(y), cfg, n_jobs=cfg.n_jobs)
     final.fit(x, y)
     return best_depth, best_lr, _importances(final), grid_scores
 
@@ -1115,6 +1224,13 @@ def classify_xgboost(
         raise ValueError("max_depth_grid and learning_rate_grid must be non-empty.")
     if any(v < 1 for v in depth_grid_t):
         raise ValueError(f"max_depth_grid values must be >= 1; got {depth_grid_t}.")
+    if select not in ("best", "smoothed"):
+        raise ValueError(f"select must be 'best' or 'smoothed'; got {select!r}.")
+    if select == "smoothed" and len(depth_grid_t) * len(lr_grid_t) < 3:
+        raise ValueError(
+            "select='smoothed' needs a grid of at least 3 cells: on 2 cells the "
+            "smoothed surface is flat and the first cell is always chosen."
+        )
     if any(v <= 0.0 for v in lr_grid_t):
         raise ValueError(f"learning_rate_grid values must be > 0; got {lr_grid_t}.")
 
@@ -1232,7 +1348,7 @@ def classify_xgboost(
     folds, cv_auc, cv_auc_sd, cv_acc, cv_ap = _nested_performance(
         x, y, groups_kept, cfg
     )
-    best_depth, best_lr, final_imp, grid_scores = _all_data_fit(x, y, cfg)
+    best_depth, best_lr, final_imp, grid_scores = _all_data_fit(x, y, groups_kept, cfg)
     resample_imp = _stability(x, y, groups_kept, best_depth, best_lr, cfg)
     imp_table = _importance_table(final_imp, resample_imp, kept_features)
 
@@ -1276,18 +1392,20 @@ def classify_xgboost(
         n_features_matched=n_matched,
         null_permutation=null_scheme,
         feature_names=kept_features,
+        tuning_metric=tuning_metric,
+        inner_cv_grouped=grouped,
     )
 
 
 def _check_class_sizes_for_nested_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
     """Each class must keep >= n_splits samples inside every outer *training* fold.
 
-    The inner ``StratifiedKFold(n_splits)`` runs on the outer training fold, which has
-    lost up to ``ceil(min_class / n_splits)`` minority samples to the outer test fold;
-    guarding only ``min_class >= n_splits`` lets the inner CV fail deep inside with an
-    all-NaN tuning surface. The bound is exact for row-level stratified folds; under
-    grouped CV a whole minority unit can leave with the test fold, so the inner CV can
-    still fail — loudly (``_select_c`` refuses an all-NaN surface), never silently.
+    The inner tuning CV runs on the outer training fold, which has lost up to
+    ``ceil(min_class / n_splits)`` minority samples to the outer test fold; guarding
+    only ``min_class >= n_splits`` would let the inner CV fail deep inside. The bound
+    is exact for row-level stratified folds. Under grouped CV (outer and inner folds
+    alike) it is necessary, not sufficient — a whole minority unit can leave with a
+    test fold — and the inner-fold check refuses such a split loudly, never silently.
     """
     min_class = min(n_pos, n_neg)
     inner_min = min_class - math.ceil(min_class / n_splits)

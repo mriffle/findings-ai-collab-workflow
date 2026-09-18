@@ -63,9 +63,9 @@ Requires scikit-learn.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -245,6 +245,8 @@ class RegressionResult:
     n_features_requested: int | None = None
     n_features_matched: int | None = None
     feature_names: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=object))
+    tuning_metric: str = "r2"
+    inner_cv_grouped: bool = False
 
     @property
     def validated_eligible(self) -> bool:
@@ -461,9 +463,132 @@ def _select_cell(
     l1_grid: tuple[float, ...],
     select: Selection,
 ) -> tuple[float, float]:
+    """The best (or neighbourhood-smoothed best) cell of the inner-CV surface.
+
+    A cell whose own inner fit failed (NaN score) is never a candidate, even if
+    smoothing gave it a finite neighbour mean; an all-NaN surface raises. Ties break
+    to the first cell in row-major order (the strongest ``alpha`` at the lowest
+    ``l1_ratio``), which is also GridSearchCV's own first-max rule, so
+    ``select="best"`` reproduces its choice exactly.
+    """
     surface = _neighborhood_smooth(grid_scores) if select == "smoothed" else grid_scores
+    surface = np.where(np.isfinite(grid_scores), surface, np.nan)
+    if not np.any(np.isfinite(surface)):
+        raise ValueError("inner-CV scores are all non-finite; cannot select a cell.")
     row, col = np.unravel_index(int(np.nanargmax(surface)), surface.shape)
     return alpha_grid[row], l1_grid[col]
+
+
+def _grid_table(
+    cv_results: Mapping[str, Any],
+    row_key: str,
+    row_grid: tuple[float, ...],
+    col_key: str,
+    col_grid: tuple[float, ...],
+) -> np.ndarray:
+    """Arrange GridSearchCV's flat ``mean_test_score`` as a ``(rows, cols)`` table.
+
+    Indexed by the parameter values GridSearchCV records for each result — never by
+    position. ``ParameterGrid`` enumerates parameters in *sorted key* order, so a
+    positional reshape is right only when the key names happen to sort the way the
+    table is laid out; looking the values up makes the layout independent of naming.
+    Raises if a cell is written twice or left unfilled.
+    """
+    row_index = {float(v): i for i, v in enumerate(row_grid)}
+    col_index = {float(v): j for j, v in enumerate(col_grid)}
+    scores = np.asarray(cv_results["mean_test_score"], dtype=float)
+    rows = np.asarray(cv_results[row_key], dtype=float)
+    cols = np.asarray(cv_results[col_key], dtype=float)
+    table = np.full((len(row_grid), len(col_grid)), np.nan)
+    filled = np.zeros(table.shape, dtype=bool)
+    for score, r, c in zip(scores, rows, cols, strict=True):
+        if float(r) not in row_index or float(c) not in col_index:
+            raise RuntimeError(
+                f"GridSearchCV evaluated a parameter pair ({r}, {c}) not in the grid."
+            )
+        i, j = row_index[float(r)], col_index[float(c)]
+        if filled[i, j]:
+            raise RuntimeError(f"GridSearchCV reported the cell ({r}, {c}) twice.")
+        table[i, j] = score
+        filled[i, j] = True
+    if not filled.all():
+        raise RuntimeError("GridSearchCV left grid cells unevaluated; cannot align.")
+    return table
+
+
+def _make_inner_cv(
+    grouped: bool, n_splits: int, random_state: int
+) -> KFold | GroupKFold:
+    """The inner tuning splitter: group-aware whenever the outer CV is.
+
+    A row-level inner split under a grouped outer CV puts a unit's replicates on both
+    sides of a tuning fold, so the tuning surface is inflated (R² near 1 on pure
+    noise) and the selected hyperparameters reward memorizing the unit rather than
+    generalizing to a new one. The seed fixes the inner folds, so GridSearchCV reuses
+    exactly the folds :func:`_check_inner_folds` inspected.
+    """
+    if grouped:
+        return GroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    return KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+
+def _check_inner_folds(
+    inner: KFold | GroupKFold,
+    x: np.ndarray,
+    y: np.ndarray,
+    groups: np.ndarray | None,
+) -> None:
+    """Refuse an inner tuning split that cannot be formed.
+
+    Grouped: fewer distinct units than inner splits cannot be partitioned (said
+    plainly here rather than from inside GridSearchCV). A constant held-out target in
+    an inner fold is *not* refused: scikit-learn scores it R² = 0 (``force_finite``),
+    which only lowers that cell — a small discrete outcome would otherwise be unusable.
+    """
+    n_splits = inner.get_n_splits()
+    if groups is not None and len(np.unique(groups)) < n_splits:
+        raise ValueError(
+            f"inner tuning CV needs >= n_splits ({n_splits}) distinct units in every "
+            f"outer training fold; got {len(np.unique(groups))}. Lower n_splits or "
+            f"use more units."
+        )
+    del x, y  # the split itself is formed by GridSearchCV; nothing else to inspect
+
+
+def _tune(
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
+) -> tuple[float, float, np.ndarray]:
+    """Inner-CV grid search -> (best_alpha, best_l1, the (alpha x l1) score table).
+
+    ``refit=False``: the caller refits at the cell :func:`_select_cell` chose, so the
+    ``select`` rule governs every fit — the outer folds and the all-data model alike —
+    not GridSearchCV's own argmax. The inner splitter is grouped whenever ``groups``
+    is given (:func:`_make_inner_cv`).
+    """
+    inner = _make_inner_cv(groups is not None, cfg.n_splits, cfg.random_state)
+    _check_inner_folds(inner, x, y, groups)
+    search = GridSearchCV(
+        _build_pipeline(
+            cfg.alpha_grid[0], cfg.l1_grid[0], cfg.max_iter, cfg.tol, cfg.random_state
+        ),
+        {"en__alpha": list(cfg.alpha_grid), "en__l1_ratio": list(cfg.l1_grid)},
+        cv=inner,
+        scoring=cfg.tuning_metric,
+        n_jobs=cfg.n_jobs,
+        refit=False,
+    )
+    search.fit(x, y, groups=groups)
+    grid_scores = _grid_table(
+        search.cv_results_,
+        "param_en__alpha",
+        cfg.alpha_grid,
+        "param_en__l1_ratio",
+        cfg.l1_grid,
+    )
+    best_alpha, best_l1 = _select_cell(
+        grid_scores, cfg.alpha_grid, cfg.l1_grid, cfg.select
+    )
+    return best_alpha, best_l1, grid_scores
 
 
 # --------------------------------------------------------------------------- #
@@ -475,30 +600,24 @@ def _nested_performance(
     groups: np.ndarray | None,
     cfg: _Config,
 ) -> tuple[list[FoldPrediction], float, float, float, float]:
-    """Tune-in-fold repeated K-fold -> per-fold predictions + R²/RMSE/MAE."""
+    """Tune-in-fold repeated K-fold -> per-fold predictions + R²/RMSE/MAE.
+
+    Each outer fold: tune on the training fold (inner CV, grouped like the outer),
+    refit at the selected cell on the training fold, score the untouched test fold.
+    """
     outer = _make_cv(cfg.n_splits, cfg.n_repeats, groups is not None, cfg.random_state)
-    param_grid = {"en__alpha": list(cfg.alpha_grid), "en__l1_ratio": list(cfg.l1_grid)}
-    inner = KFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state)
     folds: list[FoldPrediction] = []
     r2s: list[float] = []
     rmses: list[float] = []
     maes: list[float] = []
     for train, test in _split(outer, x, y, groups):
-        search = GridSearchCV(
-            _build_pipeline(
-                cfg.alpha_grid[0],
-                cfg.l1_grid[0],
-                cfg.max_iter,
-                cfg.tol,
-                cfg.random_state,
-            ),
-            param_grid,
-            cv=inner,
-            scoring=cfg.tuning_metric,
-            n_jobs=cfg.n_jobs,
+        groups_train = None if groups is None else groups[train]
+        best_alpha, best_l1, _ = _tune(x[train], y[train], groups_train, cfg)
+        model = _build_pipeline(
+            best_alpha, best_l1, cfg.max_iter, cfg.tol, cfg.random_state
         )
-        search.fit(x[train], y[train])
-        pred = np.asarray(search.predict(x[test]), dtype=float)
+        model.fit(x[train], y[train])
+        pred = np.asarray(model.predict(x[test]), dtype=float)
         folds.append(
             FoldPrediction(y_true=y[test].copy(), y_pred=pred, test_indices=test.copy())
         )
@@ -515,27 +634,10 @@ def _nested_performance(
 
 
 def _all_data_fit(
-    x: np.ndarray, y: np.ndarray, cfg: _Config
+    x: np.ndarray, y: np.ndarray, groups: np.ndarray | None, cfg: _Config
 ) -> tuple[float, float, np.ndarray, np.ndarray]:
     """Tune (alpha, l1_ratio) on all data + refit -> best_alpha, best_l1, coef, grid."""
-    param_grid = {"en__alpha": list(cfg.alpha_grid), "en__l1_ratio": list(cfg.l1_grid)}
-    inner = KFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.random_state)
-    search = GridSearchCV(
-        _build_pipeline(
-            cfg.alpha_grid[0], cfg.l1_grid[0], cfg.max_iter, cfg.tol, cfg.random_state
-        ),
-        param_grid,
-        cv=inner,
-        scoring=cfg.tuning_metric,
-        n_jobs=cfg.n_jobs,
-    )
-    search.fit(x, y)
-    grid_scores = np.asarray(
-        search.cv_results_["mean_test_score"], dtype=float
-    ).reshape(len(cfg.alpha_grid), len(cfg.l1_grid))
-    best_alpha, best_l1 = _select_cell(
-        grid_scores, cfg.alpha_grid, cfg.l1_grid, cfg.select
-    )
+    best_alpha, best_l1, grid_scores = _tune(x, y, groups, cfg)
     final = _build_pipeline(
         best_alpha, best_l1, cfg.max_iter, cfg.tol, cfg.random_state
     )
@@ -773,6 +875,13 @@ def regress(
     l1_grid_t = tuple(float(v) for v in l1_ratios)
     if not alpha_grid_t or not l1_grid_t:
         raise ValueError("alpha_grid and l1_ratios must be non-empty.")
+    if select not in ("best", "smoothed"):
+        raise ValueError(f"select must be 'best' or 'smoothed'; got {select!r}.")
+    if select == "smoothed" and len(alpha_grid_t) * len(l1_grid_t) < 3:
+        raise ValueError(
+            "select='smoothed' needs a grid of at least 3 cells: on 2 cells the "
+            "smoothed surface is flat and the first cell is always chosen."
+        )
     if any(v <= 0.0 for v in alpha_grid_t):
         raise ValueError(f"alpha_grid values must be positive; got {alpha_grid_t}.")
     if any(not 0.0 < v <= 1.0 for v in l1_grid_t):
@@ -845,7 +954,7 @@ def regress(
     folds, cv_r2, cv_r2_sd, cv_rmse, cv_mae = _nested_performance(
         x, y, groups_kept, cfg
     )
-    best_alpha, best_l1, final_coef, grid_scores = _all_data_fit(x, y, cfg)
+    best_alpha, best_l1, final_coef, grid_scores = _all_data_fit(x, y, groups_kept, cfg)
     resample_coef = _stability(x, y, groups_kept, best_alpha, best_l1, cfg)
     coeff_table = _coefficient_table(final_coef, resample_coef, kept_features)
 
@@ -884,6 +993,8 @@ def regress(
         n_features_requested=n_requested,
         n_features_matched=n_matched,
         feature_names=kept_features,
+        tuning_metric=tuning_metric,
+        inner_cv_grouped=grouped,
     )
 
 

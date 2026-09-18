@@ -617,18 +617,20 @@ def test_within_unit_null_guards() -> None:
     # a bad scheme name
     with pytest.raises(ValueError, match="null_permutation must be"):
         xgb.classify_xgboost(ds, "grp", null_permutation="rows", **_NULL_FAST)  # type: ignore[arg-type]
-    # too few distinct arrangements for n_permutations: warns, still runs. Two batches
-    # of 2/2 -> C(4,2)^2 = 36 arrangements < 37 requested.
+    # too few distinct arrangements for n_permutations: warns, still runs. Four batches
+    # of 1/1 -> C(2,1)^4 = 16 arrangements < 17 requested. (Four units, not two: the
+    # inner tuning CV is grouped too, so every outer training fold needs >= n_splits
+    # units to partition.)
     small = _planted(n=8, p=10, n_signal=3, seed=0)
-    small.metadata["batch"] = ["a"] * 4 + ["b"] * 4
-    with pytest.warns(xgb.NullPermutationWarning, match="36 distinct"):
+    small.metadata["batch"] = ["a", "a", "b", "b", "c", "c", "d", "d"]
+    with pytest.warns(xgb.NullPermutationWarning, match="16 distinct"):
         res = xgb.classify_xgboost(
             small,
             "grp",
             groups="batch",
             run_null=True,
             null_permutation="within_units",
-            n_permutations=37,
+            n_permutations=17,
             **{**_NULL_FAST, "n_splits": 2},
         )
     assert res.null_permutation == "within_units"

@@ -628,3 +628,31 @@ def test_pre_0_3_cache_without_null_permutation_reloads(tmp_path: Path) -> None:
         out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
     assert out.null_permutation is None
     assert out.null_p == result.null_p  # the null itself is intact
+
+
+def test_pre_0_4_cache_without_tuning_fields_reloads(tmp_path: Path) -> None:
+    """A result cached before ``tuning_metric`` / ``inner_cv_grouped`` existed (template
+    v0.3 and earlier) reloads with the defaults — which are what those runs were."""
+    result = clf.classify(
+        _planted(),
+        "grp",
+        random_state=0,
+        c_grid=[1.0],
+        l1_ratios=[0.5],
+        n_repeats=1,
+        stability_repeats=1,
+        n_jobs=1,
+        max_iter=2000,
+        tol=1e-3,
+    )
+    assert (result.tuning_metric, result.inner_cv_grouped) == ("roc_auc", False)
+    rio.save_result(result, tmp_path / "old")
+    manifest_path = tmp_path / "old" / "_result.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["fields"]["tuning_metric"]
+    del manifest["fields"]["inner_cv_grouped"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.warns(rio.ResultSchemaWarning, match="inner_cv_grouped"):
+        out = rio.load_result(tmp_path / "old", clf.ClassificationResult)
+    assert (out.tuning_metric, out.inner_cv_grouped) == ("roc_auc", False)
+    assert out.cv_auc == result.cv_auc

@@ -16,6 +16,7 @@ splits — this file turns that implicit "same seed" into a checked invariant:
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import warnings
 from typing import Any
@@ -254,3 +255,425 @@ def test_within_unit_permutation_keeps_grouped_folds_fixed() -> None:
         ]
         moved += cur != ref_pure
     assert moved > 0
+
+
+# --------------------------------------------------------------------------- #
+# The tuning block (v0.4): the inner tuning CV is grouped whenever the outer CV is,
+# and the tuning table is indexed by the recorded parameter values, never by position
+# --------------------------------------------------------------------------- #
+_TUNED: dict[str, Any] = {"elastic-net": clf, "xgboost": xgb, "regression": reg}
+_TUNING_HELPERS = ("_make_inner_cv", "_check_inner_folds")
+_GRID_HELPERS = ("_grid_table",)
+
+
+def test_tuning_helpers_byte_identical_across_classifiers() -> None:
+    for name in _TUNING_HELPERS:
+        sources = {
+            k: inspect.getsource(getattr(m, name))
+            for k, m in _TUNED.items()
+            if k != "regression"  # its splitters are KFold / GroupKFold
+        }
+        assert len(set(sources.values())) == 1, name
+    for name in _GRID_HELPERS:
+        sources = {k: inspect.getsource(getattr(m, name)) for k, m in _TUNED.items()}
+        assert len(set(sources.values())) == 1, name
+
+
+class _RecordingSplitter:
+    """Wraps a real inner splitter; asserts every split keeps every unit intact."""
+
+    def __init__(self, inner: Any, expect_groups: bool) -> None:
+        self.inner = inner
+        self.expect_groups = expect_groups
+        self.n_split_calls = 0
+
+    def get_n_splits(self, X: Any = None, y: Any = None, groups: Any = None) -> int:
+        return int(self.inner.get_n_splits(X, y, groups))
+
+    def split(self, X: Any, y: Any = None, groups: Any = None) -> Any:
+        self.n_split_calls += 1
+        assert (groups is not None) == self.expect_groups
+        for train, test in self.inner.split(X, y, groups):
+            if groups is not None:
+                assert not set(groups[train]) & set(groups[test])
+            yield train, test
+
+
+def _replicated_units(p: int = 40) -> dl.Dataset:
+    """20 units x 3 near-identical replicates, one class per unit, no class signal.
+
+    A row-level inner split memorizes the twin replicate (tuning AUC 1.0 on pure
+    noise); a grouped inner split cannot.
+    """
+    rng = np.random.default_rng(0)
+    unit = np.repeat(np.arange(20), 3)
+    x = rng.normal(0, 2.0, (20, p))[unit] + rng.normal(0, 0.01, (60, p))
+    names = np.array([f"F{i}" for i in range(p)])
+    return dl.Dataset(
+        abundances=x,
+        feature_names=names,
+        feature_metadata=pd.DataFrame({"feature": names}),
+        metadata=pd.DataFrame(
+            {
+                "grp": np.where(unit % 2 == 0, "A", "B"),
+                "animal": [f"a{u}" for u in unit],
+                "t": rng.normal(size=20)[unit],
+            }
+        ),
+        scale="log2",
+    )
+
+
+def _run_tuned(module: Any, ds: dl.Dataset, **extra: Any) -> Any:
+    common: dict[str, Any] = {
+        "groups": "animal",
+        "generalization_target": "individuals",
+        "n_splits": 3,
+        "n_repeats": 1,
+        "stability_repeats": 1,
+        "n_jobs": 1,
+        "random_state": 0,
+    }
+    common.update(extra)
+    if module is clf:
+        return clf.classify(
+            ds,
+            "grp",
+            c_grid=[0.1, 1.0],
+            l1_ratios=[0.5, 1.0],
+            max_iter=2000,
+            tol=1e-3,
+            **common,
+        )
+    if module is xgb:
+        return xgb.classify_xgboost(
+            ds,
+            "grp",
+            max_depth_grid=[2, 3],
+            learning_rate_grid=[0.1, 0.3],
+            n_estimators=20,
+            **common,
+        )
+    return reg.regress(
+        ds,
+        "t",
+        alpha_grid=[0.1, 1.0],
+        l1_ratios=[0.5, 1.0],
+        max_iter=2000,
+        tol=1e-3,
+        **common,
+    )
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_inner_cv_never_splits_a_unit(module: Any, monkeypatch: Any) -> None:
+    ds = _replicated_units()
+    real = module._make_inner_cv
+    made: list[_RecordingSplitter] = []
+
+    def recording(grouped: bool, n_splits: int, random_state: int) -> Any:
+        rec = _RecordingSplitter(real(grouped, n_splits, random_state), grouped)
+        made.append(rec)
+        return rec
+
+    monkeypatch.setattr(module, "_make_inner_cv", recording)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = _run_tuned(module, ds)
+    # one inner splitter per outer training fold + one for the all-data fit
+    assert len(made) == 3 + 1
+    assert all(m.expect_groups and m.n_split_calls >= 1 for m in made)
+    assert res.inner_cv_grouped is True
+    # ungrouped run: no groups reach the inner splitter, and the result says so
+    made.clear()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = _run_tuned(module, ds, groups=None, generalization_target="samples")
+    assert len(made) == 4
+    assert not any(m.expect_groups for m in made)
+    assert res.inner_cv_grouped is False
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_grouped_inner_cv_does_not_leak_replicates(module: Any) -> None:
+    ds = _replicated_units()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = _run_tuned(module, ds)
+    fixed = float(np.nanmax(res.grid_scores))
+    # the same all-data search with a row-level inner split: the twin replicate is in
+    # the inner training half, so the tuning surface reads near-perfect on pure noise
+    grouped_kind = type(module._make_inner_cv(True, 3, 0))
+    row_level = module._make_inner_cv(False, 3, 0)
+    from sklearn.model_selection import GridSearchCV
+
+    x = ds.abundances
+    if module is reg:
+        y = ds.metadata["t"].to_numpy(dtype=float)
+        est = module._build_pipeline(0.1, 0.5, 2000, 1e-3, 0)
+        grid: dict[str, list[Any]] = {
+            "en__alpha": [0.1, 1.0],
+            "en__l1_ratio": [0.5, 1.0],
+        }
+        scoring = "r2"
+    else:
+        y = (ds.metadata["grp"] == "B").to_numpy().astype(int)
+        if module is clf:
+            est = module._build_pipeline(None, 0.5, 2000, 1e-3, 0)
+            grid = {"lr__C": [0.1, 1.0], "lr__l1_ratio": [0.5, 1.0]}
+        else:
+            defaults = {
+                k: v.default
+                for k, v in inspect.signature(
+                    module.classify_xgboost
+                ).parameters.items()
+            }
+            defaults.update(
+                max_depth_grid=(2, 3),
+                learning_rate_grid=(0.1, 0.3),
+                n_estimators=20,
+                n_jobs=1,
+                random_state=0,
+            )
+            cfg = module._Config(
+                **{f.name: defaults[f.name] for f in dataclasses.fields(module._Config)}
+            )
+            est = module._make_xgb(2, 0.1, module._scale_pos_weight(y), cfg, n_jobs=1)
+            grid = {"max_depth": [2, 3], "learning_rate": [0.1, 0.3]}
+        scoring = "roc_auc"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        leaked = float(
+            np.nanmax(
+                GridSearchCV(est, grid, cv=row_level, scoring=scoring, n_jobs=1)
+                .fit(x, y)
+                .cv_results_["mean_test_score"]
+            )
+        )
+    assert grouped_kind is not type(row_level)
+    if module is reg:
+        assert leaked > fixed + 0.3, (fixed, leaked)  # R² on noise: leaked > 0 > fixed
+    else:
+        assert leaked > 0.95, leaked  # the leak the fix removes
+        assert fixed < 0.8, fixed
+
+
+def test_grid_table_is_index_based() -> None:
+    rows, cols = (0.1, 1.0, 10.0), (0.25, 0.5)
+    # ParameterGrid order for keys ("param_a", "param_b"): a outer, b fastest
+    cells = [(r, c) for r in rows for c in cols]
+    scores = [float(i) / 10 for i in range(len(cells))]
+    expected = np.asarray(scores).reshape(3, 2)
+
+    def results(order: list[int]) -> dict[str, Any]:
+        return {
+            "mean_test_score": np.asarray([scores[i] for i in order]),
+            "param_a": np.asarray([cells[i][0] for i in order]),
+            "param_b": np.asarray([cells[i][1] for i in order]),
+        }
+
+    natural = list(range(len(cells)))
+    shuffled = [5, 0, 3, 1, 4, 2]
+    for module in _TUNED.values():
+        for order in (natural, shuffled):
+            table = module._grid_table(results(order), "param_a", rows, "param_b", cols)
+            np.testing.assert_array_equal(table, expected)
+        with pytest.raises(RuntimeError, match="twice"):
+            module._grid_table(
+                results([0, 0, 2, 3, 4, 5]), "param_a", rows, "param_b", cols
+            )
+        with pytest.raises(RuntimeError, match="unevaluated"):
+            module._grid_table(results(natural[:-1]), "param_a", rows, "param_b", cols)
+        with pytest.raises(RuntimeError, match="not in the grid"):
+            module._grid_table(
+                results(natural), "param_a", (0.1, 1.0, 7.0), "param_b", cols
+            )
+
+
+def test_select_cell_masks_failed_cells_and_refuses_all_nan() -> None:
+    grid = np.array([[np.nan, 0.9], [0.9, 0.5]])
+    # the old smoothed rule averaged the NaN cell's neighbours to 0.9 and picked it;
+    # a cell whose own fit failed is never a candidate: hand-smoothed surface is
+    # [[nan, 0.7], [0.7, 0.767]] -> (1, 1)
+    for module, rows in ((clf, (1.0, 2.0)), (xgb, (1, 2)), (reg, (1.0, 2.0))):
+        assert module._select_cell(grid, rows, (0.5, 1.0), "smoothed") == (rows[1], 1.0)
+        assert module._select_cell(grid, rows, (0.5, 1.0), "best") == (rows[0], 1.0)
+        with pytest.raises(ValueError, match="all non-finite"):
+            module._select_cell(np.full((2, 2), np.nan), rows, (0.5, 1.0), "best")
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_smoothed_selection_used_in_outer_folds(module: Any, monkeypatch: Any) -> None:
+    ds = _replicated_units()
+    real = module._select_cell
+    seen: list[str] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(args[-1] if args else kwargs["select"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_select_cell", spy)
+    extra: dict[str, Any] = {
+        "select": "smoothed",
+        "groups": None,
+        "generalization_target": "samples",
+    }
+    if module is clf:
+        extra["l1_ratios"] = [0.25, 0.5, 1.0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        _run_tuned(module, ds, **extra) if module is not clf else clf.classify(
+            ds,
+            "grp",
+            c_grid=[0.1, 1.0],
+            l1_ratios=[0.25, 0.5, 1.0],
+            max_iter=2000,
+            tol=1e-3,
+            n_splits=3,
+            n_repeats=1,
+            stability_repeats=1,
+            n_jobs=1,
+            random_state=0,
+            select="smoothed",
+        )
+    # one selection per outer fold + one for the all-data fit, every one smoothed
+    assert seen == ["smoothed"] * 4
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_select_is_validated(module: Any) -> None:
+    ds = _replicated_units()
+    with pytest.raises(ValueError, match="select must be"):
+        _run_tuned(
+            module, ds, groups=None, generalization_target="samples", select="smooth"
+        )
+    with pytest.raises(ValueError, match="at least 3 cells"):
+        if module is clf:
+            clf.classify(
+                ds,
+                "grp",
+                c_grid=[0.1, 1.0],
+                l1_ratios=[0.5],
+                select="smoothed",
+                n_jobs=1,
+            )
+        elif module is xgb:
+            xgb.classify_xgboost(
+                ds,
+                "grp",
+                max_depth_grid=[2],
+                learning_rate_grid=[0.1, 0.3],
+                select="smoothed",
+                n_jobs=1,
+            )
+        else:
+            reg.regress(
+                ds,
+                "t",
+                alpha_grid=[0.1, 1.0],
+                l1_ratios=[0.5],
+                select="smoothed",
+                n_jobs=1,
+            )
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_result_records_tuning_metric(module: Any) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = _run_tuned(
+            module, _replicated_units(), groups=None, generalization_target="samples"
+        )
+    assert res.tuning_metric == ("r2" if module is reg else "roc_auc")
+    assert res.inner_cv_grouped is False
+
+
+@pytest.mark.parametrize("module", [clf, xgb], ids=["elastic-net", "xgboost"])
+def test_grid_scores_pinned_to_search_params(module: Any) -> None:
+    """Every table cell equals the inner-CV score of the parameter pair it is labelled
+    with — an asymmetric, non-monotone grid, so a transposed/scrambled reshape cannot
+    pass by accident (the XGBoost bug: ParameterGrid enumerates learning_rate outer)."""
+    from sklearn.model_selection import cross_val_score
+
+    ds = _planted()
+    y = (ds.metadata["grp"] == "B").to_numpy().astype(int)
+    inner = module._make_inner_cv(False, 3, 0)
+    res: Any
+    if module is clf:
+        rows, cols = (0.05, 1.0), (1.0, 0.25, 0.5)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            res = clf.classify(
+                ds,
+                "grp",
+                c_grid=rows,
+                l1_ratios=cols,
+                n_splits=3,
+                n_repeats=1,
+                stability_repeats=1,
+                n_jobs=1,
+                max_iter=2000,
+                tol=1e-3,
+            )
+
+        def estimator(r: float, c: float) -> Any:
+            return clf._build_pipeline(r, c, 2000, 1e-3, 0)
+    else:
+        rows, cols = (1, 6), (0.3, 0.01, 0.1)
+        res = xgb.classify_xgboost(
+            ds,
+            "grp",
+            max_depth_grid=rows,
+            learning_rate_grid=cols,
+            n_estimators=20,
+            n_splits=3,
+            n_repeats=1,
+            stability_repeats=1,
+            n_jobs=1,
+        )
+        defaults = {
+            k: v.default
+            for k, v in inspect.signature(xgb.classify_xgboost).parameters.items()
+        }
+        defaults.update(
+            max_depth_grid=rows,
+            learning_rate_grid=cols,
+            n_estimators=20,
+            n_jobs=1,
+            random_state=0,
+        )
+        cfg = xgb._Config(
+            **{f.name: defaults[f.name] for f in dataclasses.fields(xgb._Config)}
+        )
+        spw = xgb._scale_pos_weight(y)
+
+        def estimator(r: float, c: float) -> Any:
+            return xgb._make_xgb(int(r), c, spw, cfg, n_jobs=1)
+
+    assert res.grid_scores.shape == (len(rows), len(cols))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        for i, r in enumerate(rows):
+            for j, c in enumerate(cols):
+                cell = float(
+                    np.mean(
+                        cross_val_score(
+                            estimator(r, c),
+                            ds.abundances,
+                            y,
+                            cv=inner,
+                            scoring="roc_auc",
+                        )
+                    )
+                )
+                assert abs(res.grid_scores[i, j] - cell) < 1e-9, (r, c)
+    # and the selected cell is the table's first maximum (row-major)
+    ij = np.unravel_index(int(np.nanargmax(res.grid_scores)), res.grid_scores.shape)
+    i, j = int(ij[0]), int(ij[1])
+    if module is clf:
+        assert (res.best_c, res.best_l1_ratio) == (rows[i], cols[j])
+    else:
+        assert (res.best_params["max_depth"], res.best_params["learning_rate"]) == (
+            rows[i],
+            cols[j],
+        )
