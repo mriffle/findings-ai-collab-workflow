@@ -12,11 +12,13 @@ the estimator (dense signed weights; a 1-D ``C`` grid):
 
   * :func:`plot_roc` — the mean ROC across outer nested-CV folds with a ±1 SD band and a
     chance diagonal, drawn from the **decision-function margins** (uncalibrated scores;
-    AUC is rank-based, so no probability is needed). Balanced accuracy (margin
-    thresholded at 0), average precision, per-class N, and the per-repeat AUC are
-    annotated. The legend sits on-axes (lower-right, where a good classifier leaves
-    space) — a documented exception to the separate-legend convention
-    (conventions/visualization.md).
+    AUC is rank-based, so no probability is needed); the legend's AUC is the result's
+    nested-CV AUC (the number in the finding). Balanced accuracy (margin thresholded
+    at 0), average precision, per-class N, the per-repeat mean-of-fold and
+    **pooled-OOF** AUCs and the null verdict sit in a caption strip **below** the
+    axes, so nothing opaque covers the plot region. The legend sits on-axes
+    (lower-right, where a good classifier leaves space) — a documented exception to
+    the separate-legend convention (conventions/visualization.md).
   * :func:`plot_null` — the label-shuffle null AUC histogram with the observed AUC
     marked and the empirical p. **Conditional:** only meaningful when the null was run
     (``run_null=True``); it raises otherwise.
@@ -26,10 +28,12 @@ the estimator (dense signed weights; a 1-D ``C`` grid):
     selection frequency. A vertical line at 0 separates the classes. ``top_n`` defaults
     to the result's ``top_k`` so the rows shown are exactly the set the colour is
     defined on.
-  * :func:`plot_hyperparameter_curve` — the all-data tuning **curve** (mean inner-CV
-    AUC ± SD over inner folds vs ``C`` on a log axis) with the selected ``C`` marked.
-    Replaces the 2-D heatmap: the SVM tunes one hyperparameter. A plateau on the right
-    is the hard-margin regime; the marker sits at its most-regularized end.
+  * :func:`plot_hyperparameter_curve` — the all-data tuning **curve** (the mean
+    inner-CV ``tuning_metric``, AUC by default, ± SD over inner folds vs ``C`` on a
+    log axis) with the selected ``C`` marked, over a **count rug** of the per-fold
+    tuned ``C`` in its own short axes. Replaces the 2-D heatmap: the SVM tunes one
+    hyperparameter. A plateau on the right is the hard-margin regime; the marker sits
+    at its most-regularized end.
 
 Colorbars sit beside the axes (they don't overlap the data), so these figures pass no
 separate legend figure to :func:`figures.figure_io.save_figure`.
@@ -46,12 +50,12 @@ from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm-figures", "version": "0.3"},
+    "template": {"name": "classification-svm-figures", "version": "0.4"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -67,14 +71,17 @@ __script_meta__: dict[str, object] = {
     "seeded_from": None,
     "description": (
         "Four result figures for an SVMClassificationResult: ROC +-SD across outer "
-        "folds from the decision-function margins (legend on-axes; per-repeat AUC "
-        "annotated), the label-shuffle null AUC histogram (conditional on the null "
-        "being run), the top-N signed-weight plot (final weight + resample IQR, "
-        "colored by top-k membership frequency on viridis — the dense-model stability "
-        "read; top_n defaults to the result's top_k), and the 1-D C tuning curve "
-        "(mean inner-CV AUC +-SD vs log C, selected C marked) that replaces the 2-D "
-        "heatmap. Dual-export via figure-io; colorbars beside the axes (no separate "
-        "legend figure). Study-agnostic; fail-loud."
+        "folds from the decision-function margins (legend on-axes carrying the "
+        "result's nested-CV AUC; the summary — per-repeat mean-of-fold + pooled-OOF "
+        "AUCs, the null verdict — in a caption strip below the axes, never over the "
+        "plot), the label-shuffle null AUC histogram (conditional on the null being "
+        "run), the top-N signed-weight plot (final weight + resample IQR, colored by "
+        "top-k membership frequency on viridis — the dense-model stability read; "
+        "top_n defaults to the result's top_k), and the 1-D C tuning curve (mean "
+        "inner-CV tuning metric +-SD vs log C, selected C marked, the per-fold tuned "
+        "C as a count rug in its own axes) that replaces the 2-D heatmap. "
+        "Dual-export via figure-io; colorbars beside the axes (no separate legend "
+        "figure). Study-agnostic; fail-loud."
     ),
 }
 
@@ -95,29 +102,22 @@ def plot_roc(result: SVMClassificationResult, *, title: str | None = None) -> Fi
     """Mean ROC (± 1 SD) across outer nested-CV folds, with a chance diagonal.
 
     Each outer fold contributes one ROC curve from its held-out **margins**; the curves
-    are interpolated onto a common FPR grid and averaged. The legend (chance / mean ROC
-    / ±1 SD) is on-axes; balanced accuracy, average precision, per-class N, and the
-    per-repeat AUC are annotated.
+    are interpolated onto a common FPR grid (each fold's vertical rises preserved — see
+    :func:`_interp_tpr`) and averaged. The legend (chance / mean ROC / ±1 SD) is
+    on-axes and its AUC is the result's ``cv_auc`` ± ``cv_auc_sd``; balanced accuracy,
+    average precision, per-class N, the per-repeat mean-of-fold and pooled-OOF AUCs
+    and the null verdict form a caption strip below the axes.
     """
     if not result.fold_predictions:
         raise ValueError("result has no fold predictions to draw a ROC from.")
-    tprs: list[np.ndarray] = []
-    aucs: list[float] = []
-    for fold in result.fold_predictions:
-        fpr, tpr, _ = roc_curve(fold.y_true, fold.y_score)
-        interp = np.interp(_ROC_GRID, fpr, tpr)
-        interp[0] = 0.0
-        tprs.append(interp)
-        aucs.append(float(auc(fpr, tpr)))
+    tprs = [_interp_tpr(fold.y_true, fold.y_score) for fold in result.fold_predictions]
     tpr_stack = np.asarray(tprs, dtype=float)
     mean_tpr = tpr_stack.mean(axis=0)
-    mean_tpr[-1] = 1.0
     sd_tpr = tpr_stack.std(axis=0)
-    mean_auc = float(np.mean(aucs))
-    sd_auc = float(np.std(aucs))
+    summary = _roc_summary(result)
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(6.2, 6.2))
+        fig, ax, caption_y = _roc_figure(summary)
         try:
             ax.plot([0, 1], [0, 1], "--", color=_CHANCE_COLOR, label="chance", zorder=1)
             ax.plot(
@@ -125,7 +125,13 @@ def plot_roc(result: SVMClassificationResult, *, title: str | None = None) -> Fi
                 mean_tpr,
                 color=_ROC_COLOR,
                 lw=2,
-                label=f"mean ROC (AUC = {mean_auc:.3f} ± {sd_auc:.3f})",
+                # The number on the figure is the number in the finding: the result's
+                # nested-CV AUC (mean ± SD of the per-fold AUCs), not an AUC re-derived
+                # from the drawn mean curve, which is a different quantity.
+                label=(
+                    f"mean ROC (AUC = {result.cv_auc:.3f} ± {result.cv_auc_sd:.3f}, "
+                    "mean of per-fold AUCs)"
+                ),
                 zorder=3,
             )
             ax.fill_between(
@@ -142,7 +148,16 @@ def plot_roc(result: SVMClassificationResult, *, title: str | None = None) -> Fi
             ax.set_xlabel("False positive rate")
             ax.set_ylabel("True positive rate")
             ax.legend(loc="lower right", fontsize=9)
-            _roc_annotation(ax, result)
+            fig.text(
+                0.5,
+                caption_y,
+                summary,
+                ha="center",
+                va="top",
+                multialignment="left",
+                fontsize=_ROC_CAPTION_FONTSIZE,
+                linespacing=1.3,
+            )
             _apply_title(fig, title, _roc_default_title(result), result)
         except BaseException:
             plt.close(fig)
@@ -150,19 +165,22 @@ def plot_roc(result: SVMClassificationResult, *, title: str | None = None) -> Fi
     return fig
 
 
-def _roc_annotation(ax: Axes, result: SVMClassificationResult) -> None:
+def _roc_summary(result: SVMClassificationResult) -> str:
+    """The ROC's caption-strip text: the numbers a reader needs beside the curve.
+
+    The per-repeat lines list each repeat's mean-of-fold AUC and the range of the
+    **pooled out-of-fold** AUC per repeat (one ROC over a repeat's concatenated
+    held-out margins — the user's own protocol). A between-repeat SD is deliberately
+    not shown: it is partition noise, far tighter than the fold SD, and reads as the
+    estimate's uncertainty when it is not.
+    """
     text = (
-        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (margin at 0)\n"
+        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (margin at 0)   |   "
         f"average precision = {result.cv_average_precision:.3f}\n"
         f"{result.positive_label}: N={result.n_positive}  |  "
         f"{result.negative_label}: N={result.n_negative}"
     )
-    if len(result.repeat_aucs) > 1:
-        rep = np.asarray(result.repeat_aucs, dtype=float)
-        text += (
-            f"\nper-repeat AUC = {rep.mean():.3f} ± {rep.std():.3f} "
-            f"({len(rep)} repeats)"
-        )
+    text += _repeat_lines(result.repeat_aucs, result.repeat_pooled_aucs)
     text += "\nscores = SVM margin (uncalibrated)"
     if result.null_p is None:
         text += "\nnull not run — exploratory"
@@ -170,16 +188,65 @@ def _roc_annotation(ax: Axes, result: SVMClassificationResult) -> None:
         obs = result.observed_auc
         obs_txt = f" (fixed-C observed AUC {obs:.3f})" if obs is not None else ""
         text += f"\nvs shuffle null: p = {result.null_p:.4f}{obs_txt}"
-    ax.text(
-        0.97,
-        0.30,
-        text,
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=8,
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "lightgray"},
-    )
+    return text
+
+
+def _repeat_lines(
+    repeat_aucs: tuple[float, ...], repeat_pooled_aucs: tuple[float, ...]
+) -> str:
+    """Two short caption lines: mean-of-fold AUC per repeat, pooled-OOF AUC range."""
+    text = ""
+    if len(repeat_aucs) > 1:
+        text += "\nmean-of-fold AUC by repeat: " + ", ".join(
+            f"{a:.3f}" for a in repeat_aucs
+        )
+    if repeat_pooled_aucs:
+        lo, hi = min(repeat_pooled_aucs), max(repeat_pooled_aucs)
+        span = f"{lo:.3f} to {hi:.3f}" if len(repeat_pooled_aucs) > 1 else f"{lo:.3f}"
+        text += f"\npooled-OOF AUC by repeat: {span}"
+    return text
+
+
+def _interp_tpr(y_true: np.ndarray, y_score: np.ndarray) -> np.ndarray:
+    """One fold's TPR on the common FPR grid, keeping every vertical rise.
+
+    ``roc_curve`` repeats an FPR value wherever the curve rises vertically (several
+    thresholds at one false-positive count — including the rise out of the origin at
+    FPR = 0). ``np.interp`` at a repeated x returns one of the tied y values
+    arbitrarily, so each FPR is first collapsed to its **maximum** TPR: the
+    interpolated curve then passes through the top of every vertical segment, and a
+    fold that separates perfectly is drawn as perfect (TPR = 1 at FPR = 0) instead of
+    being notched back to the origin. Nothing is forced — the curve starts and ends
+    where the data put it.
+    """
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    uniq, inverse = np.unique(fpr, return_inverse=True)
+    top = np.full(uniq.shape, -np.inf)
+    np.maximum.at(top, inverse, tpr)
+    return np.asarray(np.interp(_ROC_GRID, uniq, top), dtype=float)
+
+
+_ROC_CAPTION_FONTSIZE = 8
+_ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
+_ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
+_ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
+_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+
+
+def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
+    """A square ROC axes over a caption strip sized to hold ``summary``.
+
+    The summary is a figure-level caption **below** the axes — never an opaque box
+    over the plot region, where it would hide exactly what a reader most needs to see
+    for a near-chance classifier: the mean curve, its ±SD band and the chance
+    diagonal. Returns the figure, the axes and the caption's top y (figure fraction).
+    """
+    n_lines = summary.count("\n") + 1
+    strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
+    height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
+    fig, ax = plt.subplots(figsize=(6.2, height))
+    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
 def _roc_default_title(result: SVMClassificationResult) -> str:
@@ -328,14 +395,33 @@ def plot_coefficients(
 # --------------------------------------------------------------------------- #
 # Hyperparameter curve (the 1-D counterpart of the heatmap)
 # --------------------------------------------------------------------------- #
+_METRIC_LABELS = {
+    "roc_auc": "AUC",
+    "balanced_accuracy": "balanced accuracy",
+    "average_precision": "average precision",
+}
+
+
+def _metric_label(metric: str) -> str:
+    """Axis wording for a scikit-learn scoring name (the raw name if unmapped).
+
+    ``tuning_metric`` is a public parameter, so the tuning figure must label what
+    was actually optimised rather than assume AUC.
+    """
+    return _METRIC_LABELS.get(metric, metric)
+
+
 def plot_hyperparameter_curve(
     result: SVMClassificationResult, *, title: str | None = None
 ) -> Figure:
-    """The all-data tuning curve (mean inner-CV AUC ± SD vs C) with the selected C.
+    """The all-data tuning curve (mean inner-CV score ± SD vs C) with the selected C.
 
-    The per-outer-fold tuned ``C`` values are drawn as ticks along the bottom (the
-    tuning-stability read): picks left of the plateau start are folds the inner CV
-    under-tuned; many of them means the grid should be narrowed.
+    The y axis is the result's ``tuning_metric`` (AUC by default). The per-outer-fold
+    tuned ``C`` values are drawn as a **count rug in their own short axes** under the
+    curve (the tuning-stability read): one marker per distinct pick with the number of
+    folds printed above it, so ten folds at one ``C`` read as "10", not as one tick.
+    Picks left of the plateau start are folds the inner CV under-tuned; many of them
+    means the grid should be narrowed.
     """
     means = np.asarray(result.grid_scores, dtype=float)
     sds = np.asarray(result.grid_scores_sd, dtype=float)
@@ -347,9 +433,13 @@ def plot_hyperparameter_curve(
         )
     if result.best_c not in result.c_grid:
         raise ValueError(f"best_c {result.best_c!r} is not in the C grid.")
+    metric = _metric_label(result.tuning_metric)
     with publication_style():
-        fig, ax = plt.subplots(figsize=(6.2, 4.4))
+        fig = plt.figure(figsize=(6.2, 5.2))
         try:
+            grid = fig.add_gridspec(2, 1, height_ratios=[5, 1], hspace=0.06)
+            ax = fig.add_subplot(grid[0])
+            rug = fig.add_subplot(grid[1], sharex=ax)
             ax.set_xscale("log")
             if len(c_grid) > 1:
                 ax.fill_between(
@@ -368,7 +458,7 @@ def plot_hyperparameter_curve(
                 color=_ROC_COLOR,
                 s=28,
                 zorder=3,
-                label="mean inner-CV AUC",
+                label=f"mean inner-CV {metric}",
             )
             ax.axvline(result.best_c, color=_OBSERVED_COLOR, ls="--", lw=1.2, zorder=2)
             best_idx = int(np.flatnonzero(c_grid == result.best_c)[0])
@@ -388,9 +478,10 @@ def plot_hyperparameter_curve(
             hi = float(np.max((means + sds)[finite])) if finite.any() else 1.0
             y0, y1 = max(0.0, min(0.5, lo - 0.02)), min(1.02, max(1.0, hi + 0.02))
             ax.set_ylim(y0, y1)
-            _draw_fold_picks(ax, result, y0, y1)
-            ax.set_xlabel("C (soft-margin penalty; hard margin = large C)")
-            ax.set_ylabel("mean inner-CV AUC")
+            _draw_fold_picks(ax, rug, result)
+            ax.tick_params(labelbottom=False)
+            rug.set_xlabel("C (soft-margin penalty; hard margin = large C)")
+            ax.set_ylabel(f"mean inner-CV {metric}")
             ax.legend(loc="best", fontsize=9)
             _apply_title(
                 fig, title, "Hyperparameter search (all-data, C curve)", result
@@ -401,48 +492,70 @@ def plot_hyperparameter_curve(
     return fig
 
 
-def _draw_fold_picks(
-    ax: Axes, result: SVMClassificationResult, y0: float, y1: float
-) -> None:
-    """Rug of the per-outer-fold tuned C along the bottom, plus the plateau start."""
+_RUG_MARKER_AREA_PER_FOLD = 14.0  # scatter ``s`` (points²) per fold at one C
+
+
+def _draw_fold_picks(ax: Axes, rug: Axes, result: SVMClassificationResult) -> None:
+    """The per-outer-fold tuned C as a count rug in its own axes under the curve.
+
+    One marker per distinct pick — area proportional to the number of folds that
+    picked it, the count printed above — so a stack of identical picks is legible
+    (the earlier in-axes tick stack rendered ten folds as one short segment under
+    the best-C line). The plateau-start line spans both axes; the selected-C line
+    stays on the curve. The rug's key rides on the curve's legend (a proxy handle) so
+    the fold count — and, when the plateau start is not the grid's upper edge, the
+    number of folds tuned below it — reads with the rest of the key.
+    """
+    rug.set_yticks([])
+    rug.set_ylim(-1.0, 1.0)
+    rug.spines["left"].set_visible(False)
+    rug.set_ylabel("fold\npicks", fontsize=8, rotation=0, ha="right", va="center")
+    plateau = result.plateau_start_c
+    if plateau is not None and plateau != result.best_c:
+        ax.axvline(
+            plateau,
+            color="gray",
+            ls=":",
+            lw=1.0,
+            zorder=1,
+            label=f"plateau start C = {plateau:g}",
+        )
+        rug.axvline(plateau, color="gray", ls=":", lw=1.0, zorder=1)
     picks = np.asarray([f.best_c for f in result.fold_predictions], dtype=float)
     if picks.size == 0:
         return
     n_sub = result.n_folds_sub_plateau
-    plateau = result.plateau_start_c
     label = f"per-fold tuned C ({picks.size} folds"
     if n_sub is not None and plateau is not None and plateau != result.c_grid[-1]:
         # At the upper edge every fold is trivially "below": the count says nothing.
         label += f"; {n_sub} below plateau start"
     label += ")"
-    # Stack repeated picks vertically so the count at each C reads as a small bar.
-    xs: list[float] = []
-    ys: list[float] = []
-    for c in np.unique(picks):
-        n = int((picks == c).sum())
-        xs.extend([float(c)] * n)
-        step = min(0.012, 0.25 / max(picks.size, 1))  # never overrun the curve
-        ys.extend(y0 + (0.015 + step * i) * (y1 - y0) for i in range(n))
-    ax.scatter(
-        xs,
-        ys,
-        marker="|",
-        s=90,
+    values, counts = np.unique(picks, return_counts=True)
+    areas = _RUG_MARKER_AREA_PER_FOLD * counts.astype(float)
+    rug.scatter(
+        values,
+        np.zeros_like(values),
+        s=areas,
+        marker="o",
         color="black",
         alpha=0.8,
-        linewidths=1.0,
         zorder=5,
-        label=label,
     )
-    if result.plateau_start_c is not None and result.plateau_start_c != result.best_c:
-        ax.axvline(
-            result.plateau_start_c,
-            color="gray",
-            ls=":",
-            lw=1.0,
-            zorder=1,
-            label=f"plateau start C = {result.plateau_start_c:g}",
+    for c, n, area in zip(values, counts, areas, strict=True):
+        # Sit the count just above the marker's edge, whatever its radius.
+        rug.annotate(
+            str(int(n)),
+            (float(c), 0.0),
+            xytext=(0.0, float(np.sqrt(area)) / 2.0 + 2.0),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            zorder=6,
+            # a white backing so the plateau-start line never runs through a digit
+            bbox={"boxstyle": "square,pad=0.1", "fc": "white", "ec": "none"},
         )
+    ax.scatter([], [], marker="o", color="black", label=label)  # legend proxy
 
 
 # --------------------------------------------------------------------------- #

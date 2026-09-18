@@ -383,6 +383,171 @@ def test_importance_figure_top_n(
         xgbfig.plot_importance(planted_result, top_n=0)
 
 
+def _mean_roc_label(fig: Figure) -> str:
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    labels = [
+        t.get_text() for t in legend.get_texts() if t.get_text().startswith("mean ROC")
+    ]
+    assert len(labels) == 1
+    return labels[0]
+
+
+def _line_xy(line: Any) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        np.asarray(line.get_xdata(), dtype=float),
+        np.asarray(line.get_ydata(), dtype=float),
+    )
+
+
+def _is_vline(line: Any) -> bool:
+    xs = _line_xy(line)[0]
+    return xs.size == 2 and bool(xs[0] == xs[1])
+
+
+def test_roc_legend_auc_equals_cv_auc(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    # the number on the figure is the number in the finding — not a re-derived one
+    fig = xgbfig.plot_roc(planted_result)
+    label = _mean_roc_label(fig)
+    assert (
+        f"AUC = {planted_result.cv_auc:.3f} ± {planted_result.cv_auc_sd:.3f}" in label
+    )
+    plt.close(fig)
+
+
+def test_roc_mean_curve_has_no_origin_notch(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    # a near-perfect classifier rises vertically at FPR = 0; the drawn mean curve keeps
+    # that rise instead of being forced back through the origin
+    assert planted_result.cv_auc > 0.9
+    fig = xgbfig.plot_roc(planted_result)
+    lines = [
+        ln for ln in fig.axes[0].lines if str(ln.get_label()).startswith("mean ROC")
+    ]
+    assert len(lines) == 1
+    xs, ys = _line_xy(lines[0])
+    assert float(xs[0]) == 0.0
+    assert float(ys[0]) > 0.0
+    assert float(ys[-1]) == 1.0
+    plt.close(fig)
+
+
+def test_roc_annotation_sits_below_axes(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    fig = xgbfig.plot_roc(planted_result)
+    ax = fig.axes[0]
+    captions = [t for t in fig.texts if "balanced accuracy" in t.get_text()]
+    assert len(captions) == 1  # a figure-level caption, not an axes text
+    assert captions[0].get_position()[1] < ax.get_position().y0
+    assert not ax.texts  # nothing opaque sits over the plot region
+    plt.close(fig)
+
+
+def test_null_line_at_observed_auc() -> None:
+    ds = _planted(n=40, p=20, n_signal=4, seed=0)
+    res = xgb.classify_xgboost(ds, "grp", run_null=True, n_permutations=3, **_NULL_FAST)
+    assert res.observed_auc is not None
+    fig = xgbfig.plot_null(res)
+    vlines = [ln for ln in fig.axes[0].lines if _is_vline(ln)]
+    assert len(vlines) == 1
+    assert float(_line_xy(vlines[0])[0][0]) == pytest.approx(res.observed_auc)
+    plt.close(fig)
+
+
+def test_heatmap_box_marks_best_cell(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    from matplotlib.patches import Rectangle
+
+    fig = xgbfig.plot_hyperparameter_heatmap(planted_result)
+    rects = [p for p in fig.axes[0].patches if isinstance(p, Rectangle)]
+    assert len(rects) == 1
+    row = list(planted_result.max_depth_grid).index(
+        int(planted_result.best_params["max_depth"])
+    )
+    col = list(planted_result.learning_rate_grid).index(
+        planted_result.best_params["learning_rate"]
+    )
+    assert rects[0].get_xy() == pytest.approx((col - 0.5, row - 0.5))
+    plt.close(fig)
+
+
+def test_heatmap_colorbar_names_tuning_metric(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    fig = xgbfig.plot_hyperparameter_heatmap(planted_result)
+    assert any("mean inner-CV AUC" in ax.get_ylabel() for ax in fig.axes)
+    plt.close(fig)
+    fig = xgbfig.plot_hyperparameter_heatmap(
+        replace(planted_result, tuning_metric="balanced_accuracy")
+    )
+    labels = [ax.get_ylabel() for ax in fig.axes]
+    assert any("mean inner-CV balanced accuracy" in lab for lab in labels)
+    assert not any("AUC" in lab for lab in labels)
+    plt.close(fig)
+
+
+def test_importance_axis_from_zero_no_zero_line(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    fig = xgbfig.plot_importance(planted_result)
+    ax = fig.axes[0]
+    assert ax.get_xlim()[0] == 0.0  # unsigned importance: the axis starts at 0
+    zero_lines = [
+        ln
+        for ln in ax.lines
+        if np.allclose(_line_xy(ln)[0], 0.0)
+        and np.allclose(_line_xy(ln)[1], [0.0, 1.0])
+    ]
+    assert not zero_lines  # ... and there is no zero line to separate "classes"
+    assert "IQR over the resamples that selected it" in fig.get_suptitle()
+    plt.close(fig)
+
+
+def test_feature_list_caveat_survives_custom_title(
+    planted_result: xgb.XGBClassificationResult,
+) -> None:
+    from dataclasses import replace
+
+    res = replace(planted_result, n_features_requested=150, n_features_matched=142)
+    for fig in (
+        xgbfig.plot_roc(res, title="MY TITLE"),
+        xgbfig.plot_null(res, title="MY TITLE"),
+        xgbfig.plot_importance(res, title="MY TITLE"),
+        xgbfig.plot_hyperparameter_heatmap(res, title="MY TITLE"),
+    ):
+        sup = fig.get_suptitle()
+        assert "MY TITLE" in sup
+        assert "prior feature list · 142 of 150 matched" in sup
+        plt.close(fig)
+
+
+def test_figure_error_path_closes(
+    planted_result: xgb.XGBClassificationResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plt.close("all")
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(xgbfig, "_apply_title", boom)
+    for plot in (
+        xgbfig.plot_roc,
+        xgbfig.plot_null,
+        xgbfig.plot_importance,
+        xgbfig.plot_hyperparameter_heatmap,
+    ):
+        with pytest.raises(RuntimeError, match="injected"):
+            plot(planted_result)
+        assert plt.get_fignums() == []  # no figure leaked on the error path
+
+
 # --------------------------------------------------------------------------- #
 # Prior feature-list restriction (leakage-safe; matched/unmatched counts recorded)
 # --------------------------------------------------------------------------- #
