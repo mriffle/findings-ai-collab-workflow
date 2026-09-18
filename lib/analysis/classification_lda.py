@@ -180,10 +180,11 @@ __script_meta__: dict[str, object] = {
         "analysis.classification and analysis.classification_svm, the same readouts. "
         "Tuning-free: the shrinkage is analytic, so repeated stratified CV (in-fold "
         "StandardScaler + in-fold shrinkage) replaces nested CV and there is no "
-        "tuning figure (three figures, not four). Performance from calibrated log-odds "
-        "scores vs an opt-in label-shuffle null (cheap here — run it right after the "
-        "first pass); all-data standardized signed weights (the covariance-adjusted "
-        "mean difference) + the per-class shrinkage intensities "
+        "tuning figure (three figures, not four). Performance from calibrated "
+        "log-odds scores (balanced accuracy at the equal-prior cut, comparable with "
+        "the siblings) vs an opt-in label-shuffle null (minutes here — run it right "
+        "after the first pass); all-data standardized signed weights (the "
+        "covariance-adjusted mean difference) + the per-class shrinkage intensities "
         "(ShrinkageSaturationWarning when the covariance carried nothing); and a "
         "stability loop (top-k membership frequency + sign consistency — the "
         "dense-model replacement for selection frequency) — reported together. Fold "
@@ -194,8 +195,10 @@ __script_meta__: dict[str, object] = {
         "repeats; the null permutes at the unit level or, for a batch-grouped design, "
         "within units (null_permutation). Warns on non-log scale, raises on NaN "
         "(missing handling upstream), drops constant features. Binary outcomes only "
-        "(v0.1). Requires scikit-learn (StandardScaler, splitters, metrics; the "
-        "discriminant itself is in-module, pinned to sklearn at machine precision)."
+        "(v0.1). v0.2: equal-prior cut, >= 3 rows per class enforced in every fit, "
+        "sklearn's constant-feature bound. Requires scikit-learn (StandardScaler, "
+        "splitters, metrics; the discriminant itself is in-module, pinned to sklearn "
+        "at machine precision)."
     ),
 }
 

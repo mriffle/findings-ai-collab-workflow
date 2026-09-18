@@ -117,17 +117,19 @@ __script_meta__: dict[str, object] = {
     "seeded_from": None,
     "description": (
         "Leakage-safe elastic-net logistic CLASSIFICATION over a Dataset: nested CV "
-        "performance vs an opt-in label-shuffle null (the exploratory/validated gate), "
-        "all-data standardized coefficients, and a fixed-hyperparameter stability loop "
-        "(selection frequency + sign consistency) — reported together. Study-agnostic "
-        "outcome + binarize API (binary direct; a non-binary outcome needs an explicit "
-        "rule); group-aware CV only when the groups column has repeats; the null "
-        "permutes at the unit level or, for a batch-grouped design, within units "
-        "(null_permutation); four result "
+        "performance vs an opt-in label-shuffle null (the exploratory/validated "
+        "gate), all-data standardized coefficients, and a fixed-hyperparameter "
+        "stability loop (selection frequency + sign consistency) — reported together. "
+        "Study-agnostic outcome + binarize API (binary direct; a non-binary outcome "
+        "needs an explicit rule); group-aware CV (outer and inner tuning folds alike) "
+        "only when the groups column has repeats; the null permutes at the unit level "
+        "or, for a batch-grouped design, within units (null_permutation); four result "
         "figures; fold identity (repeat/fold/test_indices) recorded on every fold for "
-        "paired comparison across classifier templates. Warns on non-log scale, raises "
-        "on NaN (missing handling upstream), "
-        "drops constant features. Binary outcomes only (v0.1). Requires scikit-learn."
+        "paired comparison across classifier templates. Warns on non-log scale, "
+        "raises on NaN (missing handling upstream), drops constant features. Binary "
+        "outcomes only (v0.1). v0.4: tuning table indexed by the recorded parameter "
+        "values, one selection rule in every loop, a missing outcome/group value "
+        "handled, tuning_metric + inner_cv_grouped recorded. Requires scikit-learn."
     ),
 }
 
