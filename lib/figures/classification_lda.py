@@ -13,7 +13,7 @@ fourth). The shrinkage diagnostic lives in the ROC annotation instead.
 
   * :func:`plot_roc` — the mean ROC across outer CV folds with a ±1 SD band and a
     chance diagonal, drawn from the **log posterior-odds** (calibrated scores; AUC is
-    rank-based). Balanced accuracy (log-odds thresholded at 0 = posterior 0.5),
+    rank-based). Balanced accuracy (log-odds thresholded at the equal-prior cut),
     average precision, per-class N, the per-repeat AUC, and the all-data **per-class
     Ledoit-Wolf shrinkage** are annotated. The legend sits on-axes (lower-right, where
     a good classifier leaves space) — a documented exception to the separate-legend
@@ -48,7 +48,7 @@ from sklearn.metrics import auc, roc_curve
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-lda-figures", "version": "0.1"},
+    "template": {"name": "classification-lda-figures", "version": "0.2"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -147,7 +147,7 @@ def plot_roc(result: LDAClassificationResult, *, title: str | None = None) -> Fi
 
 def _roc_annotation(ax: Axes, result: LDAClassificationResult) -> None:
     text = (
-        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (posterior 0.5)\n"
+        f"balanced accuracy = {result.cv_balanced_accuracy:.3f}  (equal-prior cut)\n"
         f"average precision = {result.cv_average_precision:.3f}\n"
         f"{result.positive_label}: N={result.n_positive}  |  "
         f"{result.negative_label}: N={result.n_negative}"

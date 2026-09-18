@@ -60,7 +60,9 @@ follows from the estimator, not from a different philosophy):
      ``y_score`` is the LDA decision function — the log posterior-odds
      ``log P(pos|x) / P(neg|x)`` under the Gaussian shared-covariance model with
      class-frequency priors — so ``sigmoid(y_score)`` is the posterior. Balanced
-     accuracy thresholds it at ``0`` (posterior 0.5 under the class priors). There is
+     accuracy thresholds it at the **equal-prior cut** (the training fold's log
+     prior ratio, the operating point ``class_weight="balanced"`` gives the
+     siblings). There is
      no ``class_weight``: class imbalance enters through the priors (the log prior
      ratio shifts the intercept), and balanced accuracy is reported beside AUC.
   4. **A shrinkage diagnostic replaces the tuning diagnostic.** Every fold record
@@ -361,8 +363,9 @@ class LDAClassificationResult:
         record, and the per-fold shrinkage read.
     cv_auc, cv_auc_sd, cv_balanced_accuracy, cv_average_precision:
         Repeated-CV performance (mean over outer folds; ``_sd`` is the fold SD of AUC).
-        Balanced accuracy thresholds the log-odds at 0 (posterior 0.5 under the class
-        priors).
+        Balanced accuracy thresholds the log-odds at the equal-prior cut (the
+        training fold's log prior ratio, comparable with the siblings' balanced
+        class weighting), not at 0 = posterior 0.5 under the class priors.
     repeat_aucs:
         Per outer repeat, the **mean of that repeat's fold AUCs** (primary; their mean
         is ``cv_auc``). Length ``n_repeats``.
@@ -631,6 +634,7 @@ class _DualShrinkageLDA:
     coef_: np.ndarray
     intercept_: np.ndarray
     shrinkage_: np.ndarray
+    equal_prior_cut_: float
 
     def fit(self, x: np.ndarray, y: np.ndarray) -> _DualShrinkageLDA:
         x = np.asarray(x, dtype=np.float64)
@@ -652,8 +656,15 @@ class _DualShrinkageLDA:
         for j in range(k):
             xc = x[y_idx == j] - self.means_[j]
             n_j = counts[j]
-            scale = np.sqrt(np.sum(xc**2, axis=0) / n_j)
-            scale[scale == 0.0] = 1.0
+            var = np.sum(xc**2, axis=0) / n_j
+            # sklearn's StandardScaler constant-feature bound (_is_constant_feature):
+            # a within-class variance at floating-point-noise level is a constant
+            # feature and keeps scale 1. An exact-zero test let a 1e-33 variance
+            # scale a feature by 1e16 and explode its weight.
+            eps = np.finfo(np.float64).eps
+            constant = var <= n_j * eps * var + (n_j * self.means_[j] * eps) ** 2
+            scale = np.sqrt(var)
+            scale[constant] = 1.0
             xs = xc / scale
             lam[j] = _ledoit_wolf_shrinkage_gram(xs)
             # sklearn's target is mu * I on the standardized block, mu = trace / p —
@@ -687,6 +698,13 @@ class _DualShrinkageLDA:
             intercept = np.array([intercept[1] - intercept[0]])
         self.coef_ = coef
         self.intercept_ = intercept
+        # The binary score is the log posterior-odds under the *training-fold class
+        # frequencies*; the equal-prior decision (the operating point balanced
+        # accuracy is defined at, and what class_weight="balanced" gives the sibling
+        # templates) sits at the log prior ratio, not at 0.
+        self.equal_prior_cut_ = (
+            float(np.log(self.priors_[1] / self.priors_[0])) if k == 2 else math.nan
+        )
         return self
 
     def decision_function(self, x: np.ndarray) -> np.ndarray:
@@ -722,6 +740,15 @@ def _fit_fold(
     templates; the discriminant is in-module, so the pair is explicit rather than a
     ``Pipeline``.
     """
+    counts = np.bincount(np.asarray(y_train, dtype=int), minlength=2)
+    if int(counts.min()) < 3:
+        raise ValueError(
+            f"a class has only {int(counts.min())} row(s) in this training fold: "
+            f"Ledoit-Wolf needs >= 3 rows per class in every fit (two rows give "
+            f"beta = 0 and lambda = 0 silently, an unshrunk rank-1 covariance). Under "
+            f"grouped CV a whole unit leaves with the test fold — lower n_splits or "
+            f"use more units."
+        )
     scaler = StandardScaler().fit(x_train)
     model = _DualShrinkageLDA().fit(scaler.transform(x_train), y_train)
     return scaler, model
@@ -882,7 +909,8 @@ def _nested_performance(
             )
         )
         aucs.append(float(roc_auc_score(y[test], score)))
-        accs.append(float(balanced_accuracy_score(y[test], (score >= 0.0).astype(int))))
+        cut = model.equal_prior_cut_  # the equal-prior decision, not posterior 0.5
+        accs.append(float(balanced_accuracy_score(y[test], (score >= cut).astype(int))))
         aps.append(float(average_precision_score(y[test], score)))
     repeat_aucs, repeat_pooled = _per_repeat_aucs(folds, aucs)
     return _Performance(
@@ -1488,9 +1516,12 @@ def _check_class_sizes_for_cv(n_pos: int, n_neg: int, n_splits: int) -> None:
     **three** rows of each class inside every training fold
     (``min_class - ceil(min_class / n_splits) >= 3``): with two rows a class's
     centered block is ``+-v``, Ledoit-Wolf's ``beta`` is identically zero, the
-    intensity is 0, and the pooled covariance is singular. Under grouped CV a whole
-    minority unit can leave with the test fold; that fails loudly in the fit, never
-    silently.
+    intensity is 0, and the pooled covariance is singular. This arithmetic bound is
+    exact for row-level stratified folds and necessary-not-sufficient under grouped
+    CV, where a whole minority unit can leave with the test fold; :func:`_fit_fold`
+    therefore re-checks every training fold and refuses fewer than three rows of a
+    class (the estimator itself only refuses fewer than two — a two-row class beside a
+    shrunk majority class fits silently with lambda = 0 for that class).
     """
     min_class = min(n_pos, n_neg)
     if min_class < n_splits:

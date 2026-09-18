@@ -1009,3 +1009,124 @@ def test_smoke_5xfad_cohort_held_out_within_unit_null() -> None:
     assert res.observed_auc > 0.7
     assert abs(float(np.mean(res.null_aucs)) - 0.5) < 0.05
     assert res.null_p is not None and res.null_p < 0.05
+
+
+# --------------------------------------------------------------------------- #
+# v0.2: the equal-prior cut, three rows per class in every fit, sklearn's
+# constant-feature bound, and exactness on unbalanced classes
+# --------------------------------------------------------------------------- #
+def _unbalanced(
+    n_pos: int = 12, n_neg: int = 36, p: int = 60, seed: int = 0
+) -> dl.Dataset:
+    rng = np.random.default_rng(seed)
+    n = n_pos + n_neg
+    y = np.r_[np.ones(n_pos, dtype=int), np.zeros(n_neg, dtype=int)]
+    x = rng.normal(size=(n, p))
+    x[:, :6] += y[:, None] * 1.5
+    names = np.array([f"F{i}" for i in range(p)])
+    return dl.Dataset(
+        abundances=x,
+        feature_names=names,
+        feature_metadata=pd.DataFrame({"feature": names}),
+        metadata=pd.DataFrame({"grp": np.where(y == 1, "B", "A")}),
+        scale="log2",
+    )
+
+
+def test_balanced_accuracy_uses_equal_prior_cut() -> None:
+    ds = _unbalanced()
+    res = lda.classify_lda(
+        ds, "grp", n_splits=3, n_repeats=2, stability_repeats=1, random_state=0
+    )
+    y = (ds.metadata["grp"] == "B").to_numpy().astype(int)
+    at_cut: list[float] = []
+    tpr_cut: list[float] = []
+    tpr_zero: list[float] = []
+    for f in res.fold_predictions:
+        train = np.setdiff1d(np.arange(len(y)), f.test_indices)
+        n_pos, n_neg = int(y[train].sum()), int((y[train] == 0).sum())
+        cut = float(np.log(n_pos / n_neg))
+        assert cut < 0.0  # 1:3 imbalance: the equal-prior cut sits below posterior 0.5
+        at_cut.append(balanced_accuracy_score(f.y_true, (f.y_score >= cut).astype(int)))
+        pos = f.y_true == 1
+        tpr_cut.append(float(np.mean(f.y_score[pos] >= cut)))
+        tpr_zero.append(float(np.mean(f.y_score[pos] >= 0.0)))
+    assert res.cv_balanced_accuracy == pytest.approx(float(np.mean(at_cut)))
+    # a lower cut can only raise minority recall — the prior-shifted 0 under-calls it
+    assert all(a >= b for a, b in zip(tpr_cut, tpr_zero, strict=True))
+    # the annotation names the cut
+    fig = ldafig.plot_roc(res)
+    texts = " ".join(t.get_text() for t in fig.texts) + " ".join(
+        t.get_text() for ax in fig.axes for t in ax.texts
+    )
+    plt.close(fig)
+    assert "equal-prior cut" in texts
+
+
+def test_fit_fold_refuses_two_row_class() -> None:
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(8, 5))
+    y = np.r_[np.zeros(6, dtype=int), np.ones(2, dtype=int)]
+    with pytest.raises(ValueError, match=">= 3 rows per class"):
+        lda._fit_fold(x, y)
+    # end to end under grouped CV: 6 positives in units of 4 + 2 pass the arithmetic
+    # guard (6 - 3 = 3 >= 3) but the fold that holds the 4-unit out trains on two
+    x = rng.normal(size=(20, 6))
+    y = np.r_[np.zeros(14, dtype=int), np.ones(6, dtype=int)]
+    names = np.array([f"F{i}" for i in range(6)])
+    units = [f"n{i // 2}" for i in range(14)] + ["p4"] * 4 + ["p2"] * 2
+    ds = dl.Dataset(
+        abundances=x,
+        feature_names=names,
+        feature_metadata=pd.DataFrame({"feature": names}),
+        metadata=pd.DataFrame({"grp": np.where(y == 1, "B", "A"), "unit": units}),
+        scale="log2",
+    )
+    with pytest.raises(ValueError, match=">= 3 rows per class"):
+        lda.classify_lda(
+            ds,
+            "grp",
+            groups="unit",
+            generalization_target="individuals",
+            top_k=3,
+            n_splits=2,
+            n_repeats=1,
+            stability_repeats=1,
+        )
+
+
+def test_near_constant_within_class_feature_matches_sklearn() -> None:
+    """A feature constant within one class up to floating-point noise (0.3 vs
+    0.1 + 0.2) is a constant feature under sklearn's bound; an exact-zero test
+    scaled it by 1e16 and exploded its weight."""
+    x, y = _correlated(40, 30, 2)
+    x[y == 0, 0] = np.where(np.arange((y == 0).sum()) % 2 == 0, 0.3, 0.1 + 0.2)
+    x = StandardScaler().fit_transform(x)
+    ref = LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto").fit(x, y)
+    ours = lda._DualShrinkageLDA().fit(x, y)
+    assert np.all(np.isfinite(ours.coef_))
+    np.testing.assert_allclose(ours.coef_, ref.coef_, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(ours.intercept_, ref.intercept_, rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize("n_pos,n_neg,p", [(8, 42, 600), (5, 60, 2000), (12, 30, 300)])
+def test_estimator_matches_sklearn_unbalanced(n_pos: int, n_neg: int, p: int) -> None:
+    """Unequal classes: the prior weighting of the pooled covariance and the log-prior
+    intercept term do not cancel (the balanced exactness test cannot see them)."""
+    rng = np.random.default_rng(3)
+    n = n_pos + n_neg
+    y = np.r_[np.ones(n_pos, dtype=int), np.zeros(n_neg, dtype=int)]
+    x = rng.standard_normal((n, 5)) @ rng.standard_normal(
+        (5, p)
+    ) + 0.5 * rng.standard_normal((n, p))
+    x[:, :10] += y[:, None] * 0.8
+    x = StandardScaler().fit_transform(x)
+    ref = LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto").fit(x, y)
+    ours = lda._DualShrinkageLDA().fit(x, y)
+    np.testing.assert_allclose(ours.coef_, ref.coef_, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(ours.intercept_, ref.intercept_, rtol=1e-8, atol=1e-10)
+    xt = rng.standard_normal((12, p))
+    np.testing.assert_allclose(
+        ours.decision_function(xt), ref.decision_function(xt), rtol=1e-8, atol=1e-8
+    )
+    assert ours.equal_prior_cut_ == pytest.approx(float(np.log(n_pos / n_neg)))
