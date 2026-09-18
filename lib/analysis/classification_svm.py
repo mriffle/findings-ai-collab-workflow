@@ -817,6 +817,13 @@ def _check_inner_folds(
     tuning surface or fail deep inside. Under grouped CV this happens when a unit
     carries most of one class; the fix is fewer splits or more units, said plainly.
     """
+    if groups is not None and len(np.unique(groups)) < inner.get_n_splits():
+        raise ValueError(
+            f"grouped inner tuning CV needs >= n_splits ({inner.get_n_splits()}) "
+            f"distinct units in every outer training fold; got "
+            f"{len(np.unique(groups))}. Lower n_splits, use more units, or pin the "
+            f"hyperparameters (a single-cell grid needs no inner CV)."
+        )
     for j, (_, test) in enumerate(inner.split(x, y, groups)):
         if len(np.unique(y[test])) < 2:
             raise ValueError(
@@ -836,6 +843,14 @@ def _tune_c(
     every fit, not GridSearchCV's own argmax. The inner splitter is grouped whenever
     ``groups`` is given (:func:`_make_inner_cv`).
     """
+    if groups is not None and len(np.unique(groups)) < cfg.n_splits:
+        if len(cfg.c_grid) == 1:
+            # A pinned (single-cell) grid has nothing to tune, so no inner CV is
+            # formed: the table is NaN — "not tuned", never a leaked row-level score.
+            return cfg.c_grid[0], np.array([np.nan]), np.array([np.nan])
+        _check_inner_folds(  # raises: too few units for a grouped inner CV
+            _make_inner_cv(True, cfg.n_splits, cfg.random_state), x, y, groups
+        )
     inner = _make_inner_cv(groups is not None, cfg.n_splits, cfg.random_state)
     _check_inner_folds(inner, x, y, groups)
     search = GridSearchCV(
@@ -964,7 +979,9 @@ def _all_data_fit(
     smoothed pick at the top of the grid is not evidence the curve was still rising.
     """
     best_c, means, sds = _tune_c(x, y, groups, cfg)
-    plateau_start = _select_c(means, cfg.c_grid, "best")  # unsmoothed, smallest-C
+    plateau_start = (  # unsmoothed, smallest-C; a pinned grid has no curve
+        _select_c(means, cfg.c_grid, "best") if np.any(np.isfinite(means)) else best_c
+    )
     _warn_if_grid_edge(plateau_start, cfg.c_grid)
     final = _build_pipeline(best_c, cfg.tol, cfg.max_iter)
     final.fit(x, y)

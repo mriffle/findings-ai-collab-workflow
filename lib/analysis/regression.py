@@ -552,8 +552,9 @@ def _check_inner_folds(
     if groups is not None and len(np.unique(groups)) < n_splits:
         raise ValueError(
             f"inner tuning CV needs >= n_splits ({n_splits}) distinct units in every "
-            f"outer training fold; got {len(np.unique(groups))}. Lower n_splits or "
-            f"use more units."
+            f"outer training fold; got {len(np.unique(groups))}. Lower n_splits, use "
+            f"more units, or pin the hyperparameters (a single-cell grid needs no "
+            f"inner CV)."
         )
     del x, y  # the split itself is formed by GridSearchCV; nothing else to inspect
 
@@ -568,6 +569,14 @@ def _tune(
     not GridSearchCV's own argmax. The inner splitter is grouped whenever ``groups``
     is given (:func:`_make_inner_cv`).
     """
+    if groups is not None and len(np.unique(groups)) < cfg.n_splits:
+        if len(cfg.alpha_grid) * len(cfg.l1_grid) == 1:
+            # A pinned (single-cell) grid has nothing to tune, so no inner CV is
+            # formed: the table is NaN — "not tuned", never a leaked row-level score.
+            return cfg.alpha_grid[0], cfg.l1_grid[0], np.full((1, 1), np.nan)
+        _check_inner_folds(  # raises: too few units for a grouped inner CV
+            _make_inner_cv(True, cfg.n_splits, cfg.random_state), x, y, groups
+        )
     inner = _make_inner_cv(groups is not None, cfg.n_splits, cfg.random_state)
     _check_inner_folds(inner, x, y, groups)
     search = GridSearchCV(

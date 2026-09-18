@@ -817,3 +817,76 @@ def test_target_without_groups_raises(module: Any) -> None:
         res = _run_tuned(module, single, generalization_target="individuals")
     assert res.grouped is False
     assert res.generalization_target == "individuals"
+
+
+# --------------------------------------------------------------------------- #
+# Too few units for a grouped inner CV: a pinned grid skips tuning, a real grid refuses
+# --------------------------------------------------------------------------- #
+def _two_mixed_units() -> dl.Dataset:
+    rng = np.random.default_rng(2)
+    n, p = 16, 12
+    y = np.array([0, 1] * (n // 2))
+    x = rng.normal(size=(n, p))
+    x[:, :3] += y[:, None] * 2.0
+    names = np.array([f"F{i}" for i in range(p)])
+    return dl.Dataset(
+        abundances=x,
+        feature_names=names,
+        feature_metadata=pd.DataFrame({"feature": names}),
+        metadata=pd.DataFrame(
+            {
+                "grp": np.where(y == 1, "B", "A"),
+                "batch": ["b0"] * 8 + ["b1"] * 8,
+                "t": rng.normal(size=n),
+            }
+        ),
+        scale="log2",
+    )
+
+
+@pytest.mark.parametrize("module", list(_TUNED.values()), ids=list(_TUNED))
+def test_grouped_inner_cv_with_too_few_units(module: Any) -> None:
+    """Two batches under 2-fold grouped CV: each outer training fold holds one unit,
+    so no grouped inner CV can be formed. A pinned (single-cell) grid has nothing to
+    tune and runs with a NaN table; anything wider refuses with the remedy named."""
+    ds = _two_mixed_units()
+    common: dict[str, Any] = {
+        "groups": "batch",
+        "generalization_target": "batches",
+        "n_splits": 2,
+        "n_repeats": 1,
+        "stability_repeats": 1,
+        "n_jobs": 1,
+        "random_state": 0,
+    }
+    kw: dict[str, Any]
+    wide_kw: dict[str, Any]
+    entry: Any
+    res: Any
+    if module is clf:
+        entry, target = clf.classify, "grp"
+        kw = {"c_grid": [1.0], "l1_ratios": [0.5]}
+        wide_kw = {"c_grid": [0.1, 1.0], "l1_ratios": [0.5]}
+    elif module is svm:
+        entry, target = svm.classify_svm, "grp"
+        kw = {"c_grid": [1.0], "top_k": 3}
+        wide_kw = {"c_grid": [0.1, 1.0], "top_k": 3}
+    elif module is xgb:
+        entry, target = xgb.classify_xgboost, "grp"
+        kw = {"max_depth_grid": [2], "learning_rate_grid": [0.3], "n_estimators": 10}
+        wide_kw = {**kw, "max_depth_grid": [2, 3]}
+    else:
+        entry, target = reg.regress, "t"
+        kw = {"alpha_grid": [0.5], "l1_ratios": [0.5]}
+        wide_kw = {"alpha_grid": [0.1, 0.5], "l1_ratios": [0.5]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=ConvergenceWarning)
+        res = entry(ds, target, **kw, **common)
+        assert res.grouped is True and res.inner_cv_grouped is True
+        # the outer folds (one unit each) took the pinned path; the all-data fit sees
+        # both units, so its one-cell table is a real inner-CV score
+        assert res.grid_scores.size == 1
+        if module is svm:
+            assert res.plateau_start_c == res.best_c == 1.0
+        with pytest.raises(ValueError, match="pin the hyperparameters"):
+            entry(ds, target, **wide_kw, **common)
