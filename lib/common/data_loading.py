@@ -13,7 +13,8 @@ ADAPT per project (pass as arguments — do not edit the body):
   * ``join_key`` / ``id_columns`` / ``feature_id_column`` — your files' column names.
   * ``strip_suffix`` — when the metadata join key carries a suffix the data headers
     don't (proteomics: metadata ``Replicate`` ends in ``.raw``; data headers don't).
-  * ``collapse_replicates`` — collapse technical replicates to one row per sample.
+  * ``collapse_replicates`` — keep one technical replicate per sample (an exclusion;
+    average replicates with the ``aggregate-replicates`` template instead).
   * ``numeric_columns`` — metadata columns to coerce to numeric (fail-loud).
 
 DO IN THE PROJECT COPY, NOT HERE: sample exclusions and any relabeling/identity
@@ -107,11 +108,17 @@ __script_meta__: dict[str, object] = {
 
 @dataclass(frozen=True)
 class ReplicateCollapse:
-    """How to collapse technical replicates to one row per biological sample.
+    """Keep one run per biological sample — an *exclusion*, not an aggregation.
 
     Within each ``group_column`` (the biological-sample id), keep the single row
     with the highest ``rank_column`` value (e.g. the highest "Technical Replicate").
     ``rank_column`` must be numeric-coercible; ties keep the last in stable order.
+
+    The other runs are discarded, so use it only when dropping them is the decision
+    (a failed run). For analysis, load **every** run — QC is per run — and average a
+    unit's runs after normalization with the ``aggregate-replicates`` template
+    (``common.replicates.aggregate_replicates``), which also emits precision weights;
+    keep-one throws away measurements and can favour the later injection.
     """
 
     group_column: str
