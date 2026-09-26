@@ -29,6 +29,7 @@ The agent locates the metadata file (asking the scientist where it is), then:
 - examines structure, columns, value domains;
 - infers the meaning of each column from names, values, and domains;
 - **identifies control samples** (pooled QC, reference/bridge channels, standards, blanks) from an explicit sample-role column or, failing that, naming-convention / no-group inference, and classifies every sample **experimental vs control** — controls are excluded from downstream biological analysis (doc 05.3) and viewed separately in QC (doc 06);
+- **identifies the unit structure** — the column naming the independent biological unit, the run-level columns (technical replicate, run order, injection), and which design variables vary within a unit — so the analysis tests independent units rather than runs (doc 05.3);
 - opens an interaction to validate that understanding with the scientist — **including the experimental/control split and the rule deriving it**;
 - checks value validity (types, ranges, allowed sets, uniqueness where expected);
 - infers relationships that *should* hold if its understanding is correct, and **tests them as hypotheses** (principle from doc 05) — including confound detection: is the variable of interest aliased with batch, run order, or another factor?
@@ -100,6 +101,7 @@ All state files are canonical references that any fresh agent reads to rehydrate
 |---|---|---|
 | End of Stage 1 | Human checkpoint | Scientist confirms metadata understanding (incl. surfaced imbalances/confounds) |
 | End of Stage 1 | Human checkpoint | Scientist confirms the experimental/control sample split + the rule deriving it |
+| End of Stage 1 | Human checkpoint | Scientist confirms the unit structure — the independent unit, the run-level columns, what varies within a unit |
 | Sample↔metadata pairing | Human checkpoint | Scientist confirms join resolution (esp. fuzzy matches) |
 | Flagged annotation (Stage 3) | Human checkpoint | Scientist resolves a data-discordant annotation: keep as annotated (default) / exclude / documented loader override |
 | Integrity gate (end Stage 3) | Command precondition + hook (finding writes) + human sign-off | Loaders verified; no analysis before pass |

@@ -112,6 +112,10 @@ active enforcer (none of this is cleanly hook-checkable):
 | limma-moderated (empirical Bayes) | univariate | `feature_finding_ols.py` → `moderate_variances` | ✅ **Shipped** (v0.1) | same template; `method="moderated"` (default) |
 | Welch / Student t-test | univariate | — (none) | ✅ **Shipped** (v0.1) | same family; `method="welch"` |
 | Mann–Whitney U | univariate | — (none) | ✅ **Shipped** (v0.1) | same family; `method="mannwhitney"` (HL shift + rank CI) |
+| Wilcoxon signed-rank (paired) | univariate / within-unit | — (none; scipy `wilcoxon` + an exact T+ DP) | ✅ **Shipped** (v0.2, 2026-09-26) | same family; `method="signed_rank"` + `unit=` (HL pseudo-median + exact CI) |
+| Unit fixed effects (paired / within-unit designs) | univariate / within-unit | — (limma's `~ unit + contrast`) | ✅ **Shipped** (v0.2, 2026-09-26) | `differential_abundance(..., unit=…)` with `ols`/`moderated` |
+| Replicate aggregation + precision weights | preprocessing | — (limma `avereps` / `arrayWeights` in spirit) | ✅ **Shipped** (v0.1, 2026-09-26) | `lib/common/aggregate-replicates` (`aggregate_replicates`) → `weights=` |
+| Between-unit contrast with repeated measures (mixed model / `duplicateCorrelation`) | univariate / mixed | — | ⏸ **Deferred** (decision #9) | refused by `unit=` when the repeat variable is visible (a covariate / a column); the message names the mixed-model reading either way |
 | Volcano plot | output viz | `volcano_plotting.py` | ✅ **Shipped** (v0.1) | `lib/figures/volcano` |
 | p-value histogram | output viz | — (fresh design) | ✅ **Shipped** (v0.1) | `lib/figures/pvalue-hist` |
 | Elastic-net logistic **classification** | multivariate / classification | `te-phase2a-pelt/src/classification.py` (scanned 2026-07-01) | ✅ **Shipped** (v0.1, 2026-07-06) | `lib/analysis/classification` + `lib/figures/classification` |
@@ -183,7 +187,7 @@ ships.**
 ## A. Univariate feature finding
 
 ### A.0 The unifying view
-All four methods are *"one test per feature, then BH across features."* They differ only in
+All the univariate methods are *"one test per feature, then BH across features."* They differ only in
 the per-feature test and its assumptions; the **output contract and visuals are identical**
 (§C). So build them as **one family with a swappable `method=`**, sharing the results table,
 volcano, and p-value histogram — not four templates.
@@ -865,6 +869,42 @@ examples.
    C/T/R counts** slot into the run-level + per-feature split, **no per-feature q**. The kind
    is in `conventions/findings.md` §2.3 and accepted by the stats-reviewer
    (`conventions/statistics.md`).
+9. **Unit of analysis — ✅ SETTLED + SHIPPED (2026-09-26, user decisions).** The DE template
+   treated every row as independent; on real 5xFAD (74 runs / 52 animals, 22 animals injected
+   twice) that gave **86** hits at q<0.05 vs **61–63** once each animal counts once, silently.
+   The loader's `ReplicateCollapse` kept one run per animal (an exclusion, not an average) and
+   no stage used it. Shipped: **(A)** `lib/common/aggregate-replicates` — one row per unit (the
+   log-space mean, after per-run normalization; refuses linear/ratio), a constant-within-unit
+   check that doubles as a pairing check, `run_level` / `summarize` (technical replicates
+   spanning batches → per-unit batch fractions, which keep batch-as-covariate exactly
+   specified), and **precision weights** (user decision: ship them in v0.1 — technical
+   variance is a median **42 %** of per-protein total variance on 5xFAD, and the replicate
+   count tracks genotype: 18/31 transgenic vs 4/21 control animals have two runs); one
+   consensus technical-variance fraction `f` (the median over features of `vt/(vb+vt)`, `vb`
+   recovered from the unit-mean residuals by its exact expectation with leverages, against a
+   `weight_design`) → `w = 1/((1-f)+f/n)`, limma-`arrayWeights`-style so the shared-design
+   vectorized core and the moderation apply unchanged (5xFAD: `f` = 0.516 with the design,
+   0.412 without — the conservative direction). **(B)** `differential_abundance` v0.2 —
+   `unit=` with a fixed decision table (no repeats → plain; a unit × contrast-level cell with
+   several rows → refuse: technical replicates, or — rows differing on a covariate — the
+   batch-spanning-replicates vs mixed-model message; otherwise unit fixed effects, estimated
+   and not tested), `weights=` (WLS by `sqrt(w)` row scaling; matches `statsmodels.WLS`), and
+   `method="signed_rank"` (zero differences dropped as R/scipy `zero_method="wilcox"`, an
+   all-zero feature untestable rather than scipy's p = 1, HL pseudo-median, an exact CI via
+   the T+ subset-sum DP to 50 pairs). **Design choices from an independent review:** `unit=`
+   (fixed-effect semantics, stated) rather than `block=` (which a limma reader would take as a
+   random effect); no separate `paired_t` (`ols` + `unit=` *is* the paired t, pinned by a
+   test against `scipy.stats.ttest_rel`); unit dummies not reported (the table carries every
+   *tested* term); a rank check in `_fit_ols` — `np.linalg.inv` silently "inverted" a rank-12
+   of 13 design; the low-cardinality warning now fires only on all-integer columns (the
+   summarized fractions are not factors). 5xFAD, aggregated + weighted: 62 hits, APP log2FC
+   3.43. Guardrails: Stage 1 records the unit structure (a new step + checkpoint), Stage 3
+   loads every run and reconciles runs per unit, Stage 4 routes by the decision table,
+   stats-reviewer fails a pseudoreplicated DE/Boruta. **Independent Fable review (same day), all fixed:** multi-column / mixed-type unit keys could merge distinct units (now grouped on values; colliding display keys raise); the refusal only sees a repeat variable passed as a covariate or present as a column (the message now names both readings and the docs say so); the unweighted warning fired on single-run aggregates and for methods that cannot take weights (now `ols`/`moderated` with unequal counts only); integer-coded factors in `weight_design` (a `categorical=` + a warning), summarized columns named by `summarize_columns`, a warning on an empty `weight_design` with unequal counts, the unit of analysis carried into the blind verification task, `n_rows_in` → `n_runs_in`. **Deferred (C):** a between-unit
+   contrast with repeated measures (genotype × repeated timepoints) needs a random unit effect
+   (limma `duplicateCorrelation`, or `dream` for per-feature df); the template refuses it with
+   a message that says so, and the orchestrator must tell the scientist rather than force the
+   design into aggregation or fixed effects. Preview: `testdata/5xFAD/_unit_of_analysis_preview/`.
 
 ---
 

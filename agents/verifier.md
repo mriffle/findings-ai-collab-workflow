@@ -40,7 +40,7 @@ You are **not** told the answer. You will not be told whether you "matched." A s
 ## Procedure
 
 1. **Restate the task** in your own words: the question, the comparison/contrast, the feature(s), the data scope (e.g. full set, a named held-out split, or an orthogonal dataset for data replication), and the quantities to report.
-2. **Confirm the data scope.** For *data replication*, verify you are using the held-out/orthogonal data named in the task and **not** the data that generated the hypothesis — the generate-set and the validate-set must be disjoint.
+2. **Confirm the data scope.** Honor the design facts the task states — the analyzed sample set and the unit of analysis (`unit`, and any replicate aggregation named in the task, `conventions/statistics.md` *Unit of analysis*): testing runs where the task names aggregated units, or a different sample set, is a different analysis, not a replication. For *data replication*, verify you are using the held-out/orthogonal data named in the task and **not** the data that generated the hypothesis — the generate-set and the validate-set must be disjoint.
 3. **Write a small, self-contained analysis script** in `scripts/scratch/` (parameterized, seeds set and recorded, fails loud on shape/NA surprises). You may start from a `lib/` template for sound methodology. Run it.
 4. **Report** the requested quantities with the statistical conventions intact: effect size, confidence interval, and a **corrected** p-value with the correction named — never a bare p-value. State n.
 5. **State your method explicitly** so the comparison is interpretable, and note any data issue you hit.

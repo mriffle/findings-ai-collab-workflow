@@ -45,6 +45,7 @@ Construct the question from the *structure* of the analysis, phrased so it revea
 
 - **`analytic_replication`** — same dataset as the finding. This is the lower bar; a finding validated only this way stays `phase: exploratory`.
 - **`data_replication`** — name the **held-out split or orthogonal dataset**, and verify it is **disjoint** from the data that generated the hypothesis (the hard rule, doc 03.6: generate-set ≠ validate-set). Pass the split/dataset identifier explicitly in the task. Only a passing data replication permits `phase: confirmatory`.
+- **Carry the design facts, in both modes.** The analyzed sample set and the unit of analysis are properties of the *design*, not of the answer, so they belong in the task: copy `sample_set` (e.g. experimental only, controls excluded), `unit`, and — when replicates were averaged — the `aggregate` block (`by`, `method`, `run_level`, `summarize`, `weight_design`) and `weights` from the finding's `provenance.params`. Without them a verifier can legitimately re-derive the result on all runs instead of the finding's aggregated units, and the resulting discordance (e.g. 86 vs 62 hits on 5xFAD) says nothing about the finding. Pass none of the numbers these produced (n, hit counts, the technical-variance fraction) — those are answer-adjacent.
 
 ## Step 4 — Pre-specify the concordance criterion (before the verifier runs)
 
