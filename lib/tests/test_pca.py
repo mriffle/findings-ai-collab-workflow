@@ -270,12 +270,19 @@ def test_plot_continuous_no_color_map_and_colorbar_legend(registry: Path) -> Non
     plt.close(plot.legend_figure)
 
 
-def test_plot_continuous_marginal_slope_annotation(registry: Path) -> None:
+def test_plot_continuous_marginal_annotation_is_pearson_r(registry: Path) -> None:
+    """The continuous annotation reports Pearson r + p per PC (not the unit-bound
+    slope), and the numbers are scipy's pearsonr of the variable against the PC."""
     ds = _grouped()
     plot = pca.plot_pca(ds, "RunOrder", continuous=True, registry_path=registry)
-    texts = [t.get_text() for ax in plot.figure.get_axes() for t in ax.texts]
-    assert any("slope =" in t for t in texts)
+    stats_line = plot.figure.get_axes()[6].texts[1].get_text()
+    assert stats_line.startswith("Pearson:")
+    assert "slope" not in stats_line
+    run = ds.metadata["RunOrder"].to_numpy(dtype=float)
+    r, p = stats.pearsonr(plot.result.scores[:, 0], run)
+    assert f"PC1 r = {r:.2f}, p = {pca._format_p(float(p))}" in stats_line
     plt.close(plot.figure)
+    plt.close(plot.legend_figure)
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +406,7 @@ def test_continuous_show_marginal_stats_false(registry: Path) -> None:
         registry_path=registry,
     )
     texts = [t.get_text() for ax in plot.figure.get_axes() for t in ax.texts]
-    assert all("slope" not in t for t in texts)
+    assert all("r =" not in t and "Pearson" not in t for t in texts)
     plt.close(plot.figure)
     plt.close(plot.legend_figure)
 
@@ -433,21 +440,17 @@ def test_legend_title_defaults_to_color_by(registry: Path) -> None:
 
 
 def test_degenerate_pc_skips_regression_marginal(registry: Path) -> None:
-    """A ~0-variance trailing PC must not draw an exploded regression slope (no guard
-    before the fix gave slopes like 6e+15)."""
+    """A ~0-variance trailing PC must not draw a regression on numerical noise (no
+    guard before the fix gave slopes like 6e+15): its marginal stays empty and its
+    statistic reads n/a."""
     rng = np.random.default_rng(1)
     base = rng.standard_normal((5, 3))
     ab = np.hstack([base, base @ rng.standard_normal((3, 7))])  # rank 3 -> PC4 ~ 0
     ds = _dataset(ab, {"RunOrder": np.arange(5.0)})
     plot = pca.plot_pca(ds, "RunOrder", continuous=True, registry_path=registry)
-    slope_texts = [
-        t.get_text()
-        for ax in plot.figure.get_axes()
-        for t in ax.texts
-        if "slope" in t.get_text()
-    ]
-    assert len(slope_texts) <= 3  # the degenerate PC4 marginal is skipped
-    assert all("e+1" not in t for t in slope_texts)  # no exploded slope annotation
+    ax2_right = plot.figure.get_axes()[5]
+    assert not ax2_right.lines and not ax2_right.collections
+    assert "PC4 n/a" in plot.figure.get_axes()[7].texts[1].get_text()
     plt.close(plot.figure)
     plt.close(plot.legend_figure)
 
@@ -486,6 +489,172 @@ def test_random_state_param_accepted(registry: Path) -> None:
     a = pca.compute_pca(ds, random_state=0)
     b = pca.compute_pca(ds, random_state=999)
     np.testing.assert_allclose(a.explained_variance_ratio, b.explained_variance_ratio)
+
+
+# --------------------------------------------------------------------------- #
+# Marginal statistics — reference exclusion, p formatting, KDE extent, placement
+# --------------------------------------------------------------------------- #
+
+
+def _stats_lines(figure: Figure) -> list[str]:
+    """The statistics line under each panel title (PC1/PC2, then PC3/PC4)."""
+    axes = figure.get_axes()
+    return [axes[6].texts[1].get_text(), axes[7].texts[1].get_text()]
+
+
+@pytest.mark.parametrize(
+    ("p_value", "expected"),
+    [
+        (0.5, "0.500"),
+        (0.001, "0.001"),
+        (0.000999, "1.0e-03"),
+        (3.0e-11, "3.0e-11"),
+        (0.0, "0.0e+00"),
+        (float("nan"), "n/a"),
+    ],
+)
+def test_format_p(p_value: float, expected: str) -> None:
+    """A tiny p is never flattened to 0.0000; an untestable one reads n/a."""
+    assert pca._format_p(p_value) == expected
+
+
+def test_strong_separation_p_not_rounded_to_zero(registry: Path) -> None:
+    rng = np.random.default_rng(0)
+    ab = rng.standard_normal((60, 50))
+    ab[:30, :20] += 3.0
+    ds = _dataset(ab, {"G": np.array(["A"] * 30 + ["B"] * 30)})
+    plot = pca.plot_pca(ds, "G", registry_path=registry)
+    line = _stats_lines(plot.figure)[0]
+    s = plot.result.scores
+    p = float(stats.mannwhitneyu(s[:30, 0], s[30:, 0]).pvalue)
+    assert p < 1e-4
+    assert f"PC1 p = {pca._format_p(p)}" in line
+    assert "0.0000" not in line
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_background_samples_excluded_from_group_test(registry: Path) -> None:
+    """Greyed reference samples must not drive the p: A and B are drawn identically,
+    a far-off pool is greyed, and the reported p is the A-vs-B test alone (before the
+    fix the pool made it ~3e-4 against an A-vs-B p of ~0.9)."""
+    rng = np.random.default_rng(0)
+    rng.standard_normal((60, 50))  # keep the draw identical to the review probe
+    ab = rng.standard_normal((66, 50))
+    ab[60:, :] += 4.0
+    labels = np.array(["A"] * 30 + ["B"] * 30 + ["Pool"] * 6)
+    ds = _dataset(ab, {"G": labels})
+    plot = pca.plot_pca(ds, "G", background_values=["Pool"], registry_path=registry)
+    s = plot.result.scores
+    lines = _stats_lines(plot.figure)
+    assert lines[0].startswith("Mann-Whitney U:")  # 2 foreground groups, not 3
+    for pc in range(4):
+        p = float(stats.mannwhitneyu(s[:30, pc], s[30:60, pc]).pvalue)
+        assert f"PC{pc + 1} p = {pca._format_p(p)}" in lines[pc // 2]
+    p_with_pool = float(stats.kruskal(s[:30, 0], s[30:60, 0], s[60:, 0]).pvalue)
+    assert p_with_pool < 1e-3  # what the old annotation reported
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+@pytest.mark.parametrize(
+    "make_background",
+    [
+        lambda: ["Pool"],
+        lambda: np.array(["Pool"]),
+        lambda: pd.Series(["Pool"]),
+        lambda: pd.Index(["Pool"]),
+        lambda: (v for v in ["Pool"]),
+        lambda: "Pool",
+    ],
+    ids=["list", "ndarray", "series", "index", "generator", "bare-str"],
+)
+def test_background_exclusion_accepts_any_iterable(
+    registry: Path, make_background: object
+) -> None:
+    """However the caller spells background_values (e.g. ``df[...].unique()`` is an
+    ndarray), the greyed samples are greyed, drawn underneath, AND left out of the
+    test — the registry and the plot must agree on which values are background."""
+    rng = np.random.default_rng(0)
+    ab = rng.standard_normal((66, 50))
+    ab[60:, :] += 4.0
+    labels = np.array(["A"] * 30 + ["B"] * 30 + ["Pool"] * 6)
+    ds = _dataset(ab, {"G": labels})
+    assert callable(make_background)
+    plot = pca.plot_pca(
+        ds, "G", background_values=make_background(), registry_path=registry
+    )
+    assert plot.color_map is not None
+    assert plot.color_map["Pool"] == col.BACKGROUND_COLOR
+    assert _first_facecolor_hex(plot.figure) == col.BACKGROUND_COLOR.lower()
+    s = plot.result.scores
+    p = float(stats.mannwhitneyu(s[:30, 0], s[30:60, 0]).pvalue)
+    line = _stats_lines(plot.figure)[0]
+    assert line.startswith("Mann-Whitney U:")
+    assert f"PC1 p = {pca._format_p(p)}" in line
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_single_foreground_group_has_no_test(registry: Path) -> None:
+    rng = np.random.default_rng(2)
+    ab = rng.standard_normal((20, 12))
+    ds = _dataset(ab, {"G": np.array(["exp"] * 16 + ["pool"] * 4)})
+    plot = pca.plot_pca(ds, "G", background_values=["pool"], registry_path=registry)
+    for line in _stats_lines(plot.figure):
+        assert line.count("p = n/a") == 2
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_kde_spans_the_scatter_view_and_leaves_it_unchanged(registry: Path) -> None:
+    """Each KDE is evaluated across the scatter's full view (its tails run to the
+    frame, not stopping at the extreme sample); drawing it does not move the view."""
+    ds = _grouped()
+    plot = pca.plot_pca(ds, "Group", registry_path=registry)
+    axes = plot.figure.get_axes()
+    ax1, ax2, ax1_top, ax1_right = axes[0], axes[1], axes[2], axes[3]
+    s = plot.result.scores
+    lo, hi = ax1.get_xlim()
+    assert lo < float(s[:, 0].min()) and hi > float(s[:, 0].max())
+    for line in ax1_top.lines:
+        x = np.asarray(line.get_xdata(), dtype=float)
+        assert x[0] == pytest.approx(lo) and x[-1] == pytest.approx(hi)
+    ylo, yhi = ax1.get_ylim()
+    for line in ax1_right.lines:
+        y = np.asarray(line.get_ydata(), dtype=float)
+        assert y[0] == pytest.approx(ylo) and y[-1] == pytest.approx(yhi)
+    # The view is pinned (not autoscaled past the curves) on both panels.
+    assert not ax1.get_autoscalex_on() and not ax1.get_autoscaley_on()
+    assert not ax2.get_autoscalex_on() and not ax2.get_autoscaley_on()
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_density_marginals_share_a_zero_baseline(registry: Path) -> None:
+    ds = _grouped()
+    plot = pca.plot_pca(ds, "Group", registry_path=registry)
+    axes = plot.figure.get_axes()
+    assert axes[2].get_ylim()[0] == 0.0 and axes[4].get_ylim()[0] == 0.0  # top
+    assert axes[3].get_xlim()[0] == 0.0 and axes[5].get_xlim()[0] == 0.0  # right
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+@pytest.mark.parametrize("continuous", [False, True])
+def test_stats_live_in_title_strips_not_marginals(
+    registry: Path, continuous: bool
+) -> None:
+    """No statistic is drawn inside the narrow marginal axes (where it overlapped the
+    curves and overflowed the figure edge); each title strip carries one stats line."""
+    ds = _grouped()
+    color_by = "RunOrder" if continuous else "Group"
+    plot = pca.plot_pca(ds, color_by, continuous=continuous, registry_path=registry)
+    axes = plot.figure.get_axes()
+    assert all(not ax.texts for ax in axes[2:6])
+    assert [len(axes[i].texts) for i in (6, 7)] == [2, 2]
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
 
 
 # --------------------------------------------------------------------------- #

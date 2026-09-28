@@ -11,11 +11,25 @@ each ringed with marginal distributions, points colored by one sample-metadata c
   * **Categorical** (``continuous=False``): a color per group, pulled from the project
     color registry (:mod:`figures.colors`) so a value keeps its color across every
     figure, capped at eight categories (the registry raises beyond that). Marginals are
-    per-group Gaussian-KDE density curves; the annotation is a per-PC Kruskal-Wallis
-    p-value (Mann-Whitney U for two groups) testing whether groups separate along a PC.
+    per-group Gaussian-KDE density curves (each group's curve has unit area, so shapes
+    compare regardless of group size), evaluated across the scatter's full view so no
+    tail is cut off in mid-air. The annotation is a per-PC Kruskal-Wallis p-value
+    (Mann-Whitney U, two-sided, for two groups) testing whether groups separate along a
+    PC. **Greyed reference samples (``background_values``) are excluded from the test**
+    — they sit behind the biology, so they must not drive its p-value; with fewer than
+    two foreground groups the p is ``n/a``.
   * **Continuous** (``continuous=True``): points shaded by a perceptually-uniform
-    colormap. Marginals are per-PC scatter + OLS regression line with a 95% CI; the
-    annotation is the slope and p-value of the variable regressed on that PC.
+    colormap. Marginals are per-PC scatter + OLS regression line with a 95%
+    mean-response CI; the annotation is the **Pearson r** and its p-value (identical to
+    the OLS slope t-test's p). ``r`` is reported rather than the slope because the slope
+    is in variable-units per PC-score-unit, unreadable on marginals without tick labels
+    (the sign of either follows the PC's arbitrary orientation).
+
+The marginal statistics are written in each panel's title strip (one line per panel,
+test named, PCs labelled), not inside the narrow marginal axes where they overlapped the
+curves and overflowed the figure edge. The PCA scores are unsupervised (the labels play
+no part in them), so testing the labels against a PC is not circular; the four p-values
+are descriptive and uncorrected.
 
 Convention wiring (conventions/visualization.md): categorical colors come from the
 registry (consistent + the >8-category guard); the main figure carries **no** baked-in
@@ -40,6 +54,7 @@ relabelings live in the project copy, applied to the ``Dataset`` before plotting
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,7 +75,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "pca-plot", "version": "0.3"},
+    "template": {"name": "pca-plot", "version": "0.4"},
     "kind": "module",
     "provides": [
         "PCAScaleWarning",
@@ -74,10 +89,11 @@ __script_meta__: dict[str, object] = {
     "seeded_from": None,
     "description": (
         "PCA scatter figures from a Dataset: PC1/PC2 + PC3/PC4 panels with marginal "
-        "KDE (categorical, Kruskal-Wallis/Mann-Whitney p) or regression (continuous, "
-        "slope+p). Per-feature standardized PCA; categorical colors from the project "
-        "registry with the >8-category guard; greyable reference samples; warns on "
-        "non-log scale; dual-export plus a separate legend image (swatches/colorbar). "
+        "KDE (categorical, Kruskal-Wallis/Mann-Whitney p over the non-greyed groups) "
+        "or regression (continuous, Pearson r+p). Per-feature standardized PCA; "
+        "categorical colors from the project registry with the >8-category guard; "
+        "greyable reference samples; warns on non-log scale; dual-export plus a "
+        "separate legend image (swatches/colorbar). "
         "Study-agnostic; fail-loud."
     ),
 }
@@ -240,7 +256,9 @@ def plot_pca(
     legend_title:
         Title for the companion legend figure; defaults to ``color_by``.
     show_marginal_stats:
-        Annotate the marginal panels with the test statistic (default ``True``).
+        Write the per-PC marginal statistics into each panel's title strip (default
+        ``True``): categorical, the group-separation p over the non-greyed groups;
+        continuous, Pearson ``r`` and its p.
     standardize:
         Z-score features before PCA (default ``True``); see :func:`compute_pca`.
     random_state:
@@ -304,14 +322,18 @@ def plot_pca(
                 labels = _categorical_values(dataset, color_by)
                 cat = category if category is not None else color_by
                 unique = [str(v) for v in np.unique(labels)]
+                # Coerce once, so the greying (registry), the draw order, and the
+                # exclusion from the group test all see the same values — a generator
+                # would otherwise be consumed by the registry call.
+                background_list = _as_list(background_values)
                 color_map = assign_colors(
                     cat,
                     unique,
                     registry_path=registry_path,
-                    background_values=background_values,
+                    background_values=background_list,
                     persist=persist_colors,
                 )
-                background = {str(v) for v in _as_list(background_values)}
+                background = {str(v) for v in background_list}
                 _plot_categorical(
                     scores, labels, panel, color_map, background, show_marginal_stats
                 )
@@ -527,8 +549,11 @@ def _finalize_axes(
             ax.spines["top"].set_visible(False)
             ax.spines["right"].set_visible(False)
     if not continuous:
+        # Density baseline at 0 on both marginal orientations.
         panel.ax1_right.set_xlim(left=0)
         panel.ax2_right.set_xlim(left=0)
+        panel.ax1_top.set_ylim(bottom=0)
+        panel.ax2_top.set_ylim(bottom=0)
 
 
 # --------------------------------------------------------------------------- #
@@ -548,6 +573,49 @@ def _degenerate_std_floor(scores: np.ndarray) -> float:
     return _DEGENERATE_REL_TOL * scale if scale > 0 else 0.0
 
 
+def _format_p(p_value: float) -> str:
+    """Render a p-value for an annotation: never ``0.0000``, never a bare ``nan``.
+
+    ``p >= 0.001`` prints to three decimals; smaller values print in scientific
+    notation (``3.0e-11``) so a strong separation is not flattened to ``0.0000`` (which
+    reads as p = 0); a non-finite p (untestable) prints ``n/a``.
+    """
+    if not np.isfinite(p_value):
+        return "n/a"
+    if p_value < 1e-3:
+        return f"{p_value:.1e}"
+    return f"{p_value:.3f}"
+
+
+def _write_panel_stats(title_ax: Axes, text: str) -> None:
+    """Put a one-line statistics summary under the panel title in its title strip.
+
+    The narrow right-hand marginals cannot hold a statistic without overlapping the
+    curves and overflowing the figure edge, so both panels' per-PC statistics live here.
+    """
+    title_ax.texts[0].set_y(0.78)
+    title_ax.text(0.5, 0.12, text, ha="center", va="center", fontsize=13)
+
+
+def _view_limits(panel: _Panel) -> list[tuple[float, float]]:
+    """The scatter view range of PC1..PC4 (after the scatters are drawn)."""
+    views = (
+        panel.ax1.get_xlim(),
+        panel.ax1.get_ylim(),
+        panel.ax2.get_xlim(),
+        panel.ax2.get_ylim(),
+    )
+    return [(float(lo), float(hi)) for lo, hi in views]
+
+
+def _freeze_view(panel: _Panel, limits: list[tuple[float, float]]) -> None:
+    """Pin the scatter views so a marginal curve cannot re-autoscale the shared axes."""
+    panel.ax1.set_xlim(limits[0])
+    panel.ax1.set_ylim(limits[1])
+    panel.ax2.set_xlim(limits[2])
+    panel.ax2.set_ylim(limits[3])
+
+
 # --------------------------------------------------------------------------- #
 # Categorical
 # --------------------------------------------------------------------------- #
@@ -564,8 +632,6 @@ def _plot_categorical(
     """Scatter both panels by group + per-group KDE marginals + per-PC group-test p."""
     unique_labels = [str(v) for v in np.unique(labels)]
     str_labels = labels.astype(str)
-
-    p_values = _group_test_pvalues(scores, str_labels, unique_labels)
 
     # Background labels underneath, foreground on top.
     draw_order = [lb for lb in unique_labels if lb in background] + [
@@ -590,6 +656,10 @@ def _plot_categorical(
             s=72,
         )
 
+    # Evaluate each KDE across the scatter's whole view (not just the data range), so a
+    # tail runs to the frame instead of stopping in mid-air at the extreme sample; then
+    # pin the view so the curves cannot widen it.
+    limits = _view_limits(panel)
     marginals = (
         (panel.ax1_top, 0, False),
         (panel.ax1_right, 1, True),
@@ -606,45 +676,44 @@ def _plot_categorical(
             pc_vals = scores[mask, pc]
             if float(pc_vals.std()) <= std_floor:
                 continue  # identical / numerically-constant values -> KDE is singular
-            grid = np.linspace(scores[:, pc].min(), scores[:, pc].max(), 200)
+            grid = np.linspace(limits[pc][0], limits[pc][1], 200)
             density = np.asarray(stats.gaussian_kde(pc_vals)(grid), dtype=float)
             if vertical:
                 ax.plot(density, grid, color=color_map[label], linewidth=3)
             else:
                 ax.plot(grid, density, color=color_map[label], linewidth=3)
+    _freeze_view(panel, limits)
 
     if show_marginal_stats:
-        for ax, p_val in zip(
-            (panel.ax1_top, panel.ax1_right, panel.ax2_top, panel.ax2_right),
-            p_values,
-            strict=True,
-        ):
-            ax.text(
-                0.02,
-                0.95,
-                f"p = {p_val:.4f}",
-                transform=ax.transAxes,
-                va="top",
-                fontsize=16,
-            )
+        tested = [lb for lb in unique_labels if lb not in background]
+        test_name = "Mann-Whitney U" if len(tested) == 2 else "Kruskal-Wallis"
+        p_values = _group_test_pvalues(scores, str_labels, tested)
+        for title_ax, pcs in ((panel.ax1_title, (0, 1)), (panel.ax2_title, (2, 3))):
+            parts = [f"PC{pc + 1} p = {_format_p(p_values[pc])}" for pc in pcs]
+            _write_panel_stats(title_ax, f"{test_name}:  " + "   ·   ".join(parts))
 
 
 def _group_test_pvalues(
-    scores: np.ndarray, str_labels: np.ndarray, unique_labels: list[str]
+    scores: np.ndarray, str_labels: np.ndarray, tested_labels: list[str]
 ) -> list[float]:
-    """Per-PC p-value that the groups differ along that PC (Mann-Whitney/Kruskal)."""
+    """Per-PC p-value that the ``tested_labels`` groups differ along that PC.
+
+    Two groups: two-sided Mann-Whitney U; three or more: Kruskal-Wallis. Samples whose
+    label is not in ``tested_labels`` (the greyed reference samples) take no part.
+    Fewer than two groups, or a degenerate PC, gives NaN (rendered ``n/a``).
+    """
     p_values: list[float] = []
     for pc in range(_N_COMPONENTS):
-        groups = [scores[str_labels == label, pc] for label in unique_labels]
+        groups = [scores[str_labels == label, pc] for label in tested_labels]
         try:
-            if len(unique_labels) == 2:
+            if len(groups) == 2:
                 p_value = float(stats.mannwhitneyu(groups[0], groups[1]).pvalue)
-            elif len(unique_labels) >= 2:
+            elif len(groups) > 2:
                 p_value = float(stats.kruskal(*groups).pvalue)
             else:
-                p_value = float("nan")  # single group: no separation to test
+                p_value = float("nan")  # < 2 foreground groups: nothing to compare
         except ValueError:
-            # Degenerate (e.g. all values identical) — skip rather than crash the plot.
+            # Degenerate (all values identical): older SciPy raises, newer returns NaN.
             p_value = float("nan")
         p_values.append(p_value)
     return p_values
@@ -690,23 +759,23 @@ def _plot_continuous(
         (panel.ax2_right, 3, True),
     )
     std_floor = _degenerate_std_floor(scores)
+    stat_parts: list[str] = []
     for ax, pc, vertical in marginals:
         if float(scores[:, pc].std()) <= std_floor:
             # Degenerate (~0-variance) PC: regressing on numerical noise gives an
-            # exploding, meaningless slope — skip the marginal rather than draw it.
+            # exploding, meaningless fit — skip the marginal rather than draw it.
+            stat_parts.append(f"PC{pc + 1} n/a")
             continue
-        slope, p_value = _plot_regression(
+        r_value, p_value = _plot_regression(
             scores[:, pc], values, ax, cmap_obj, vertical=vertical
         )
-        if show_marginal_stats:
-            ax.text(
-                0.02,
-                0.95,
-                f"slope = {slope:.3g}, p = {p_value:.4f}",
-                transform=ax.transAxes,
-                va="top",
-                fontsize=16,
-            )
+        r_text = f"{r_value:.2f}" if np.isfinite(r_value) else "n/a"
+        stat_parts.append(f"PC{pc + 1} r = {r_text}, p = {_format_p(p_value)}")
+
+    if show_marginal_stats:
+        for title_ax, idx in ((panel.ax1_title, 0), (panel.ax2_title, 2)):
+            text = "   ·   ".join(stat_parts[idx : idx + 2])
+            _write_panel_stats(title_ax, f"Pearson:  {text}")
 
 
 def _plot_regression(
@@ -719,7 +788,9 @@ def _plot_regression(
 ) -> tuple[float, float]:
     """Scatter (PC value vs colored variable) + OLS line with 95% CI on a marginal axis.
 
-    Returns ``(slope, p_value)`` of ``color_vals ~ pc_vals``.
+    Returns ``(r, p_value)``: the Pearson correlation of ``color_vals`` with ``pc_vals``
+    and its two-sided p (the same p as the OLS slope t-test of ``color_vals ~
+    pc_vals``). ``r`` is NaN when ``color_vals`` is constant.
 
     The band is the 95% **mean-response** confidence interval, which uses the *residual*
     standard error ``s = sqrt(SSE/(n-2))`` and the Student-t quantile ``t_{0.975, n-2}``
@@ -729,6 +800,7 @@ def _plot_regression(
     lr = stats.linregress(pc_vals, color_vals)
     slope = float(lr.slope)
     intercept = float(lr.intercept)
+    r_value = float(lr.rvalue)
     p_value = float(lr.pvalue)
 
     x_pred = np.linspace(float(pc_vals.min()), float(pc_vals.max()), 100)
@@ -758,7 +830,7 @@ def _plot_regression(
         )
         ax.plot(y_pred, x_pred, color="gray", linewidth=3)
         ax.fill_betweenx(x_pred, y_pred - band, y_pred + band, alpha=0.2, color="gray")
-    return slope, p_value
+    return r_value, p_value
 
 
 def _normalize_for_cmap(values: np.ndarray) -> np.ndarray:
@@ -825,9 +897,14 @@ def _legend_figure_continuous(
 
 
 def _as_list(values: object) -> list[object]:
-    """Coerce ``values`` to a list, treating a bare string as a single value."""
+    """Coerce ``values`` to a list, treating a bare string as a single value.
+
+    Any other iterable (list, tuple, set, numpy array, pandas Series/Index, generator)
+    is unpacked — the same rule as :mod:`figures.colors`, so a value the registry greys
+    is also a value the plot treats as background.
+    """
     if isinstance(values, str):
         return [values]
-    if isinstance(values, (list, tuple, set, frozenset)):
+    if isinstance(values, Iterable):
         return list(values)
     return [values]
