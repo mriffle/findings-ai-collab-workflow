@@ -276,7 +276,7 @@ def test_plot_continuous_marginal_annotation_is_pearson_r(registry: Path) -> Non
     ds = _grouped()
     plot = pca.plot_pca(ds, "RunOrder", continuous=True, registry_path=registry)
     stats_line = plot.figure.get_axes()[6].texts[1].get_text()
-    assert stats_line.startswith("Pearson:")
+    assert plot.figure.get_axes()[6].texts[2].get_text().startswith("Pearson,")
     assert "slope" not in stats_line
     run = ds.metadata["RunOrder"].to_numpy(dtype=float)
     r, p = stats.pearsonr(plot.result.scores[:, 0], run)
@@ -502,6 +502,11 @@ def _stats_lines(figure: Figure) -> list[str]:
     return [axes[6].texts[1].get_text(), axes[7].texts[1].get_text()]
 
 
+def _method_line(figure: Figure) -> str:
+    """The method line (test + how the p was obtained) under the first panel title."""
+    return figure.get_axes()[6].texts[2].get_text()
+
+
 @pytest.mark.parametrize(
     ("p_value", "expected"),
     [
@@ -547,7 +552,7 @@ def test_background_samples_excluded_from_group_test(registry: Path) -> None:
     plot = pca.plot_pca(ds, "G", background_values=["Pool"], registry_path=registry)
     s = plot.result.scores
     lines = _stats_lines(plot.figure)
-    assert lines[0].startswith("Mann-Whitney U:")  # 2 foreground groups, not 3
+    assert _method_line(plot.figure).startswith("Mann-Whitney U,")  # 2 groups, not 3
     for pc in range(4):
         p = float(stats.mannwhitneyu(s[:30, pc], s[30:60, pc]).pvalue)
         assert f"PC{pc + 1} p = {pca._format_p(p)}" in lines[pc // 2]
@@ -590,7 +595,7 @@ def test_background_exclusion_accepts_any_iterable(
     s = plot.result.scores
     p = float(stats.mannwhitneyu(s[:30, 0], s[30:60, 0]).pvalue)
     line = _stats_lines(plot.figure)[0]
-    assert line.startswith("Mann-Whitney U:")
+    assert _method_line(plot.figure).startswith("Mann-Whitney U,")
     assert f"PC1 p = {pca._format_p(p)}" in line
     plt.close(plot.figure)
     plt.close(plot.legend_figure)
@@ -646,15 +651,343 @@ def test_stats_live_in_title_strips_not_marginals(
     registry: Path, continuous: bool
 ) -> None:
     """No statistic is drawn inside the narrow marginal axes (where it overlapped the
-    curves and overflowed the figure edge); each title strip carries one stats line."""
+    curves and overflowed the figure edge); each title strip carries the title, a
+    statistics line and a method line."""
     ds = _grouped()
     color_by = "RunOrder" if continuous else "Group"
     plot = pca.plot_pca(ds, color_by, continuous=continuous, registry_path=registry)
     axes = plot.figure.get_axes()
     assert all(not ax.texts for ax in axes[2:6])
-    assert [len(axes[i].texts) for i in (6, 7)] == [2, 2]
+    assert [len(axes[i].texts) for i in (6, 7)] == [3, 3]
     plt.close(plot.figure)
     plt.close(plot.legend_figure)
+
+
+# --------------------------------------------------------------------------- #
+# Nested samples — unit permutation test + cluster bootstrap band
+# --------------------------------------------------------------------------- #
+
+
+def _nesting(units: np.ndarray | None, n_perm: int = 9999, seed: int = 0) -> object:
+    """A pca._Nesting over explicit unit codes (tests call the internals directly)."""
+    return pca._Nesting(
+        unit=None if units is None else "Unit",
+        codes=None if units is None else np.asarray(units, dtype=np.int64),
+        n_permutations=n_perm,
+        rng=np.random.default_rng(seed),
+    )
+
+
+def _brute_force_between_p(
+    vals: np.ndarray, labels: np.ndarray, units: np.ndarray
+) -> float:
+    """Exact between-unit p by enumerating unit->label assignments with scipy."""
+    import itertools
+
+    uniq = np.unique(units)
+    unit_labels = np.array([labels[units == u][0] for u in uniq])
+    levels = sorted(set(unit_labels.tolist()))
+    observed = stats.kruskal(*[vals[labels == g] for g in levels]).statistic
+    seen = set()
+    hits = 0
+    for perm in itertools.permutations(range(uniq.size)):
+        assign = tuple(unit_labels[list(perm)])
+        if assign in seen:
+            continue
+        seen.add(assign)
+        per_sample = np.array(
+            [assign[int(np.flatnonzero(uniq == u)[0])] for u in units]
+        )
+        h = stats.kruskal(*[vals[per_sample == g] for g in levels]).statistic
+        hits += int(h >= observed - 1e-9)
+    return hits / len(seen)
+
+
+def test_kruskal_h_matches_scipy_with_ties() -> None:
+    rng = np.random.default_rng(4)
+    vals = np.round(rng.standard_normal(30), 1)  # rounded -> ties
+    for n_groups in (2, 3):
+        codes = rng.integers(0, n_groups, 30)
+        ours = pca._kruskal_h(vals, codes[None, :], n_groups)[0]
+        ref = stats.kruskal(*[vals[codes == g] for g in range(n_groups)]).statistic
+        assert ours == pytest.approx(float(ref), rel=1e-10)
+
+
+def test_distinct_permutations_are_complete_and_unique() -> None:
+    values = np.array([0, 0, 1, 1, 2])
+    perms = pca._distinct_permutations(values)
+    assert perms.shape == (pca._n_distinct(values), 5) == (30, 5)
+    assert len({tuple(r) for r in perms.tolist()}) == 30
+    assert all(sorted(r) == [0, 0, 1, 1, 2] for r in perms.tolist())
+
+
+def test_between_units_exact_matches_brute_force_and_warns() -> None:
+    """3 vs 3 units x 2 samples: 20 arrangements, enumerated exactly; the p equals a
+    scipy brute force, and the 0.05-resolution floor is warned about."""
+    rng = np.random.default_rng(5)
+    units = np.repeat(np.arange(6), 2)
+    labels = np.where(units < 3, "A", "B")
+    scores = rng.standard_normal((12, 4)) + (units < 3)[:, None] * 1.5
+    with pytest.warns(pca.PermutationResolutionWarning, match="20 distinct"):
+        tests = pca._group_tests(scores, labels, ["A", "B"], _nesting(units))
+    assert tests.scheme == "between_units" and tests.exact
+    assert tests.n_arrangements == 20 and tests.n_units == 6
+    for pc in range(4):
+        expected = _brute_force_between_p(scores[:, pc], labels, units)
+        assert tests.p_values[pc] == pytest.approx(expected)
+    assert min(tests.p_values) >= 0.05
+
+
+def test_within_units_exact_matches_brute_force() -> None:
+    """A label that varies inside units is tested on within-unit deviations and
+    permuted within each unit, exactly."""
+    import itertools
+
+    rng = np.random.default_rng(6)
+    units = np.repeat(np.arange(4), 3)  # 4 units x 3 samples
+    labels = np.tile(np.array(["t0", "t1", "t1"]), 4)  # timepoint within unit
+    scores = rng.standard_normal((12, 4)) + (labels == "t1")[:, None] * 1.0
+    tests = pca._group_tests(scores, labels, ["t0", "t1"], _nesting(units))
+    assert tests.scheme == "within_units" and tests.exact
+    assert tests.n_arrangements == 3**4
+    blocks = [list(set(itertools.permutations(["t0", "t1", "t1"])))] * 4
+    for pc in range(4):
+        # Within-unit deviations: each sample minus its unit's mean.
+        raw = scores[:, pc]
+        vals = raw - np.repeat(raw.reshape(4, 3).mean(axis=1), 3)
+        obs = stats.kruskal(vals[labels == "t0"], vals[labels == "t1"]).statistic
+        hits = total = 0
+        for combo in itertools.product(*blocks):
+            lab = np.array([x for block in combo for x in block])
+            h = stats.kruskal(vals[lab == "t0"], vals[lab == "t1"]).statistic
+            hits += int(h >= obs - 1e-9)
+            total += 1
+        assert tests.p_values[pc] == pytest.approx(hits / total)
+
+
+def test_monte_carlo_p_is_seeded_and_uses_plus_one() -> None:
+    rng = np.random.default_rng(7)
+    units = np.repeat(np.arange(20), 3)
+    labels = np.where(units < 10, "A", "B")
+    scores = rng.standard_normal((60, 4))
+    a = pca._group_tests(scores, labels, ["A", "B"], _nesting(units, 499, seed=1))
+    b = pca._group_tests(scores, labels, ["A", "B"], _nesting(units, 499, seed=1))
+    assert not a.exact and a.n_draws == 499
+    assert a.p_values == b.p_values
+    for p in a.p_values:
+        assert (p * 500) == pytest.approx(round(p * 500))  # (1 + hits) / 500
+        assert p >= 1 / 500
+
+
+def test_unit_permutation_is_calibrated_where_independence_is_not() -> None:
+    """Planted truth: a unit-level label with NO effect, PC scores sharing a strong
+    per-unit random effect. The independence test rejects far too often; the unit
+    permutation test holds its nominal 5% (seeded simulation)."""
+    rng = np.random.default_rng(8)
+    n_sims, n_units, per_unit = 300, 12, 4
+    units = np.repeat(np.arange(n_units), per_unit)
+    labels = np.where(units % 2 == 0, "A", "B")
+    naive = perm = 0
+    for sim in range(n_sims):
+        unit_effect = rng.standard_normal((n_units, 4))[units]
+        scores = unit_effect + 0.3 * rng.standard_normal((units.size, 4))
+        p_naive = pca._group_tests(scores, labels, ["A", "B"], _nesting(None))
+        p_perm = pca._group_tests(
+            scores, labels, ["A", "B"], _nesting(units, 199, seed=sim)
+        )
+        naive += int(p_naive.p_values[0] < 0.05)
+        perm += int(p_perm.p_values[0] < 0.05)
+    assert naive / n_sims > 0.2  # pseudoreplication: several-fold too many hits
+    assert perm / n_sims < 0.09  # nominal 5%, with simulation slack
+
+
+def test_continuous_between_and_within_schemes() -> None:
+    """A unit-level variable (age) is permuted between units; a run-level one (run
+    order) is tested on within-unit deviations, permuted within units; both match a
+    brute-force |r| enumeration."""
+    import itertools
+
+    rng = np.random.default_rng(9)
+    units = np.repeat(np.arange(5), 2)
+    scores = rng.standard_normal((10, 4))
+    age = np.repeat(np.array([1.0, 2.0, 3.0, 4.0, 5.0]), 2)
+    t_between = pca._correlation_tests(scores, age, _nesting(units))
+    assert t_between.scheme == "between_units" and t_between.exact
+    assert t_between.n_arrangements == 120
+    run = np.arange(10, dtype=float)
+    t_within = pca._correlation_tests(scores, run, _nesting(units))
+    assert t_within.scheme == "within_units" and t_within.n_arrangements == 32
+    for pc in range(4):
+        x = scores[:, pc]
+        obs = abs(stats.pearsonr(x, age).statistic)
+        rs = [
+            abs(stats.pearsonr(x, np.repeat(np.array(p), 2)).statistic)
+            for p in itertools.permutations([1.0, 2.0, 3.0, 4.0, 5.0])
+        ]
+        assert t_between.p_values[pc] == pytest.approx(
+            np.mean(np.array(rs) >= obs - 1e-9)
+        )
+        assert t_between.r_values is not None
+        assert t_between.r_values[pc] == pytest.approx(stats.pearsonr(x, age).statistic)
+        # Within-unit deviations of both the PC and run order (pairs -> +-d/2).
+        xw = x - np.repeat(x.reshape(5, 2).mean(axis=1), 2)
+        rw = run - np.repeat(run.reshape(5, 2).mean(axis=1), 2)
+        obs_w = abs(stats.pearsonr(xw, rw).statistic)
+        assert t_within.r_values is not None
+        assert abs(t_within.r_values[pc]) == pytest.approx(obs_w)
+        hits = 0
+        for flips in itertools.product([False, True], repeat=5):
+            perm = rw.copy()
+            for u, flip in enumerate(flips):
+                if flip:
+                    perm[[2 * u, 2 * u + 1]] = perm[[2 * u + 1, 2 * u]]
+            hits += int(abs(stats.pearsonr(xw, perm).statistic) >= obs_w - 1e-9)
+        assert t_within.p_values[pc] == pytest.approx(hits / 32)
+
+
+def test_within_units_ignores_between_unit_association() -> None:
+    """Planted truth: the PC tracks the variable strongly BETWEEN units but not at all
+    within them. The within-unit test must see no effect (large p, r ~ 0), and units
+    where the variable is constant (singletons) drop out of the counts."""
+    rng = np.random.default_rng(14)
+    n_units = 20
+    base = np.arange(n_units, dtype=float) * 10.0  # unit-level run block
+    units = np.concatenate([np.repeat(np.arange(n_units), 2), np.arange(20, 26)])
+    run = np.concatenate(
+        [
+            np.repeat(base, 2) + np.tile([0.0, 1.0], n_units),
+            np.arange(6, dtype=float) * 10.0 + 300.0,
+        ]
+    )
+    scores = np.zeros((units.size, 4))
+    unit_level = np.concatenate([np.repeat(base, 2), np.arange(6) * 10.0 + 300.0])
+    scores[:, 0] = unit_level / 100.0 + 0.5 * rng.standard_normal(units.size)
+    scores[:, 1:] = rng.standard_normal((units.size, 3))
+    tests = pca._correlation_tests(scores, run, _nesting(units, 1999, seed=0))
+    assert tests.scheme == "within_units"
+    assert tests.n_units == 20 and tests.n_samples == 40  # 6 singletons dropped
+    assert stats.pearsonr(scores[:, 0], run).statistic > 0.8  # strong overall
+    assert tests.r_values is not None and abs(tests.r_values[0]) < 0.35
+    assert tests.p_values[0] > 0.05
+
+
+def test_plot_with_unit_records_tests_and_method_line(registry: Path) -> None:
+    rng = np.random.default_rng(10)
+    unit = np.repeat([f"animal{i}" for i in range(12)], 3)
+    group = np.where(np.repeat(np.arange(12), 3) < 6, "WT", "KO")
+    ab = rng.standard_normal((36, 25))
+    ds = _dataset(ab, {"G": group, "Animal": unit})
+    plot = pca.plot_pca(ds, "G", unit="Animal", random_state=3, registry_path=registry)
+    tests = plot.marginal_tests
+    assert tests is not None
+    assert tests.scheme == "between_units" and tests.unit == "Animal"
+    assert tests.n_units == 12 and tests.n_samples == 36
+    assert tests.exact and tests.n_arrangements == 924  # C(12, 6)
+    method = _method_line(plot.figure)
+    assert method == (
+        "Mann-Whitney U, permuted between 12 units (36 samples), "
+        "exact over 924 arrangements"
+    )
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_monte_carlo_floor_is_shown_as_a_bound(registry: Path) -> None:
+    """When no draw beats the observed statistic, p = 1/(n+1) is a bound: it is
+    rendered ``p ≤``, while an ordinary p keeps ``p =``."""
+    rng = np.random.default_rng(15)
+    unit = np.repeat(np.arange(30), 2)
+    group = np.where(unit < 15, "A", "B")
+    ab = rng.standard_normal((60, 20))
+    ab[group == "A", :10] += 3.0
+    ds = _dataset(ab, {"G": group, "Animal": unit})
+    plot = pca.plot_pca(
+        ds, "G", unit="Animal", n_permutations=99, registry_path=registry
+    )
+    line = _stats_lines(plot.figure)[0]
+    assert "PC1 p ≤ 0.010" in line  # 1 / (99 + 1)
+    assert "PC2 p = " in line
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_plot_without_unit_says_samples_independent(registry: Path) -> None:
+    ds = _grouped()
+    plot = pca.plot_pca(ds, "Group", registry_path=registry)
+    assert _method_line(plot.figure) == (
+        "Kruskal-Wallis, 30 samples treated as independent"
+    )
+    assert plot.marginal_tests is not None
+    assert plot.marginal_tests.scheme == "independent"
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_unit_missing_among_tested_samples_raises(registry: Path) -> None:
+    rng = np.random.default_rng(11)
+    unit = np.array(["a", "a", "b", "b", None, "c"], dtype=object)
+    ds = _dataset(
+        rng.standard_normal((6, 8)),
+        {"G": np.array(["A", "A", "B", "B", "B", "A"]), "Animal": unit},
+    )
+    with pytest.raises(ValueError, match="missing value"):
+        pca.plot_pca(ds, "G", unit="Animal", registry_path=registry)
+
+
+def test_unit_missing_only_on_greyed_samples_is_fine(registry: Path) -> None:
+    rng = np.random.default_rng(12)
+    unit = np.array(["a", "a", "b", "b", "c", "c", "d", "d", None, None], dtype=object)
+    group = np.array(["A", "A", "A", "A", "B", "B", "B", "B", "Pool", "Pool"])
+    ds = _dataset(rng.standard_normal((10, 8)), {"G": group, "Animal": unit})
+    with pytest.warns(pca.PermutationResolutionWarning):
+        plot = pca.plot_pca(
+            ds, "G", unit="Animal", background_values=["Pool"], registry_path=registry
+        )
+    assert plot.marginal_tests is not None and plot.marginal_tests.n_samples == 8
+    plt.close(plot.figure)
+    plt.close(plot.legend_figure)
+
+
+def test_unit_and_n_permutations_are_validated(registry: Path) -> None:
+    ds = _grouped()
+    with pytest.raises(ValueError, match="not a metadata column"):
+        pca.plot_pca(ds, "Group", unit="Nope", registry_path=registry)
+    with pytest.raises(ValueError, match=">= 1"):
+        pca.plot_pca(ds, "Group", n_permutations=0, registry_path=registry)
+    with pytest.raises(TypeError, match="must be an int"):
+        pca.plot_pca(ds, "Group", n_permutations=True, registry_path=registry)
+
+
+def test_nested_band_is_a_cluster_bootstrap() -> None:
+    """With nested samples the band resamples whole units: on data whose units share
+    a strong offset it is wider than the independence t band, and seeded."""
+    rng = np.random.default_rng(13)
+    units = np.repeat(np.arange(8), 6)
+    x = rng.standard_normal(48)
+    y = 0.5 * x + 2.0 * rng.standard_normal(8)[units] + 0.2 * rng.standard_normal(48)
+
+    def half_width(fig_units: np.ndarray | None, seed: int) -> float:
+        fig, ax = plt.subplots()
+        pca._plot_regression(
+            x,
+            y,
+            ax,
+            plt.get_cmap("viridis"),
+            vertical=False,
+            units=fig_units,
+            rng=np.random.default_rng(seed),
+            n_boot=999,
+        )
+        fills = [c for c in ax.collections if type(c).__name__ != "PathCollection"]
+        verts = np.asarray(fills[-1].get_paths()[0].vertices, dtype=float)
+        order = np.argsort(np.abs(verts[:, 0] - float(x.mean())))
+        plt.close(fig)
+        return abs(float(verts[order[0], 1]) - float(verts[order[1], 1])) / 2.0
+
+    t_band = half_width(None, 0)
+    boot = half_width(units, 0)
+    assert boot > 2.0 * t_band
+    assert half_width(units, 0) == pytest.approx(boot)  # seeded
 
 
 # --------------------------------------------------------------------------- #
@@ -720,3 +1053,51 @@ def test_smoke_pca_real_proteins(tmp_path: Path) -> None:
     assert "brain" in {t.get_text() for t in legend.get_texts()}
     plt.close(plot.figure)
     plt.close(plot.legend_figure)
+
+
+@_skip_no_data
+def test_smoke_unit_permutation_on_all_runs(tmp_path: Path) -> None:
+    """All 74 experimental runs (52 animals, 22 injected twice): with unit="Sample ID"
+    the Genotype PC1 p is the between-animal permutation p (~0.14), not the
+    independence p (~0.04) that counted each animal's second injection as new data."""
+    from common import normalize as norm
+
+    registry = tmp_path / "color_registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "_palette": {
+                    "name": "Okabe-Ito",
+                    "colors": _PALETTE,
+                    "max_categorical": 8,
+                }
+            }
+        )
+    )
+    ds = dl.load_wide_data(
+        _PROT,
+        _META,
+        join_key="Replicate",
+        strip_suffix=".raw",
+        order_by="RunOrder",
+        numeric_columns=("RunOrder",),
+    )
+    logged = norm.log2_transform(norm.normalize(ds, "median"))
+    keep = (logged.metadata["SampleType"] == "unknown").to_numpy()
+    exp = dl.Dataset(
+        abundances=logged.abundances[keep],
+        feature_names=logged.feature_names,
+        feature_metadata=logged.feature_metadata,
+        metadata=logged.metadata[keep],
+        scale=logged.scale,
+    )
+    naive = pca.plot_pca(exp, "Genotype", registry_path=registry)
+    nested = pca.plot_pca(exp, "Genotype", unit="Sample ID", registry_path=registry)
+    assert naive.marginal_tests is not None and nested.marginal_tests is not None
+    assert nested.marginal_tests.n_samples == 74 and nested.marginal_tests.n_units == 52
+    assert nested.marginal_tests.scheme == "between_units"
+    assert naive.marginal_tests.p_values[0] < 0.05
+    assert 0.10 < nested.marginal_tests.p_values[0] < 0.18
+    for plot in (naive, nested):
+        plt.close(plot.figure)
+        plt.close(plot.legend_figure)

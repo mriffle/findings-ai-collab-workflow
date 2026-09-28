@@ -19,17 +19,51 @@ each ringed with marginal distributions, points colored by one sample-metadata c
     — they sit behind the biology, so they must not drive its p-value; with fewer than
     two foreground groups the p is ``n/a``.
   * **Continuous** (``continuous=True``): points shaded by a perceptually-uniform
-    colormap. Marginals are per-PC scatter + OLS regression line with a 95%
-    mean-response CI; the annotation is the **Pearson r** and its p-value (identical to
-    the OLS slope t-test's p). ``r`` is reported rather than the slope because the slope
-    is in variable-units per PC-score-unit, unreadable on marginals without tick labels
-    (the sign of either follows the PC's arbitrary orientation).
+    colormap. Marginals are per-PC scatter + OLS regression line with a 95% band; the
+    annotation is the **Pearson r** and its p-value. ``r`` is reported rather than the
+    slope because the slope is in variable-units per PC-score-unit, unreadable on
+    marginals without tick labels (the sign of either follows the PC's arbitrary
+    orientation).
 
-The marginal statistics are written in each panel's title strip (one line per panel,
-test named, PCs labelled), not inside the narrow marginal axes where they overlapped the
-curves and overflowed the figure edge. The PCA scores are unsupervised (the labels play
-no part in them), so testing the labels against a PC is not circular; the four p-values
-are descriptive and uncorrected.
+**Independence and ``unit=``.** Without ``unit=`` every sample is treated as an
+independent observation: the p-values are the asymptotic Mann-Whitney / Kruskal-Wallis /
+Pearson ones and the band is the t-based mean-response CI — and the figure says so
+("samples treated as independent"). When samples are **nested in units** (technical
+replicates of one animal; several tissues, timepoints, or cultures from one donor;
+littermates), pass the unit column as ``unit=``. Every sample still enters the statistic
+— nothing is averaged — but the p-value comes from a **permutation test that respects
+the nesting**, chosen from the data:
+
+  * the tested variable is **constant within every unit** (genotype, treatment, age) →
+    its values are **permuted between whole units** (each unit keeps one value, carried
+    by all its samples), so the null distribution carries whatever correlation the
+    samples of a unit share — near-duplicates or only loosely related, either way;
+  * it **varies within a unit** (timepoint, tissue region, batch, run order) → the
+    statistic is computed on **within-unit deviations** (each sample minus its unit's
+    mean — the aligned-rank idea for blocked designs) and the values are **permuted
+    within each unit**, testing whether the PC moves with the variable *inside* a unit.
+    Units where the variable does not vary carry no within-unit information and drop
+    out (the method line counts only the units that remain). The drawn fitted line still
+    shows the overall association; the p and ``r`` are the within-unit ones.
+
+The statistic is Kruskal-Wallis H (for two groups, the square of the standardized
+two-sided Mann-Whitney U — standardized because a between-unit shuffle changes the group
+sizes when units differ in size) or ``|r|``. When the number of distinct arrangements
+is at most ``n_permutations`` they are **enumerated exactly** (p = the fraction of
+arrangements whose statistic is at least the observed one); otherwise
+``n_permutations`` seeded draws give ``p = (1 + hits) / (1 + n_permutations)``. Twenty
+or fewer arrangements cannot reach p < 0.05 (3 vs 3 units: 20, smallest p = 0.05) —
+:class:`PermutationResolutionWarning`. With nesting, the continuous band is a **cluster
+bootstrap** (whole units resampled; 2.5/97.5 percentiles of the fitted line), which is
+narrow with very few units. The assumption left is that units are exchangeable: a deeper
+hierarchy (samples in animals in litters) needs the top level as ``unit=``.
+
+The marginal statistics are written in each panel's title strip (a statistics line and a
+method line naming the test and how the p was obtained), not inside the narrow marginal
+axes where they overlapped the curves and overflowed the figure edge. They are also
+returned as :class:`MarginalTests` on the :class:`PCAPlot` for provenance. The PCA
+scores are unsupervised (the labels play no part in them), so testing the labels against
+a PC is not circular; the four p-values are descriptive and uncorrected.
 
 Convention wiring (conventions/visualization.md): categorical colors come from the
 registry (consistent + the >8-category guard); the main figure carries **no** baked-in
@@ -53,10 +87,13 @@ relabelings live in the project copy, applied to the ``Dataset`` before plotting
 
 from __future__ import annotations
 
+import itertools
+import math
 import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,11 +112,13 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "pca-plot", "version": "0.4"},
+    "template": {"name": "pca-plot", "version": "0.5"},
     "kind": "module",
     "provides": [
         "PCAScaleWarning",
+        "PermutationResolutionWarning",
         "PCAResult",
+        "MarginalTests",
         "PCAPlot",
         "compute_pca",
         "plot_pca",
@@ -90,7 +129,9 @@ __script_meta__: dict[str, object] = {
     "description": (
         "PCA scatter figures from a Dataset: PC1/PC2 + PC3/PC4 panels with marginal "
         "KDE (categorical, Kruskal-Wallis/Mann-Whitney p over the non-greyed groups) "
-        "or regression (continuous, Pearson r+p). Per-feature standardized PCA; "
+        "or regression (continuous, Pearson r+p); with unit= the p comes from a "
+        "permutation test between or within units (nested samples, no averaging). "
+        "Per-feature standardized PCA; "
         "categorical colors from the project registry with the >8-category guard; "
         "greyable reference samples; warns on non-log scale; dual-export plus a "
         "separate legend image (swatches/colorbar). "
@@ -104,6 +145,14 @@ _N_COMPONENTS = 4
 
 class PCAScaleWarning(UserWarning):
     """Warning that PCA is running on a non-log-ish (e.g. linear) abundance scale."""
+
+
+class PermutationResolutionWarning(UserWarning):
+    """Warning that a unit permutation test has too few distinct arrangements to go
+    below p = 0.05 (e.g. 3 vs 3 units: 20 arrangements, smallest possible p = 0.05)."""
+
+
+PermutationScheme = Literal["independent", "between_units", "within_units"]
 
 
 @dataclass(frozen=True)
@@ -125,6 +174,51 @@ class PCAResult:
     standardized: bool
 
 
+@dataclass(frozen=True)
+class MarginalTests:
+    """The per-PC marginal statistics drawn on a figure, for provenance.
+
+    Attributes
+    ----------
+    test:
+        ``"Mann-Whitney U"``, ``"Kruskal-Wallis"`` or ``"Pearson"``.
+    scheme:
+        How the p-value was obtained: ``"independent"`` (asymptotic, samples treated as
+        independent), ``"between_units"`` (values permuted between whole units) or
+        ``"within_units"`` (values permuted within each unit).
+    unit:
+        The unit column, or ``None``.
+    n_samples:
+        Samples entering the test (greyed reference samples excluded; for
+        ``"within_units"``, only samples in units where the variable varies).
+    n_units:
+        Distinct units among them (``None`` without ``unit=``).
+    n_arrangements:
+        Distinct arrangements under the permutation scheme (exact integer; ``None`` for
+        ``"independent"``).
+    exact:
+        Every arrangement was enumerated (else ``n_draws`` seeded random draws).
+    n_draws:
+        Arrangements evaluated (``None`` for ``"independent"``).
+    p_values:
+        One per PC1..PC4; NaN = untestable (rendered ``n/a``).
+    r_values:
+        Continuous only: Pearson r per PC — of the within-unit deviations for
+        ``"within_units"`` (NaN for a skipped degenerate PC).
+    """
+
+    test: str
+    scheme: PermutationScheme
+    unit: str | None
+    n_samples: int
+    n_units: int | None
+    n_arrangements: int | None
+    exact: bool
+    n_draws: int | None
+    p_values: tuple[float, ...]
+    r_values: tuple[float, ...] | None
+
+
 @dataclass
 class PCAPlot:
     """A rendered PCA figure plus its companion legend figure.
@@ -140,12 +234,15 @@ class PCAPlot:
         The underlying :class:`PCAResult`.
     color_map:
         Categorical only: ``{value: hex}`` actually drawn (``None`` for continuous).
+    marginal_tests:
+        The per-PC marginal statistics (computed whether or not they are drawn).
     """
 
     figure: Figure
     legend_figure: Figure
     result: PCAResult
     color_map: dict[str, str] | None
+    marginal_tests: MarginalTests | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -222,6 +319,8 @@ def plot_pca(
     title: str | None = None,
     legend_title: str | None = None,
     show_marginal_stats: bool = True,
+    unit: str | None = None,
+    n_permutations: int = 9999,
     standardize: bool = True,
     random_state: int = 0,
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
@@ -259,11 +358,23 @@ def plot_pca(
         Write the per-PC marginal statistics into each panel's title strip (default
         ``True``): categorical, the group-separation p over the non-greyed groups;
         continuous, Pearson ``r`` and its p.
+    unit:
+        Sample-metadata column naming the independent unit each sample belongs to (an
+        animal, donor, litter). When given, the marginal p-values come from a
+        permutation test that respects the nesting (between or within units — see the
+        module docstring) and the continuous band is a cluster bootstrap; every tested
+        sample must have a unit. ``None`` (default) treats samples as independent, and
+        the figure says so.
+    n_permutations:
+        Random draws for the unit permutation test when the distinct arrangements
+        outnumber it (else they are enumerated exactly); also the number of cluster
+        bootstrap resamples for the continuous band. Default 9999.
     standardize:
         Z-score features before PCA (default ``True``); see :func:`compute_pca`.
     random_state:
-        Seed forwarded to :func:`compute_pca` (recordable in ``provenance.seed``; inert
-        for the deterministic full SVD).
+        Seed for the permutation draws and the cluster bootstrap (and forwarded to
+        :func:`compute_pca`, where the deterministic full SVD ignores it) — record it
+        in ``provenance.seed``.
     registry_path:
         Color registry JSON (categorical only). Default ``state/color_registry.json``.
     persist_colors:
@@ -272,14 +383,22 @@ def plot_pca(
     Returns
     -------
     PCAPlot
-        The main figure, the companion legend figure, the :class:`PCAResult`, and
-        (categorical) the color map drawn.
+        The main figure, the companion legend figure, the :class:`PCAResult`,
+        (categorical) the color map drawn, and the :class:`MarginalTests`.
     """
     if color_by not in dataset.metadata.columns:
         raise ValueError(
             f"color_by {color_by!r} is not a metadata column "
             f"{list(dataset.metadata.columns)}."
         )
+    if unit is not None and unit not in dataset.metadata.columns:
+        raise ValueError(
+            f"unit {unit!r} is not a metadata column {list(dataset.metadata.columns)}."
+        )
+    if isinstance(n_permutations, bool) or not isinstance(n_permutations, int):
+        raise TypeError(f"n_permutations must be an int; got {n_permutations!r}.")
+    if n_permutations < 1:
+        raise ValueError(f"n_permutations must be >= 1; got {n_permutations}.")
     if dataset.scale not in LOG_SCALES:
         warnings.warn(
             f"PCA is running on scale {dataset.scale!r}, which is not log-ish "
@@ -300,6 +419,7 @@ def plot_pca(
     variance_pct = result.explained_variance_ratio * 100.0
 
     title_for_legend = legend_title if legend_title is not None else color_by
+    nesting = _Nesting.from_dataset(dataset, unit, n_permutations, random_state)
 
     color_map: dict[str, str] | None
     # Build and render inside the publication style so the figures carry the shared
@@ -312,7 +432,9 @@ def plot_pca(
         try:
             if continuous:
                 values = _continuous_values(dataset, color_by)
-                _plot_continuous(scores, values, panel, colormap, show_marginal_stats)
+                tests = _plot_continuous(
+                    scores, values, panel, colormap, show_marginal_stats, nesting
+                )
                 _finalize_axes(panel, variance_pct, continuous=True)
                 color_map = None
                 legend_figure = _legend_figure_continuous(
@@ -334,8 +456,14 @@ def plot_pca(
                     persist=persist_colors,
                 )
                 background = {str(v) for v in background_list}
-                _plot_categorical(
-                    scores, labels, panel, color_map, background, show_marginal_stats
+                tests = _plot_categorical(
+                    scores,
+                    labels,
+                    panel,
+                    color_map,
+                    background,
+                    show_marginal_stats,
+                    nesting,
                 )
                 _finalize_axes(panel, variance_pct, continuous=False)
                 legend_figure = _legend_figure_categorical(
@@ -350,6 +478,7 @@ def plot_pca(
         legend_figure=legend_figure,
         result=result,
         color_map=color_map,
+        marginal_tests=tests,
     )
 
 
@@ -367,6 +496,8 @@ def save_pca(
     title: str | None = None,
     legend_title: str | None = None,
     show_marginal_stats: bool = True,
+    unit: str | None = None,
+    n_permutations: int = 9999,
     standardize: bool = True,
     random_state: int = 0,
     registry_path: str | Path = DEFAULT_REGISTRY_PATH,
@@ -379,6 +510,8 @@ def save_pca(
     ``<base>.legend.{svg,png}`` via :func:`figures.figure_io.save_figure`, and returns
     their paths. ``save_figure`` is called with the default ``close=True``, so the
     figures are closed even if saving fails (no leak on a bad ``base_name``/``dpi``).
+    The marginal statistics are drawn on the figure; call :func:`plot_pca` +
+    ``save_figure`` instead when the :class:`MarginalTests` are needed for provenance.
     """
     plot = plot_pca(
         dataset,
@@ -391,6 +524,8 @@ def save_pca(
         title=title,
         legend_title=legend_title,
         show_marginal_stats=show_marginal_stats,
+        unit=unit,
+        n_permutations=n_permutations,
         standardize=standardize,
         random_state=random_state,
         registry_path=registry_path,
@@ -475,7 +610,7 @@ def _build_layout(*, title: str | None, feature_type: str) -> tuple[Figure, _Pan
         hspace=0.08,
         wspace=0.08,
         width_ratios=[3, 0.5, 3, 0.5],
-        height_ratios=[0.3, 0.5, 3, 0.1],
+        height_ratios=[0.45, 0.5, 3, 0.1],
         left=0.08,
         right=0.95,
         top=top_margin,
@@ -587,14 +722,50 @@ def _format_p(p_value: float) -> str:
     return f"{p_value:.3f}"
 
 
-def _write_panel_stats(title_ax: Axes, text: str) -> None:
-    """Put a one-line statistics summary under the panel title in its title strip.
+def _p_text(p_value: float, tests: MarginalTests) -> str:
+    """``p = …``, or ``p ≤ …`` at a Monte Carlo floor (no draw beat the observed
+    statistic, so ``1 / (n_draws + 1)`` is a bound, not an estimate)."""
+    if (
+        not tests.exact
+        and tests.n_draws is not None
+        and np.isfinite(p_value)
+        and p_value <= 1.0 / (tests.n_draws + 1) * (1 + 1e-9)
+    ):
+        return f"p ≤ {_format_p(p_value)}"
+    return f"p = {_format_p(p_value)}"
+
+
+def _write_panel_stats(title_ax: Axes, stats_text: str, method_text: str) -> None:
+    """Put the statistics line and the method line under the panel title.
 
     The narrow right-hand marginals cannot hold a statistic without overlapping the
     curves and overflowing the figure edge, so both panels' per-PC statistics live here.
     """
-    title_ax.texts[0].set_y(0.78)
-    title_ax.text(0.5, 0.12, text, ha="center", va="center", fontsize=13)
+    title_ax.texts[0].set_y(0.84)
+    title_ax.text(0.5, 0.46, stats_text, ha="center", va="center", fontsize=13)
+    title_ax.text(
+        0.5, 0.12, method_text, ha="center", va="center", fontsize=10, color="0.3"
+    )
+
+
+def _method_text(tests: MarginalTests) -> str:
+    """One line naming the test and how its p was obtained."""
+    if tests.scheme == "independent":
+        return f"{tests.test}, {tests.n_samples} samples treated as independent"
+    how = (
+        f"exact over {tests.n_arrangements:,} arrangements"
+        if tests.exact
+        else f"{tests.n_draws:,} draws"
+    )
+    if tests.scheme == "between_units":
+        return (
+            f"{tests.test}, permuted between {tests.n_units} units "
+            f"({tests.n_samples} samples), {how}"
+        )
+    return (
+        f"{tests.test} on within-unit deviations, permuted within {tests.n_units} "
+        f"units ({tests.n_samples} samples), {how}"
+    )
 
 
 def _view_limits(panel: _Panel) -> list[tuple[float, float]]:
@@ -617,6 +788,206 @@ def _freeze_view(panel: _Panel, limits: list[tuple[float, float]]) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Nesting — the unit permutation test and the cluster bootstrap
+# --------------------------------------------------------------------------- #
+
+# At or below this many distinct arrangements a permutation p cannot go below 0.05.
+_MAX_UNRESOLVED_ARRANGEMENTS = 20
+
+
+@dataclass(frozen=True)
+class _Nesting:
+    """The unit structure (or its absence) plus the seeded generator for the draws."""
+
+    unit: str | None
+    codes: np.ndarray | None  # int code per sample; -1 = missing unit
+    n_permutations: int
+    rng: np.random.Generator
+
+    @staticmethod
+    def from_dataset(
+        dataset: Dataset, unit: str | None, n_permutations: int, random_state: int
+    ) -> _Nesting:
+        codes: np.ndarray | None = None
+        if unit is not None:
+            # Group on the values themselves, not their text: 1 and "1" stay distinct.
+            codes = np.asarray(
+                pd.factorize(dataset.metadata[unit], use_na_sentinel=True)[0],
+                dtype=np.int64,
+            )
+        return _Nesting(
+            unit=unit,
+            codes=codes,
+            n_permutations=n_permutations,
+            rng=np.random.default_rng(random_state),
+        )
+
+    def units_for(self, mask: np.ndarray) -> np.ndarray | None:
+        """Unit codes of the tested samples; raise if any tested sample has none."""
+        if self.codes is None:
+            return None
+        codes = np.asarray(self.codes[mask], dtype=np.int64)
+        n_missing = int((codes < 0).sum())
+        if n_missing:
+            raise ValueError(
+                f"unit column {self.unit!r} has {n_missing} missing value(s) among the "
+                f"tested samples; every tested sample needs a unit. Give a sample that "
+                f"stands alone its own unit (e.g. its sample id)."
+            )
+        return codes
+
+
+def _n_distinct(values: np.ndarray) -> int:
+    """Distinct orderings of ``values`` (a multiset): ``n! / prod(count!)``."""
+    _, counts = np.unique(values, return_counts=True)
+    total = math.factorial(int(values.size))
+    for count in counts:
+        total //= math.factorial(int(count))
+    return total
+
+
+def _distinct_permutations(values: np.ndarray) -> np.ndarray:
+    """Every distinct ordering of ``values``, one per row (callers bound the count)."""
+    uniq, counts = np.unique(values, return_counts=True)
+    remaining = [int(c) for c in counts]
+    rows: list[list[int]] = []
+    prefix: list[int] = []
+
+    def extend() -> None:
+        if len(prefix) == values.size:
+            rows.append(list(prefix))
+            return
+        for k, left in enumerate(remaining):
+            if left:
+                remaining[k] -= 1
+                prefix.append(k)
+                extend()
+                prefix.pop()
+                remaining[k] += 1
+
+    extend()
+    out: np.ndarray = uniq[np.asarray(rows, dtype=np.int64)]
+    return out
+
+
+def _varying_units(values: np.ndarray, units: np.ndarray) -> np.ndarray:
+    """Mask of samples whose unit has more than one distinct ``values`` entry."""
+    frame = pd.DataFrame({"unit": units, "value": values})
+    spans = frame.groupby("unit")["value"].transform(lambda v: v.min() != v.max())
+    return np.asarray(spans, dtype=bool)
+
+
+def _within_deviations(values: np.ndarray, units: np.ndarray) -> np.ndarray:
+    """``values`` minus the mean of its unit (removes every between-unit difference)."""
+    means = pd.Series(values).groupby(units).transform("mean").to_numpy(dtype=float)
+    deviations: np.ndarray = np.asarray(values, dtype=float) - means
+    return deviations
+
+
+def _permutation_scheme(values: np.ndarray, units: np.ndarray) -> PermutationScheme:
+    """Between units if ``values`` is constant within every unit, else within units."""
+    frame = pd.DataFrame({"unit": units, "value": values})
+    spans = frame.groupby("unit")["value"].agg(["min", "max"])
+    constant = bool((spans["min"] == spans["max"]).all())
+    return "between_units" if constant else "within_units"
+
+
+def _arrangements(
+    values: np.ndarray,
+    units: np.ndarray,
+    scheme: PermutationScheme,
+    n_permutations: int,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, int, bool]:
+    """Null arrangements of ``values`` under ``scheme``, one per row.
+
+    Returns ``(arrangements, n_distinct, exact)``: every distinct arrangement when there
+    are at most ``n_permutations`` of them (the observed one among them), else
+    ``n_permutations`` seeded random draws.
+    """
+    _, first, inverse = np.unique(units, return_index=True, return_inverse=True)
+    if scheme == "between_units":
+        unit_values = values[first]
+        n_distinct = _n_distinct(unit_values)
+        if n_distinct <= n_permutations:
+            per_unit = _distinct_permutations(unit_values)
+            return per_unit[:, inverse], n_distinct, True
+        draws = rng.permuted(np.tile(unit_values, (n_permutations, 1)), axis=1)
+        return draws[:, inverse], n_distinct, False
+
+    members = [np.flatnonzero(inverse == k) for k in range(first.size)]
+    n_distinct = math.prod(_n_distinct(values[m]) for m in members)
+    if n_distinct <= n_permutations:
+        blocks = [(m, _distinct_permutations(values[m])) for m in members]
+        out = np.tile(values, (n_distinct, 1))
+        choices = itertools.product(*(range(b.shape[0]) for _, b in blocks))
+        for row, choice in enumerate(choices):
+            for (m, block), pick in zip(blocks, choice, strict=True):
+                out[row, m] = block[pick]
+        return out, n_distinct, True
+    out = np.tile(values, (n_permutations, 1))
+    for m in members:
+        if m.size > 1:
+            out[:, m] = rng.permuted(out[:, m], axis=1)
+    return out, n_distinct, False
+
+
+def _kruskal_h(values: np.ndarray, codes: np.ndarray, n_groups: int) -> np.ndarray:
+    """Tie-corrected Kruskal-Wallis H for each row of group ``codes`` (vectorized).
+
+    Equals :func:`scipy.stats.kruskal`'s statistic; for two groups it is the square of
+    the standardized two-sided Mann-Whitney U. NaN when every value is tied.
+    """
+    n = values.size
+    ranks = np.asarray(stats.rankdata(values), dtype=float)
+    _, ties = np.unique(values, return_counts=True)
+    tie_factor = 1.0 - float((ties.astype(float) ** 3 - ties).sum()) / (n**3 - n)
+    if tie_factor <= 0:
+        return np.full(codes.shape[0], np.nan)
+    total = np.zeros(codes.shape[0])
+    for g in range(n_groups):
+        in_group = codes == g
+        size = in_group.sum(axis=1)
+        rank_sum = in_group.astype(float) @ ranks
+        total += np.divide(
+            rank_sum**2, size, out=np.zeros_like(rank_sum), where=size > 0
+        )
+    h: np.ndarray = (12.0 / (n * (n + 1)) * total - 3.0 * (n + 1)) / tie_factor
+    return h
+
+
+def _abs_pearson(x: np.ndarray, ys: np.ndarray) -> np.ndarray:
+    """``|r|`` of ``x`` with each row of ``ys`` (NaN where either is constant)."""
+    xc = x - x.mean()
+    yc = ys - ys.mean(axis=1, keepdims=True)
+    denom = float(np.linalg.norm(xc)) * np.linalg.norm(yc, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r: np.ndarray = np.abs((yc @ xc) / denom)
+    return r
+
+
+def _permutation_p(observed: float, null: np.ndarray, *, exact: bool) -> float:
+    """Upper-tail p of ``observed`` against the arrangement statistics ``null``."""
+    if not np.isfinite(observed):
+        return float("nan")
+    hits = int(np.sum(null >= observed - 1e-9 * max(1.0, abs(observed))))
+    if exact:
+        return hits / null.size  # the observed arrangement is among the rows
+    return (hits + 1) / (null.size + 1)
+
+
+def _warn_resolution(n_distinct: int) -> None:
+    if n_distinct <= _MAX_UNRESOLVED_ARRANGEMENTS:
+        warnings.warn(
+            f"The unit permutation test has only {n_distinct} distinct arrangement(s), "
+            f"so its smallest attainable p is {1.0 / n_distinct:.3g} — it cannot go "
+            f"below 0.05. Too few units vary for the p-values to separate anything.",
+            PermutationResolutionWarning,
+            stacklevel=4,
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Categorical
 # --------------------------------------------------------------------------- #
 
@@ -628,7 +999,8 @@ def _plot_categorical(
     color_map: dict[str, str],
     background: set[str],
     show_marginal_stats: bool,
-) -> None:
+    nesting: _Nesting,
+) -> MarginalTests:
     """Scatter both panels by group + per-group KDE marginals + per-PC group-test p."""
     unique_labels = [str(v) for v in np.unique(labels)]
     str_labels = labels.astype(str)
@@ -684,39 +1056,106 @@ def _plot_categorical(
                 ax.plot(grid, density, color=color_map[label], linewidth=3)
     _freeze_view(panel, limits)
 
+    tested = [lb for lb in unique_labels if lb not in background]
+    tests = _group_tests(scores, str_labels, tested, nesting)
     if show_marginal_stats:
-        tested = [lb for lb in unique_labels if lb not in background]
-        test_name = "Mann-Whitney U" if len(tested) == 2 else "Kruskal-Wallis"
-        p_values = _group_test_pvalues(scores, str_labels, tested)
+        method = _method_text(tests)
         for title_ax, pcs in ((panel.ax1_title, (0, 1)), (panel.ax2_title, (2, 3))):
-            parts = [f"PC{pc + 1} p = {_format_p(p_values[pc])}" for pc in pcs]
-            _write_panel_stats(title_ax, f"{test_name}:  " + "   ·   ".join(parts))
+            parts = [f"PC{pc + 1} {_p_text(tests.p_values[pc], tests)}" for pc in pcs]
+            _write_panel_stats(title_ax, "   ·   ".join(parts), method)
+    return tests
 
 
-def _group_test_pvalues(
-    scores: np.ndarray, str_labels: np.ndarray, tested_labels: list[str]
-) -> list[float]:
-    """Per-PC p-value that the ``tested_labels`` groups differ along that PC.
+def _group_tests(
+    scores: np.ndarray,
+    str_labels: np.ndarray,
+    tested_labels: list[str],
+    nesting: _Nesting,
+) -> MarginalTests:
+    """Per-PC test that the ``tested_labels`` groups differ along that PC.
 
     Two groups: two-sided Mann-Whitney U; three or more: Kruskal-Wallis. Samples whose
     label is not in ``tested_labels`` (the greyed reference samples) take no part.
-    Fewer than two groups, or a degenerate PC, gives NaN (rendered ``n/a``).
+    Without a unit the p is the asymptotic one (samples independent); with a unit it is
+    the unit permutation p (module docstring). Fewer than two groups, or a degenerate
+    PC, gives NaN (rendered ``n/a``).
     """
-    p_values: list[float] = []
+    test = "Mann-Whitney U" if len(tested_labels) == 2 else "Kruskal-Wallis"
+    mask = np.isin(str_labels, tested_labels)
+    labels = str_labels[mask]
+    units = nesting.units_for(mask)
+    n_units = None if units is None else int(np.unique(units).size)
+    if len(tested_labels) < 2:
+        return MarginalTests(
+            test=test,
+            scheme="independent" if units is None else "between_units",
+            unit=nesting.unit,
+            n_samples=int(mask.sum()),
+            n_units=n_units,
+            n_arrangements=None,
+            exact=False,
+            n_draws=None,
+            p_values=(float("nan"),) * _N_COMPONENTS,
+            r_values=None,
+        )
+
+    if units is None:
+        p_values: list[float] = []
+        for pc in range(_N_COMPONENTS):
+            groups = [scores[mask, pc][labels == label] for label in tested_labels]
+            try:
+                if len(groups) == 2:
+                    p_value = float(stats.mannwhitneyu(groups[0], groups[1]).pvalue)
+                else:
+                    p_value = float(stats.kruskal(*groups).pvalue)
+            except ValueError:
+                # Degenerate (all values identical): older SciPy raises, newer NaN.
+                p_value = float("nan")
+            p_values.append(p_value)
+        return MarginalTests(
+            test=test,
+            scheme="independent",
+            unit=None,
+            n_samples=int(mask.sum()),
+            n_units=None,
+            n_arrangements=None,
+            exact=False,
+            n_draws=None,
+            p_values=tuple(p_values),
+            r_values=None,
+        )
+
+    codes = np.asarray([tested_labels.index(lb) for lb in labels], dtype=np.int64)
+    scheme = _permutation_scheme(codes, units)
+    tested_scores = scores[mask]
+    if scheme == "within_units":
+        # Only units where the label varies carry within-unit information.
+        keep = _varying_units(codes, units)
+        codes, units, tested_scores = codes[keep], units[keep], tested_scores[keep]
+    arrangements, n_distinct, exact = _arrangements(
+        codes, units, scheme, nesting.n_permutations, nesting.rng
+    )
+    _warn_resolution(n_distinct)
+    p_values = []
     for pc in range(_N_COMPONENTS):
-        groups = [scores[str_labels == label, pc] for label in tested_labels]
-        try:
-            if len(groups) == 2:
-                p_value = float(stats.mannwhitneyu(groups[0], groups[1]).pvalue)
-            elif len(groups) > 2:
-                p_value = float(stats.kruskal(*groups).pvalue)
-            else:
-                p_value = float("nan")  # < 2 foreground groups: nothing to compare
-        except ValueError:
-            # Degenerate (all values identical): older SciPy raises, newer returns NaN.
-            p_value = float("nan")
-        p_values.append(p_value)
-    return p_values
+        vals = tested_scores[:, pc]
+        if scheme == "within_units":
+            vals = _within_deviations(vals, units)
+        observed = float(_kruskal_h(vals, codes[None, :], len(tested_labels))[0])
+        null = _kruskal_h(vals, arrangements, len(tested_labels))
+        p_values.append(_permutation_p(observed, null, exact=exact))
+    return MarginalTests(
+        test=test,
+        scheme=scheme,
+        unit=nesting.unit,
+        n_samples=int(codes.size),
+        n_units=int(np.unique(units).size),
+        n_arrangements=n_distinct,
+        exact=exact,
+        n_draws=int(arrangements.shape[0]),
+        p_values=tuple(p_values),
+        r_values=None,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -730,7 +1169,8 @@ def _plot_continuous(
     panel: _Panel,
     colormap: str,
     show_marginal_stats: bool,
-) -> None:
+    nesting: _Nesting,
+) -> MarginalTests:
     """Shade both panels by a continuous variable + regression marginals."""
     panel.ax1.scatter(
         scores[:, 0],
@@ -751,6 +1191,9 @@ def _plot_continuous(
         s=72,
     )
 
+    tests = _correlation_tests(scores, values, nesting)
+    units = nesting.units_for(np.ones(values.size, dtype=bool))
+    nested = units is not None and np.unique(units).size < units.size
     cmap_obj = plt.get_cmap(colormap)
     marginals = (
         (panel.ax1_top, 0, False),
@@ -766,16 +1209,131 @@ def _plot_continuous(
             # exploding, meaningless fit — skip the marginal rather than draw it.
             stat_parts.append(f"PC{pc + 1} n/a")
             continue
-        r_value, p_value = _plot_regression(
-            scores[:, pc], values, ax, cmap_obj, vertical=vertical
+        _plot_regression(
+            scores[:, pc],
+            values,
+            ax,
+            cmap_obj,
+            vertical=vertical,
+            units=units if nested else None,
+            rng=nesting.rng,
+            n_boot=nesting.n_permutations,
         )
+        assert tests.r_values is not None
+        r_value = tests.r_values[pc]
         r_text = f"{r_value:.2f}" if np.isfinite(r_value) else "n/a"
-        stat_parts.append(f"PC{pc + 1} r = {r_text}, p = {_format_p(p_value)}")
+        stat_parts.append(
+            f"PC{pc + 1} r = {r_text}, {_p_text(tests.p_values[pc], tests)}"
+        )
 
     if show_marginal_stats:
+        method = _method_text(tests)
         for title_ax, idx in ((panel.ax1_title, 0), (panel.ax2_title, 2)):
-            text = "   ·   ".join(stat_parts[idx : idx + 2])
-            _write_panel_stats(title_ax, f"Pearson:  {text}")
+            _write_panel_stats(
+                title_ax, "   ·   ".join(stat_parts[idx : idx + 2]), method
+            )
+    return tests
+
+
+def _correlation_tests(
+    scores: np.ndarray, values: np.ndarray, nesting: _Nesting
+) -> MarginalTests:
+    """Per-PC Pearson r of ``values`` with the PC, and its p (asymptotic or unit
+    permutation). A degenerate (~0-variance) PC gets NaN r and p."""
+    std_floor = _degenerate_std_floor(scores)
+    live = [float(scores[:, pc].std()) > std_floor for pc in range(_N_COMPONENTS)]
+    units = nesting.units_for(np.ones(values.size, dtype=bool))
+    r_values: list[float] = []
+    p_values: list[float] = []
+    if units is None:
+        for pc in range(_N_COMPONENTS):
+            if not live[pc]:
+                r_values.append(float("nan"))
+                p_values.append(float("nan"))
+                continue
+            lr = stats.linregress(scores[:, pc], values)
+            r_values.append(float(lr.rvalue))
+            p_values.append(float(lr.pvalue))
+        return MarginalTests(
+            test="Pearson",
+            scheme="independent",
+            unit=None,
+            n_samples=int(values.size),
+            n_units=None,
+            n_arrangements=None,
+            exact=False,
+            n_draws=None,
+            p_values=tuple(p_values),
+            r_values=tuple(r_values),
+        )
+
+    scheme = _permutation_scheme(values, units)
+    y, x_all = values, scores
+    if scheme == "within_units":
+        # Within-unit deviations; units where the variable is constant drop out.
+        keep = _varying_units(values, units)
+        units, x_all = units[keep], scores[keep]
+        y = _within_deviations(values[keep], units)
+    arrangements, n_distinct, exact = _arrangements(
+        y, units, scheme, nesting.n_permutations, nesting.rng
+    )
+    _warn_resolution(n_distinct)
+    for pc in range(_N_COMPONENTS):
+        if not live[pc]:
+            r_values.append(float("nan"))
+            p_values.append(float("nan"))
+            continue
+        x = x_all[:, pc]
+        if scheme == "within_units":
+            x = _within_deviations(x, units)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            r = float(np.corrcoef(x, y)[0, 1])
+        r_values.append(r)
+        null = _abs_pearson(x, arrangements)
+        p_values.append(_permutation_p(abs(r), null, exact=exact))
+    return MarginalTests(
+        test="Pearson",
+        scheme=scheme,
+        unit=nesting.unit,
+        n_samples=int(y.size),
+        n_units=int(np.unique(units).size),
+        n_arrangements=n_distinct,
+        exact=exact,
+        n_draws=int(arrangements.shape[0]),
+        p_values=tuple(p_values),
+        r_values=tuple(r_values),
+    )
+
+
+def _cluster_bootstrap_band(
+    x: np.ndarray,
+    y: np.ndarray,
+    units: np.ndarray,
+    x_pred: np.ndarray,
+    rng: np.random.Generator,
+    n_boot: int,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """95% band of the OLS line from resampling whole units (2.5/97.5 percentiles).
+
+    Resampling units, not samples, keeps each unit's samples together, so the band
+    carries their shared variation. ``None`` when too few resamples are fittable.
+    """
+    _, inverse = np.unique(units, return_inverse=True)
+    members = [np.flatnonzero(inverse == k) for k in range(int(inverse.max()) + 1)]
+    fitted: list[np.ndarray] = []
+    for _ in range(n_boot):
+        pick = rng.integers(0, len(members), len(members))
+        idx = np.concatenate([members[k] for k in pick])
+        xs, ys = x[idx], y[idx]
+        sxx = float(np.sum((xs - xs.mean()) ** 2))
+        if sxx <= 0:
+            continue
+        slope = float(np.sum((xs - xs.mean()) * (ys - ys.mean()))) / sxx
+        fitted.append(ys.mean() + slope * (x_pred - xs.mean()))
+    if len(fitted) < 2:
+        return None
+    lo, hi = np.percentile(np.asarray(fitted), [2.5, 97.5], axis=0)
+    return np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
 
 
 def _plot_regression(
@@ -785,37 +1343,50 @@ def _plot_regression(
     cmap: Colormap,
     *,
     vertical: bool,
-) -> tuple[float, float]:
-    """Scatter (PC value vs colored variable) + OLS line with 95% CI on a marginal axis.
+    units: np.ndarray | None = None,
+    rng: np.random.Generator | None = None,
+    n_boot: int = 9999,
+) -> None:
+    """Scatter (PC value vs colored variable) + OLS line with a 95% band on a marginal.
 
-    Returns ``(r, p_value)``: the Pearson correlation of ``color_vals`` with ``pc_vals``
-    and its two-sided p (the same p as the OLS slope t-test of ``color_vals ~
-    pc_vals``). ``r`` is NaN when ``color_vals`` is constant.
-
-    The band is the 95% **mean-response** confidence interval, which uses the *residual*
-    standard error ``s = sqrt(SSE/(n-2))`` and the Student-t quantile ``t_{0.975, n-2}``
-    — not ``linregress``'s ``stderr`` (the *slope* SE, ``s / sqrt(Sxx)``) with ``1.96``,
-    which understates the band by a factor of ``~1/sqrt(Sxx)``.
+    Without ``units`` the band is the 95% **mean-response** confidence interval, which
+    uses the *residual* standard error ``s = sqrt(SSE/(n-2))`` and the Student-t
+    quantile ``t_{0.975, n-2}`` — not ``linregress``'s ``stderr`` (the *slope* SE,
+    ``s / sqrt(Sxx)``) with ``1.96``, which understates the band by ``~1/sqrt(Sxx)``.
+    With ``units`` (samples nested in units) the t band would assume independence, so
+    the band is a cluster bootstrap over whole units instead.
     """
     lr = stats.linregress(pc_vals, color_vals)
     slope = float(lr.slope)
     intercept = float(lr.intercept)
-    r_value = float(lr.rvalue)
-    p_value = float(lr.pvalue)
 
     x_pred = np.linspace(float(pc_vals.min()), float(pc_vals.max()), 100)
     y_pred = intercept + slope * x_pred
-    n = pc_vals.shape[0]
-    dof = n - 2
-    denom = float(np.sum((pc_vals - pc_vals.mean()) ** 2))
-    if dof > 0 and denom > 0:
-        residuals = color_vals - (intercept + slope * pc_vals)
-        resid_se = float(np.sqrt(float(np.sum(residuals**2)) / dof))
-        tcrit = float(stats.t.ppf(0.975, dof))
-        mean_se = resid_se * np.sqrt(1.0 / n + (x_pred - pc_vals.mean()) ** 2 / denom)
-        band = tcrit * mean_se
+    lower, upper = y_pred, y_pred
+    boot = None
+    if units is not None:
+        boot = _cluster_bootstrap_band(
+            pc_vals,
+            color_vals,
+            units,
+            x_pred,
+            rng if rng is not None else np.random.default_rng(0),
+            n_boot,
+        )
+    if boot is not None:
+        lower, upper = boot
     else:
-        band = np.zeros_like(x_pred)
+        n = pc_vals.shape[0]
+        dof = n - 2
+        denom = float(np.sum((pc_vals - pc_vals.mean()) ** 2))
+        if units is None and dof > 0 and denom > 0:
+            residuals = color_vals - (intercept + slope * pc_vals)
+            resid_se = float(np.sqrt(float(np.sum(residuals**2)) / dof))
+            tcrit = float(stats.t.ppf(0.975, dof))
+            mean_se = resid_se * np.sqrt(
+                1.0 / n + (x_pred - pc_vals.mean()) ** 2 / denom
+            )
+            lower, upper = y_pred - tcrit * mean_se, y_pred + tcrit * mean_se
     point_colors = cmap(_normalize_for_cmap(color_vals))
 
     if not vertical:
@@ -823,14 +1394,13 @@ def _plot_regression(
             pc_vals, color_vals, s=20, alpha=0.7, c=point_colors, edgecolor="none"
         )
         ax.plot(x_pred, y_pred, color="gray", linewidth=3)
-        ax.fill_between(x_pred, y_pred - band, y_pred + band, alpha=0.2, color="gray")
+        ax.fill_between(x_pred, lower, upper, alpha=0.2, color="gray")
     else:
         ax.scatter(
             color_vals, pc_vals, s=20, alpha=0.7, c=point_colors, edgecolor="none"
         )
         ax.plot(y_pred, x_pred, color="gray", linewidth=3)
-        ax.fill_betweenx(x_pred, y_pred - band, y_pred + band, alpha=0.2, color="gray")
-    return r_value, p_value
+        ax.fill_betweenx(x_pred, lower, upper, alpha=0.2, color="gray")
 
 
 def _normalize_for_cmap(values: np.ndarray) -> np.ndarray:
