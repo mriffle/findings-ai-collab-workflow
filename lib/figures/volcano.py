@@ -49,12 +49,13 @@ from analysis.differential_abundance import DifferentialAbundanceResult
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "volcano", "version": "0.2"},
+    "template": {"name": "volcano", "version": "0.3"},
     "kind": "module",
     "provides": [
         "VolcanoCounts",
@@ -241,7 +242,7 @@ def plot_volcano(
     neg_log_q = _safe_neg_log10(q)
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(7, 6))
+        fig, ax = plt.subplots(figsize=(7, 7))  # taller, not wider (2x text)
         try:
             color_map = assign_colors(
                 category,
@@ -433,6 +434,9 @@ def _draw_volcano(
             ax.axvline(x, color="gray", linestyle="--", linewidth=0.8, zorder=0)
     ax.set_xlabel(effect_label)
     ax.set_ylabel(r"$-\log_{10}$(BH $q$)")
+    # Numeric axes: the doubled tick text needs fewer ticks to stay separate.
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
     ax.grid(True, alpha=0.25)
 
 

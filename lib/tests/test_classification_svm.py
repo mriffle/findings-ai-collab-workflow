@@ -809,12 +809,12 @@ def test_curve_ylabel_names_tuning_metric(
     from dataclasses import replace
 
     fig = svmfig.plot_hyperparameter_curve(planted_result)
-    assert fig.axes[0].get_ylabel() == "mean inner-CV AUC"
+    assert fig.axes[0].get_ylabel() == "mean inner-CV\nAUC"
     plt.close(fig)
     fig = svmfig.plot_hyperparameter_curve(
         replace(planted_result, tuning_metric="balanced_accuracy")
     )
-    assert fig.axes[0].get_ylabel() == "mean inner-CV balanced accuracy"
+    assert fig.axes[0].get_ylabel() == "mean inner-CV\nbalanced accuracy"
     legend = fig.axes[0].get_legend()
     assert legend is not None
     labels = [t.get_text() for t in legend.get_texts()]

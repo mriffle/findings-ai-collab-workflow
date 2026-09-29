@@ -45,12 +45,13 @@ from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
+from matplotlib.ticker import MaxNLocator
 from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-lda-figures", "version": "0.3"},
+    "template": {"name": "classification-lda-figures", "version": "0.4"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -228,7 +229,8 @@ _ROC_CAPTION_FONTSIZE = 8
 _ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
 _ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
 _ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
-_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+_ROC_XLABEL_IN = 1.2  # clearance under the axes: 20 pt ticks + 24 pt x label
+_ROC_LEFT_IN = 1.2  # room left of the axes for the 24 pt y label + 20 pt tick labels
 
 
 def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
@@ -243,7 +245,12 @@ def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
     strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
     height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
     fig, ax = plt.subplots(figsize=(6.2, height))
-    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    fig.subplots_adjust(
+        bottom=strip / height,
+        top=1.0 - _ROC_TOP_IN / height,
+        left=_ROC_LEFT_IN / 6.2,
+        right=0.97,
+    )
     return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
@@ -293,6 +300,7 @@ def plot_null(result: LDAClassificationResult, *, title: str | None = None) -> F
                 ),
             )
             ax.set_xlabel("ROC AUC under permuted labels")
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
             ax.set_ylabel("count")
             ax.legend(fontsize=9)
             n_perm = int(nulls.size)
@@ -346,7 +354,7 @@ def plot_coefficients(
     cmap = plt.get_cmap("viridis")
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(7.2, max(3.0, 0.32 * n + 1.5)))
+        fig, ax = plt.subplots(figsize=(7.2, max(4.0, 0.29 * n + 2.2)))
         try:
             for i in range(n):
                 color = cmap(norm(freq[i]))
@@ -363,10 +371,12 @@ def plot_coefficients(
                 )
             ax.axvline(0.0, color="black", lw=0.8, zorder=1)
             ax.set_yticks(range(n))
-            ax.set_yticklabels(names, fontsize=7)
+            ax.set_yticklabels(names, fontsize=14)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))  # 20 pt numbers collide
             ax.set_ylim(-0.6, n - 0.4)
+            # 24 pt label: two lines, or it is wider than the axes.
             ax.set_xlabel(
-                f"standardized LDA weight  "
+                f"standardized LDA weight\n"
                 f"(- {result.negative_label}   |   {result.positive_label} +)"
             )
             shown = min(top_n, len(table))
@@ -381,7 +391,7 @@ def plot_coefficients(
             fig.colorbar(
                 mappable,
                 ax=ax,
-                label=f"top-{result.top_k} membership frequency",
+                label=f"top-{result.top_k} membership\nfrequency",
                 fraction=0.046,
                 pad=0.04,
             )

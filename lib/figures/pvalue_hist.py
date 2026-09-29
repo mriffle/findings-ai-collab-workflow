@@ -54,7 +54,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "pvalue-hist", "version": "0.2"},
+    "template": {"name": "pvalue-hist", "version": "0.3"},
     "kind": "module",
     "provides": [
         "PValueHistogramResult",
@@ -244,7 +244,7 @@ def plot_pvalue_histogram(
     )
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=(8, 5.5))  # taller, not wider (2x text)
         try:
             color_map = assign_colors(
                 category, labels, registry_path=registry_path, persist=persist_colors
@@ -386,6 +386,8 @@ def _draw_histograms(
     ax.set_xlabel("p-value")
     ax.set_ylabel("density")
     ax.set_xlim(0.0, 1.0)
+    # Keep the x "0.0" clear of the y "0.0" at the shared origin (2x tick text).
+    ax.tick_params(axis="x", pad=10)
 
 
 def _draw_pi0_line(ax: Axes, label: str, pi0: float, color_map: dict[str, str]) -> None:

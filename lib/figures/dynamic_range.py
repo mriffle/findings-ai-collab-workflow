@@ -64,7 +64,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "dynamic-range", "version": "0.1"},
+    "template": {"name": "dynamic-range", "version": "0.2"},
     "kind": "module",
     "provides": [
         "DynamicRangeScaleError",
@@ -331,7 +331,7 @@ def plot_dynamic_range(
     color_map: dict[str, str] = {}
     legend_figure: Figure | None = None
     with publication_style():
-        fig, ax = plt.subplots(figsize=(11, 6), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(11, 8), constrained_layout=True)
         try:
             if class_by is not None:
                 color_map = _draw_per_class(
@@ -367,7 +367,7 @@ def plot_dynamic_range(
             if log_rank:
                 ax.set_xscale("log")
             ax.set_xlabel("abundance rank (1 = most abundant)")
-            ax.set_ylabel("log2 abundance (median of detected)")
+            ax.set_ylabel("log2 abundance\n(median of detected)")
             ax.grid(True, linestyle=":", alpha=0.4)
             if title is not None:
                 fig.suptitle(title, fontsize=15, weight="bold")

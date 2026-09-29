@@ -41,11 +41,12 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import MaxNLocator
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "regression-figures", "version": "0.1"},
+    "template": {"name": "regression-figures", "version": "0.2"},
     "kind": "module",
     "provides": [
         "plot_predicted_vs_observed",
@@ -149,6 +150,8 @@ def plot_predicted_vs_observed(
             ax.set_xlim(lo, hi)
             ax.set_ylim(lo, hi)
             ax.set_aspect("equal", adjustable="box")
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
             ax.set_xlabel(f"true {result.outcome}")
             ax.set_ylabel(f"predicted {result.outcome}")
             ax.legend(loc="upper left", fontsize=9)
@@ -202,7 +205,7 @@ def plot_null(result: RegressionResult, *, title: str | None = None) -> Figure:
         )
     nulls = np.asarray(result.null_r2s, dtype=float)
     with publication_style():
-        fig, ax = plt.subplots(figsize=(6.2, 4.2))
+        fig, ax = plt.subplots(figsize=(6.2, 4.8))
         try:
             ax.hist(nulls, bins=25, color=_NULL_FILL, edgecolor="white")
             ax.axvline(
@@ -215,7 +218,9 @@ def plot_null(result: RegressionResult, *, title: str | None = None) -> Figure:
                 ),
             )
             ax.set_xlabel("R² under permuted target")
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
             ax.set_ylabel("count")
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
             ax.legend(fontsize=9)
             n_perm = int(nulls.size)
             _apply_title(
@@ -263,7 +268,7 @@ def plot_coefficients(
     cmap = plt.get_cmap("viridis")
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(7.2, max(3.0, 0.32 * n + 1.5)))
+        fig, ax = plt.subplots(figsize=(7.2, max(4.0, 0.29 * n + 2.2)))
         try:
             for i in range(n):
                 color = cmap(norm(freq[i]))
@@ -280,10 +285,11 @@ def plot_coefficients(
                 )
             ax.axvline(0.0, color="black", lw=0.8, zorder=1)
             ax.set_yticks(range(n))
-            ax.set_yticklabels(names, fontsize=7)
+            ax.set_yticklabels(names, fontsize=14)
             ax.set_ylim(-0.6, n - 0.4)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
             ax.set_xlabel(
-                f"standardized coefficient  "
+                f"standardized coefficient\n"
                 f"(- lower {result.outcome}   |   higher {result.outcome} +)"
             )
             shown = min(top_n, len(table))
@@ -318,11 +324,13 @@ def plot_hyperparameter_heatmap(
             f"(alpha={len(result.alpha_grid)}, l1={len(result.l1_grid)}) grid."
         )
     with publication_style():
-        fig, ax = plt.subplots(figsize=(5.4, 4.8))
+        fig, ax = plt.subplots(figsize=(5.4, 5.4))
         try:
             image = ax.imshow(grid, cmap="viridis", aspect="auto", origin="lower")
             ax.set_xticks(range(len(result.l1_grid)))
-            ax.set_xticklabels([f"{v:g}" for v in result.l1_grid])
+            ax.set_xticklabels(
+                [f"{v:g}" for v in result.l1_grid], rotation=45, ha="right"
+            )
             ax.set_yticks(range(len(result.alpha_grid)))
             ax.set_yticklabels([f"{v:g}" for v in result.alpha_grid])
             ax.set_xlabel("l1_ratio")

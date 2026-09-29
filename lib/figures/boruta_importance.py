@@ -45,11 +45,12 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Colormap, Normalize
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "boruta-importance", "version": "0.1"},
+    "template": {"name": "boruta-importance", "version": "0.2"},
     "kind": "module",
     "provides": [
         "plot_boruta_importance",
@@ -144,7 +145,7 @@ def plot_boruta_importance(
     rng = np.random.default_rng(jitter_seed)
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(11, max(6.0, 0.4 * n_show)))
+        fig, ax = plt.subplots(figsize=(11, max(6.0, 0.4 * n_show + 1.0)))
         try:
             for i, feat in enumerate(order):
                 color = (
@@ -164,6 +165,7 @@ def plot_boruta_importance(
             ax.set_yticklabels([fmt(str(names[feat])) for feat in order])
             ax.set_ylim(n_show - 0.5, -0.5)
             ax.set_xlabel("Boruta feature importance (per iteration)")
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
             _add_colorbar(fig, ax, cmap, norm)
             _add_legend(ax, result)
             _apply_title(fig, result, title)
@@ -225,7 +227,7 @@ def _add_colorbar(fig: Figure, ax: Axes, cmap: Colormap, norm: Normalize) -> Non
     mappable = ScalarMappable(cmap=cmap, norm=norm)
     mappable.set_array(np.empty(0))
     cbar = fig.colorbar(mappable, ax=ax, shrink=0.55, pad=0.02)
-    cbar.set_label("median importance (accepted)", fontsize=9)
+    cbar.set_label("median importance (accepted)", fontsize=18)
 
 
 def _add_legend(ax: Axes, result: BorutaResult) -> None:

@@ -74,7 +74,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "missingness", "version": "0.1"},
+    "template": {"name": "missingness", "version": "0.2"},
     "kind": "module",
     "provides": [
         "MissingnessScaleError",
@@ -358,7 +358,7 @@ def plot_missingness(
     legend_figure: Figure | None = None
     with publication_style():
         fig, (ax_curve, ax_mnar) = plt.subplots(
-            1, 2, figsize=(15, 6), constrained_layout=True
+            1, 2, figsize=(15, 8), constrained_layout=True
         )
         try:
             if classes is not None:
@@ -530,7 +530,7 @@ def _finish_completeness_axis(ax: Axes, n_features: int, minima: list[int]) -> N
     pad = max(1.0, 0.03 * (n_features - low))
     ax.set_ylim(low - pad, n_features + 0.02 * n_features)
     ax.set_xlim(0.0, 1.0)
-    ax.set_xlabel("required detection fraction (≥ this fraction of the class)")
+    ax.set_xlabel("required detection fraction\n(≥ this fraction of the class)")
     ax.set_ylabel("features retained")
     ax.set_title("Completeness curve", loc="left", fontsize=13, weight="bold")
     ax.grid(True, linestyle=":", alpha=0.4)
@@ -584,7 +584,7 @@ def _draw_mnar(ax: Axes, fig: Figure, result: CompletenessResult) -> None:
     )
     ax.set_ylim(-0.02, 1.02)
     ax.set_xlabel("mean log2 abundance of detected values")
-    ax.set_ylabel("detection rate (fraction of all samples)")
+    ax.set_ylabel("detection rate\n(fraction of all samples)")
     ax.set_title("MNAR diagnostic", loc="left", fontsize=13, weight="bold")
 
 

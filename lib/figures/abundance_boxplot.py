@@ -70,12 +70,13 @@ from matplotlib.colors import Normalize, to_rgba
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "abundance-boxplot", "version": "0.1"},
+    "template": {"name": "abundance-boxplot", "version": "0.2"},
     "kind": "module",
     "provides": [
         "AbundanceBoxplotScaleWarning",
@@ -330,7 +331,7 @@ def plot_abundance_boxplots(
             )
 
             bottom = axes.stripes[-1] if axes.stripes else axes.panels[-1]
-            bottom.set_xlabel(f"sample (acquisition order, n={n_samples})", fontsize=12)
+            bottom.set_xlabel(f"sample (acquisition order, n={n_samples})", fontsize=24)
 
             legend_figure = _legend_figure(
                 annotations,
@@ -544,10 +545,31 @@ class _Axes:
     stripes: list[Axes]
 
 
+# Layout in inches (axis labels are 22-24 pt, so rows and margins are absolute).
+_PANEL_IN = 4.6
+_STRIPE_IN = 0.6
+_GAP_IN = 0.45
+_MARGIN_LEFT_IN = 3.3  # the longest stripe name ("InjectionVolume") + panel y-label
+_MARGIN_TOP_IN = 0.8
+_MARGIN_BOTTOM_IN = 1.3
+_LEGEND_WIDTH_IN = 4.0
+_LEGEND_CBAR_ROW_IN = 1.9
+
+
 def _figsize(n_states: int, n_annotations: int, n_samples: int) -> tuple[float, float]:
-    """Width scales with sample count; height with the panel + stripe stack."""
+    """Width scales with sample count; height with the panel + stripe stack.
+
+    Sized in inches so the 22-24 pt axis labels fit: a panel must be tall enough for
+    its (rotated) y-label, a stripe tall enough for its horizontal name.
+    """
     width = max(12.0, n_samples * 0.18)
-    height = 3.2 * n_states + 0.45 * n_annotations + 1.0
+    height = (
+        _PANEL_IN * n_states
+        + _STRIPE_IN * n_annotations
+        + _GAP_IN * (n_states + n_annotations - 1)
+        + _MARGIN_TOP_IN
+        + _MARGIN_BOTTOM_IN
+    )
     return (width, height)
 
 
@@ -556,23 +578,24 @@ def _build_layout(fig: Figure, *, n_states: int, n_annotations: int) -> _Axes:
 
     A single-column gridspec with a tall row per state and a thin row per annotation.
     All rows share the first panel's x-axis, so every panel and stripe aligns
-    column-for-column on the same samples.
+    column-for-column on the same samples. Margins and row gaps are fixed in inches
+    (not figure fractions) so the doubled axis text keeps its room at any stack size.
     """
     n_rows = n_states + n_annotations
-    panel_h = 16.0
-    stripe_h = 1.2
-    height_ratios = [panel_h] * n_states + [stripe_h] * n_annotations
+    width, height = fig.get_size_inches()
+    height_ratios = [_PANEL_IN] * n_states + [_STRIPE_IN] * n_annotations
+    mean_row_in = (_PANEL_IN * n_states + _STRIPE_IN * n_annotations) / n_rows
 
     gs = GridSpec(
         n_rows,
         1,
         figure=fig,
         height_ratios=height_ratios,
-        hspace=0.18,
-        left=0.10,
+        hspace=_GAP_IN / mean_row_in,
+        left=_MARGIN_LEFT_IN / width,
         right=0.97,
-        top=0.93,
-        bottom=0.10,
+        top=1.0 - _MARGIN_TOP_IN / height,
+        bottom=_MARGIN_BOTTOM_IN / height,
     )
 
     first = fig.add_subplot(gs[0, 0])
@@ -641,7 +664,7 @@ def _draw_boxes(
 
     ax.set_xticks([])
     ax.set_xlim(-0.5, n_samples - 0.5)
-    ax.set_ylabel(_scale_ylabel(str(dataset.scale), feature_type), fontsize=11)
+    ax.set_ylabel(_scale_ylabel(str(dataset.scale), feature_type), fontsize=22)
     ax.set_title(state_label, loc="left", fontsize=12, weight="bold")
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
@@ -693,7 +716,7 @@ def _draw_annotation_stripes(
             rotation=0,
             ha="right",
             va="center",
-            fontsize=11,
+            fontsize=22,
             labelpad=10,
         )
     return color_maps
@@ -713,6 +736,13 @@ def _continuous_rgba(values: np.ndarray, colormap: str) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 
 
+def _shrink_to_strip(host: Axes) -> Axes:
+    """Squeeze ``host`` into a thin strip near the top of its row (for a colorbar)."""
+    x0, y0, w, h = host.get_position().bounds
+    host.set_position((x0 + 0.06 * w, y0 + 0.66 * h, 0.88 * w, 0.16 * h))
+    return host
+
+
 def _legend_figure(
     annotations: list[_Annotation],
     color_maps: dict[str, dict[str, str]],
@@ -728,16 +758,32 @@ def _legend_figure(
     (categorical) or a horizontal colorbar (continuous).
     """
     n_rows = 1 + len(annotations)
-    fig, raw_axes = plt.subplots(n_rows, 1, figsize=(4.0, max(1.6, 1.2 * n_rows)))
+    # Rows are sized in inches: a colorbar row holds the bar + 20 pt ticks + a 22-24 pt
+    # label; a swatch row grows with its entries.
+    row_in = [_LEGEND_CBAR_ROW_IN] + [
+        _LEGEND_CBAR_ROW_IN
+        if a.continuous
+        else 0.4 * len({str(v) for v in a.per_sample}) + 0.5
+        for a in annotations
+    ]
+    fig, raw_axes = plt.subplots(
+        n_rows,
+        1,
+        figsize=(_LEGEND_WIDTH_IN, sum(row_in)),
+        gridspec_kw={"height_ratios": row_in},
+    )
     axes_list = list(np.atleast_1d(raw_axes))
-
+    # Colorbars sit in a thin strip near the top of their row, leaving room beneath
+    # for the tick labels and the label.
     order_norm = Normalize(vmin=1.0, vmax=float(max(n_samples, 2)))
     order_mappable = ScalarMappable(cmap=plt.get_cmap(box_colormap), norm=order_norm)
     order_mappable.set_array(np.asarray([], dtype=float))
     order_cbar = fig.colorbar(
-        order_mappable, cax=axes_list[0], orientation="horizontal"
+        order_mappable, cax=_shrink_to_strip(axes_list[0]), orientation="horizontal"
     )
-    order_cbar.set_label("sample order (acquisition →)", fontsize=11)
+    order_cbar.locator = MaxNLocator(nbins=3)
+    order_cbar.update_ticks()
+    order_cbar.set_label("sample order\n(acquisition →)", fontsize=22)
 
     for ax, annotation in zip(axes_list[1:], annotations, strict=True):
         if annotation.continuous:
@@ -747,8 +793,12 @@ def _legend_figure(
             norm = Normalize(vmin=vmin, vmax=vmax if vmax > vmin else vmin + 1.0)
             mappable = ScalarMappable(cmap=plt.get_cmap(continuous_colormap), norm=norm)
             mappable.set_array(np.asarray([], dtype=float))
-            cbar = fig.colorbar(mappable, cax=ax, orientation="horizontal")
-            cbar.set_label(annotation.name, fontsize=12)
+            cbar = fig.colorbar(
+                mappable, cax=_shrink_to_strip(ax), orientation="horizontal"
+            )
+            cbar.locator = MaxNLocator(nbins=3)
+            cbar.update_ticks()
+            cbar.set_label(annotation.name, fontsize=24)
         else:
             ax.axis("off")
             color_map = color_maps[annotation.name]
@@ -778,5 +828,4 @@ def _legend_figure(
                 title_fontsize=12,
                 ncol=1 if len(seen) <= 4 else 2,
             )
-    fig.tight_layout()
     return fig

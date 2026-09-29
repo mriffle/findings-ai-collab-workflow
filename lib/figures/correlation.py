@@ -74,7 +74,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "sample-correlation", "version": "0.1"},
+    "template": {"name": "sample-correlation", "version": "0.2"},
     "kind": "module",
     "provides": [
         "CorrelationScaleWarning",
@@ -431,9 +431,23 @@ def plot_sample_correlation(
 
     color_maps: dict[str, dict[str, str]] = {}
     with publication_style():
-        fig = plt.figure(figsize=_figsize(len(annotations)))
+        geometry = _geometry(
+            len(annotations),
+            len(order),
+            cluster=cluster,
+            tick_chars=max((len(label) for label in display_labels), default=0)
+            if show_tick_labels
+            else 0,
+            stripe_chars=max((len(a.name) for a in annotations), default=0),
+        )
+        fig = plt.figure(figsize=geometry.figsize)
         try:
-            axes = _build_layout(fig, n_annotations=len(annotations), cluster=cluster)
+            axes = _build_layout(
+                fig,
+                n_annotations=len(annotations),
+                cluster=cluster,
+                geometry=geometry,
+            )
             if title is not None:
                 fig.suptitle(title, fontsize=16, weight="bold", y=0.99)
 
@@ -610,12 +624,65 @@ class _Axes:
     dendrogram: Axes | None
 
 
-def _figsize(n_annotations: int) -> tuple[float, float]:
-    """Figure size: a square-ish heatmap plus a little height per annotation stripe."""
-    return (16.0, 14.0 + 0.35 * n_annotations)
+@dataclass(frozen=True)
+class _Geometry:
+    """Figure size (inches) and the outer margins as figure fractions."""
+
+    figsize: tuple[float, float]
+    left: float
+    right: float
+    top: float
+    bottom: float
 
 
-def _build_layout(fig: Figure, *, n_annotations: int, cluster: bool) -> _Axes:
+# Inches per sample along each heatmap side: one 10 pt sample tick label (rotated on
+# the x axis) needs ~0.16 in, so every sample id stays legible instead of
+# overprinting. This is the categorical-label exception to keeping the canvas width:
+# ids cannot be thinned.
+_PITCH_IN = 0.165
+# Rough inches per character for tick labels (10 pt) and stripe names (24 pt).
+_TICK_CHAR_IN = 0.085
+_STRIPE_CHAR_IN = 0.2
+
+
+def _geometry(
+    n_annotations: int,
+    n_samples: int,
+    *,
+    cluster: bool,
+    tick_chars: int,
+    stripe_chars: int,
+) -> _Geometry:
+    """Size the figure from its contents: the heatmap grows with the sample count.
+
+    ``tick_chars`` is the longest sample tick label (0 when tick labels are off) and
+    ``stripe_chars`` the longest annotation name; the margins are sized to hold them
+    plus the doubled axis-label text, in inches, so the fractions handed to the
+    gridspec stay correct at any n.
+    """
+    heat = max(12.0, _PITCH_IN * n_samples) if tick_chars else 12.0
+    tick_w = _TICK_CHAR_IN * tick_chars
+    left = max(tick_w, _STRIPE_CHAR_IN * stripe_chars) + 0.3
+    cbar = heat / 40.0
+    right = 1.5  # colorbar tick labels (20 pt) + its 26 pt label
+    top = 0.9
+    bottom = tick_w + 1.3  # rotated tick labels + the 26 pt x label
+    dendro = 0.1375 * heat if cluster else 0.0
+    stripes = 0.028 * heat * n_annotations
+    width = left + heat + cbar + right
+    height = bottom + heat * 1.03 + dendro + stripes + top
+    return _Geometry(
+        figsize=(width, height),
+        left=left / width,
+        right=1.0 - right / width,
+        top=1.0 - top / height,
+        bottom=bottom / height,
+    )
+
+
+def _build_layout(
+    fig: Figure, *, n_annotations: int, cluster: bool, geometry: _Geometry
+) -> _Axes:
     """Stack: [dendrogram?] / [annotation stripes...] / [heatmap], + a side colorbar.
 
     A 2-column gridspec (content + a thin colorbar column) with one row for the optional
@@ -643,10 +710,10 @@ def _build_layout(fig: Figure, *, n_annotations: int, cluster: bool) -> _Axes:
         height_ratios=height_ratios,
         hspace=0.06,
         wspace=0.02,
-        left=0.18,
-        right=0.90,
-        top=0.95,
-        bottom=0.12,
+        left=geometry.left,
+        right=geometry.right,
+        top=geometry.top,
+        bottom=geometry.bottom,
     )
 
     row = 0
@@ -735,7 +802,7 @@ def _draw_annotation_stripes(
             rotation=0,
             ha="right",
             va="center",
-            fontsize=12,
+            fontsize=24,
             labelpad=10,
         )
     return color_maps
@@ -781,15 +848,15 @@ def _draw_heatmap(
     if show_tick_labels:
         ax.set_xticks(range(n))
         ax.set_yticks(range(n))
-        ax.set_xticklabels(display_labels, rotation=90, fontsize=5)
-        ax.set_yticklabels(display_labels, fontsize=5)
+        ax.set_xticklabels(display_labels, rotation=90, fontsize=10)
+        ax.set_yticklabels(display_labels, fontsize=10)
     else:
         ax.set_xticks([])
         ax.set_yticks([])
-    ax.set_xlabel(f"sample ({feature_type} profile)", fontsize=13)
+    ax.set_xlabel(f"sample ({feature_type} profile)", fontsize=26)
 
     cbar = ax.figure.colorbar(image, cax=colorbar_ax)
-    cbar.set_label(_METHOD_SYMBOL.get(method, method), fontsize=13)
+    cbar.set_label(_METHOD_SYMBOL.get(method, method), fontsize=26)
 
 
 # --------------------------------------------------------------------------- #
@@ -821,7 +888,7 @@ def _legend_figure(
             mappable = ScalarMappable(cmap=plt.get_cmap(continuous_colormap), norm=norm)
             mappable.set_array(np.asarray([], dtype=float))
             cbar = ax.figure.colorbar(mappable, cax=ax, orientation="horizontal")
-            cbar.set_label(annotation.name, fontsize=12)
+            cbar.set_label(annotation.name, fontsize=24)
         else:
             ax.axis("off")
             color_map = color_maps[annotation.name]

@@ -503,8 +503,9 @@ def _stats_lines(figure: Figure) -> list[str]:
 
 
 def _method_line(figure: Figure) -> str:
-    """The method line (test + how the p was obtained) under the first panel title."""
-    return figure.get_axes()[6].texts[2].get_text()
+    """The method line (test + how the p was obtained) under the first panel title,
+    with the display wrapping (newlines) folded back into single spaces."""
+    return " ".join(figure.get_axes()[6].texts[2].get_text().split())
 
 
 @pytest.mark.parametrize(

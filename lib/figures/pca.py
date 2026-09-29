@@ -89,6 +89,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import textwrap
 import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -112,7 +113,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "pca-plot", "version": "0.5"},
+    "template": {"name": "pca-plot", "version": "0.6"},
     "kind": "module",
     "provides": [
         "PCAScaleWarning",
@@ -591,43 +592,77 @@ class _Panel:
     ax2_title: Axes
 
 
+# Layout, in inches (see :func:`_build_layout`).
+_FIG_WIDTH = 18.0
+_LEFT_IN = 2.3  # two-line 44 pt y label + 20 pt tick labels
+_RIGHT_IN = 0.3
+_GAP_IN = 0.15  # scatter <-> marginal
+_MARGINAL_IN = 1.0  # marginal thickness
+_SPACER_IN = 2.4  # between the panels: PC4 label + tick labels
+_SUPTITLE_IN = 0.9
+_STRIP_IN = 2.8  # panel title + stats lines + 3-line method line
+_ROW_GAP_IN = 0.2
+_BOTTOM_IN = 2.1  # 20 pt tick labels + two-line 44 pt x label
+
+
 def _build_layout(*, title: str | None, feature_type: str) -> tuple[Figure, _Panel]:
     """Build the figure and its eight axes; return ``(fig, panel)``.
 
-    Port of the source two-panel design: a 4x4 gridspec gives each scatter a top and a
+    Port of the source two-panel design: a gridspec gives each scatter a top and a
     right marginal axis (shared scales) plus a bold title strip. Axis labels with the
     variance percentages are filled in later by :func:`_finalize_axes`.
     """
-    fig = plt.figure(figsize=(18, 12))
-    top_margin = 0.92
+    # The layout is built in inches (all gridspec ratios are inches, wspace = hspace =
+    # 0, the margins are inches / figure size) so the two scatters are exactly square
+    # and every marginal is exactly as wide / tall as its scatter. The width stays at
+    # 18 in (print scales to a fixed width, so a wider canvas would shrink the text);
+    # the square side follows from what is left of it, the height from the side.
+    side = (
+        _FIG_WIDTH - (_LEFT_IN + _RIGHT_IN + 2 * (_GAP_IN + _MARGINAL_IN) + _SPACER_IN)
+    ) / 2
+    top_in = _SUPTITLE_IN
+    fig_height = (
+        top_in + _STRIP_IN + _ROW_GAP_IN + _MARGINAL_IN + _GAP_IN + side + _BOTTOM_IN
+    )
+    fig = plt.figure(figsize=(_FIG_WIDTH, fig_height))
     if title is not None:
-        fig.suptitle(title, fontsize=16, weight="bold", y=0.98)
-        top_margin = 0.89
+        fig.suptitle(title, fontsize=16, weight="bold", y=1.0 - 0.25 / fig_height)
 
+    # Columns: scatter | gap | right marginal | spacer | scatter | gap | right marginal.
+    # The spacer holds the second scatter's doubled PC4 label and y tick labels. Rows:
+    # title strip | gap | top marginal | gap | scatter.
     gs = fig.add_gridspec(
-        4,
-        4,
-        hspace=0.08,
-        wspace=0.08,
-        width_ratios=[3, 0.5, 3, 0.5],
-        height_ratios=[0.45, 0.5, 3, 0.1],
-        left=0.08,
-        right=0.95,
-        top=top_margin,
-        bottom=0.14,
+        5,
+        7,
+        hspace=0.0,
+        wspace=0.0,
+        width_ratios=[
+            side,
+            _GAP_IN,
+            _MARGINAL_IN,
+            _SPACER_IN,
+            side,
+            _GAP_IN,
+            _MARGINAL_IN,
+        ],
+        height_ratios=[_STRIP_IN, _ROW_GAP_IN, _MARGINAL_IN, _GAP_IN, side],
+        left=_LEFT_IN / _FIG_WIDTH,
+        right=1.0 - _RIGHT_IN / _FIG_WIDTH,
+        top=1.0 - top_in / fig_height,
+        bottom=_BOTTOM_IN / fig_height,
     )
 
-    ax1 = fig.add_subplot(gs[2, 0])
-    ax2 = fig.add_subplot(gs[2, 2])
+    ax1 = fig.add_subplot(gs[4, 0])
+    ax2 = fig.add_subplot(gs[4, 4])
     panel = _Panel(
         ax1=ax1,
         ax2=ax2,
-        ax1_top=fig.add_subplot(gs[1, 0], sharex=ax1),
-        ax1_right=fig.add_subplot(gs[2, 1], sharey=ax1),
-        ax2_top=fig.add_subplot(gs[1, 2], sharex=ax2),
-        ax2_right=fig.add_subplot(gs[2, 3], sharey=ax2),
+        ax1_top=fig.add_subplot(gs[2, 0], sharex=ax1),
+        ax1_right=fig.add_subplot(gs[4, 2], sharey=ax1),
+        ax2_top=fig.add_subplot(gs[2, 4], sharex=ax2),
+        ax2_right=fig.add_subplot(gs[4, 6], sharey=ax2),
         ax1_title=fig.add_subplot(gs[0, 0]),
-        ax2_title=fig.add_subplot(gs[0, 2]),
+        ax2_title=fig.add_subplot(gs[0, 4]),
     )
     for ax in (ax1, ax2):
         ax.set_facecolor("white")
@@ -659,13 +694,14 @@ def _finalize_axes(
     panel: _Panel, variance_pct: np.ndarray, *, continuous: bool
 ) -> None:
     """Set PC axis labels and hide marginal ticks/spines (shared across both modes)."""
-    # These PC labels deliberately override the shared style's axes.labelsize (12): on
-    # the large 18x12 two-panel canvas 22pt keeps them legible at print scale. A
-    # per-figure override, not chartjunk.
-    panel.ax1.set_xlabel(f"PC1 ({variance_pct[0]:.1f}% variance)", fontsize=22)
-    panel.ax1.set_ylabel(f"PC2 ({variance_pct[1]:.1f}% variance)", fontsize=22)
-    panel.ax2.set_xlabel(f"PC3 ({variance_pct[2]:.1f}% variance)", fontsize=22)
-    panel.ax2.set_ylabel(f"PC4 ({variance_pct[3]:.1f}% variance)", fontsize=22)
+    # These PC labels deliberately override the shared style's axes.labelsize (24): on
+    # the large two-panel canvas 44pt (twice the former 22pt) keeps them legible at
+    # print scale. A per-figure override, not chartjunk. Each label wraps onto two lines
+    # (name, then the variance) so a 44pt label fits the panel height and width.
+    panel.ax1.set_xlabel(f"PC1\n({variance_pct[0]:.1f}% variance)", fontsize=44)
+    panel.ax1.set_ylabel(f"PC2\n({variance_pct[1]:.1f}% variance)", fontsize=44)
+    panel.ax2.set_xlabel(f"PC3\n({variance_pct[2]:.1f}% variance)", fontsize=44)
+    panel.ax2.set_ylabel(f"PC4\n({variance_pct[3]:.1f}% variance)", fontsize=44)
 
     # Hide ticks/labels on the four marginals via tick_params (not set_xticks([]), which
     # would clobber the Locator shared with the main scatter axes).
@@ -741,11 +777,35 @@ def _write_panel_stats(title_ax: Axes, stats_text: str, method_text: str) -> Non
     The narrow right-hand marginals cannot hold a statistic without overlapping the
     curves and overflowing the figure edge, so both panels' per-PC statistics live here.
     """
-    title_ax.texts[0].set_y(0.84)
-    title_ax.text(0.5, 0.46, stats_text, ha="center", va="center", fontsize=13)
+    # At 26 / 20 pt neither line fits a panel's width on one line: each PC's statistic
+    # takes its own line and the method line wraps (nothing is truncated). The lines are
+    # stacked from the top of the title strip, which is sized to hold them.
+    title = title_ax.texts[0]
+    title.set_y(0.98)
+    title.set_verticalalignment("top")
     title_ax.text(
-        0.5, 0.12, method_text, ha="center", va="center", fontsize=10, color="0.3"
+        0.5,
+        0.85,
+        stats_text.replace("   ·   ", "\n"),
+        ha="center",
+        va="top",
+        fontsize=26,
+        linespacing=1.1,
     )
+    title_ax.text(
+        0.5,
+        0.47,
+        textwrap.fill(method_text, width=_METHOD_WRAP_CHARS),
+        ha="center",
+        va="top",
+        fontsize=20,
+        color="0.3",
+        linespacing=1.1,
+    )
+
+
+# Characters per line of the 20 pt method line (a panel is ~5.7 in wide).
+_METHOD_WRAP_CHARS = 34
 
 
 def _method_text(tests: MarginalTests) -> str:
@@ -1462,7 +1522,7 @@ def _legend_figure_continuous(
     mappable = ScalarMappable(cmap=plt.get_cmap(colormap), norm=norm)
     mappable.set_array(np.asarray([], dtype=float))
     cbar = fig.colorbar(mappable, cax=ax, orientation="horizontal")
-    cbar.set_label(legend_title, fontsize=13)
+    cbar.set_label(legend_title, fontsize=26)
     return fig
 
 

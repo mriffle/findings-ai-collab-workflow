@@ -32,6 +32,7 @@ legend figure); the ``save_*`` wrappers dual-export both via
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,12 +46,13 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Colormap, Normalize
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "enrichment-figures", "version": "0.1"},
+    "template": {"name": "enrichment-figures", "version": "0.2"},
     "kind": "module",
     "provides": [
         "EnrichmentFigure",
@@ -139,6 +141,16 @@ def _source_colors(
     )
 
 
+def _wrap_name(name: object) -> str:
+    """A term name capped at 54 characters and wrapped onto lines of <= 30."""
+    return textwrap.fill(str(name)[:54], width=30)
+
+
+def _row_height(name: object) -> float:
+    """Inches a wrapped term name needs: 0.5 for one line, +0.22 per extra line."""
+    return 0.28 + 0.22 * (_wrap_name(name).count("\n") + 1)
+
+
 def _top_rows(table: pd.DataFrame, source: str, top_n: int) -> pd.DataFrame:
     """The ``top_n`` top rows of one source, most-significant last (for y)."""
     rows = table[table["source"] == source].sort_values("p_value", kind="stable")
@@ -204,11 +216,25 @@ def enrichment_dotplot(
         norm = Normalize(vmin=float(np.nanmin(nlp_all)), vmax=float(np.nanmax(nlp_all)))
         cmap = plt.get_cmap(_CMAP_NAME)
         panels = {s: _top_rows(sig, s, top_n) for s in present}
-        heights = [max(len(panels[s]), 1) for s in present]
+        # Layout in inches. The width stays at the original 8.6 in (printing scales
+        # a figure to a fixed width, so widening would shrink all its text): the 17 pt
+        # term names are wrapped onto two lines in a ~4.2 in gutter, so a wrapped row
+        # is 0.72 in tall (an unwrapped one 0.5 in, a third line adds 0.22 in; rows
+        # are evenly spaced, so a panel uses its tallest row). Every panel draws its
+        # own 20 pt x tick labels, so panels are separated by a fixed 0.75 in gap.
+        fig_w = 8.6
+        left_in, right_in, top_in, bottom_in, gap_in = 4.2, 0.3, 0.8, 2.1, 0.75
+        heights = [
+            len(panels[s]) * max(map(_row_height, panels[s]["term_name"]), default=0.5)
+            + 0.6
+            for s in present
+        ]
+        plot_h = sum(heights)
+        fig_h = top_in + bottom_in + plot_h + gap_in * (len(present) - 1)
         fig, axes = plt.subplots(
             len(present),
             1,
-            figsize=(8.6, 1.0 + 0.46 * sum(heights)),
+            figsize=(fig_w, fig_h),
             gridspec_kw={"height_ratios": heights},
             squeeze=False,
         )
@@ -216,13 +242,20 @@ def enrichment_dotplot(
             color_map = _source_colors(
                 present, source_category, registry_path, persist_colors
             )
+            mean_h = plot_h / len(present)
             fig.subplots_adjust(
-                hspace=0.42, top=0.9, left=0.42, right=0.975, bottom=0.09
+                hspace=gap_in / mean_h,
+                top=1 - top_in / fig_h,
+                left=left_in / fig_w,
+                right=1 - right_in / fig_w,
+                bottom=bottom_in / fig_h,
             )
             for ax, source in zip(axes[:, 0], present, strict=True):
                 _draw_dotplot_panel(ax, panels[source], source, color_map, norm, cmap)
             axes[-1, 0].set_xlabel(
-                "gene ratio  (query hits in term / query size)", fontsize=10
+                "gene ratio\n(query hits in term /\nquery size)",
+                fontsize=20,
+                labelpad=10,
             )
             if title is not None:
                 fig.suptitle(title, fontsize=13)
@@ -258,10 +291,16 @@ def _draw_dotplot_panel(
         zorder=3,
     )
     ax.set_yticks(ys)
-    ax.set_yticklabels([str(name)[:54] for name in rows["term_name"]], fontsize=8.5)
+    ax.set_yticklabels(
+        [_wrap_name(name) for name in rows["term_name"]],
+        fontsize=17,
+        linespacing=1.0,
+    )
     ax.margins(y=0.30)
     ax.grid(axis="x", ls=":", alpha=0.35)
     ax.set_xlim(left=0)
+    # 20 pt tick numbers collide at the default density on a narrow ratio range.
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
     ax.annotate(
         source,
         xy=(0.0, 1.0),
@@ -279,11 +318,13 @@ def _draw_dotplot_panel(
 
 def _dotplot_legend_figure(norm: Normalize, cmap: Colormap) -> Figure:
     """Separate legend image: the ``-log10 p`` color scale and the dot-size key."""
-    leg = plt.figure(figsize=(2.7, 4.0))
-    ax_cbar = leg.add_axes((0.30, 0.58, 0.12, 0.34))
+    # The 18 pt colorbar label (wrapped onto two lines to keep the original 2.7 in
+    # width) and 20 pt ticks need a taller canvas than the 9 pt original (4.0 in).
+    leg = plt.figure(figsize=(2.7, 5.6))
+    ax_cbar = leg.add_axes((0.12, 0.54, 0.16, 0.42))
     cbar = leg.colorbar(ScalarMappable(norm=norm, cmap=cmap), cax=ax_cbar)
-    cbar.set_label(r"$-\log_{10}$(corrected $p$)", fontsize=9)
-    ax_size = leg.add_axes((0.0, 0.02, 1.0, 0.44))
+    cbar.set_label("$-\\log_{10}$\n(corrected $p$)", fontsize=18)
+    ax_size = leg.add_axes((0.0, 0.02, 1.0, 0.38))
     ax_size.set_axis_off()
     ax_size.text(
         0.5,
@@ -413,7 +454,7 @@ def _draw_barplot(
         -np.log10(threshold), color="gray", linestyle="--", linewidth=1, zorder=1
     )
     ax.set_yticks([])
-    ax.set_xlabel(r"$-\log_{10}$(corrected $p$)", fontsize=10)
+    ax.set_xlabel(r"$-\log_{10}$(corrected $p$)", fontsize=20)
 
 
 def save_enrichment_barplot(

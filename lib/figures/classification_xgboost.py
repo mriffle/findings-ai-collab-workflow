@@ -46,12 +46,13 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import MaxNLocator
 from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-xgboost-figures", "version": "0.3"},
+    "template": {"name": "classification-xgboost-figures", "version": "0.4"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -203,7 +204,8 @@ _ROC_CAPTION_FONTSIZE = 8
 _ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
 _ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
 _ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
-_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+_ROC_XLABEL_IN = 1.2  # clearance under the axes: 20pt ticks + 24pt x label
+_ROC_LEFT_IN = 1.2  # room left of the axes for the 24pt y label + 20pt tick labels
 
 
 def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
@@ -218,7 +220,12 @@ def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
     strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
     height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
     fig, ax = plt.subplots(figsize=(6.2, height))
-    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    fig.subplots_adjust(
+        bottom=strip / height,
+        top=1.0 - _ROC_TOP_IN / height,
+        left=_ROC_LEFT_IN / 6.2,
+        right=0.97,
+    )
     return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
@@ -265,6 +272,7 @@ def plot_null(result: XGBClassificationResult, *, title: str | None = None) -> F
                 ),
             )
             ax.set_xlabel("ROC AUC under permuted labels")
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
             ax.set_ylabel("count")
             ax.legend(fontsize=9)
             n_perm = int(nulls.size)
@@ -316,7 +324,7 @@ def plot_importance(
     cmap = plt.get_cmap("viridis")
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(7.2, max(3.0, 0.32 * n + 1.5)))
+        fig, ax = plt.subplots(figsize=(7.2, max(4.0, 0.29 * n + 2.2)))
         try:
             for i in range(n):
                 color = cmap(norm(freq[i]))
@@ -333,9 +341,11 @@ def plot_importance(
                 )
             ax.set_xlim(left=0.0)
             ax.set_yticks(range(n))
-            ax.set_yticklabels(names, fontsize=7)
+            ax.set_yticklabels(names, fontsize=14)
             ax.set_ylim(-0.6, n - 0.4)
-            ax.set_xlabel(f"{result.importance_type} importance (unsigned)")
+            # 24pt labels: wrapped, or the one-line label is wider than the axes.
+            ax.set_xlabel(f"{result.importance_type} importance\n(unsigned)")
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
             shown = min(top_n, len(table))
             _apply_title(
                 fig,
@@ -391,11 +401,13 @@ def plot_hyperparameter_heatmap(
             f"(max_depth={n_depth}, learning_rate={n_lr}) grid."
         )
     with publication_style():
-        fig, ax = plt.subplots(figsize=(5.4, 4.8))
+        fig, ax = plt.subplots(figsize=(5.4, 5.8), layout="constrained")
         try:
             image = ax.imshow(grid, cmap="viridis", aspect="auto", origin="lower")
             ax.set_xticks(range(n_lr))
-            ax.set_xticklabels([f"{v:g}" for v in result.learning_rate_grid])
+            ax.set_xticklabels(
+                [f"{v:g}" for v in result.learning_rate_grid], rotation=45, ha="right"
+            )
             ax.set_yticks(range(n_depth))
             ax.set_yticklabels([f"{v:g}" for v in result.max_depth_grid])
             ax.set_xlabel("learning_rate")
@@ -435,7 +447,7 @@ def plot_hyperparameter_heatmap(
                 image,
                 ax=ax,
                 label=f"mean inner-CV {_metric_label(result.tuning_metric)}",
-                fraction=0.046,
+                fraction=0.06,
                 pad=0.04,
             )
             _apply_title(fig, title, "Hyperparameter search (all-data)", result)

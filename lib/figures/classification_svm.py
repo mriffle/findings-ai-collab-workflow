@@ -50,12 +50,13 @@ from matplotlib.axes import Axes
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
+from matplotlib.ticker import FixedLocator, MaxNLocator
 from sklearn.metrics import roc_curve
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classification-svm-figures", "version": "0.4"},
+    "template": {"name": "classification-svm-figures", "version": "0.5"},
     "kind": "module",
     "provides": [
         "plot_roc",
@@ -230,7 +231,8 @@ _ROC_CAPTION_FONTSIZE = 8
 _ROC_CAPTION_LINE_IN = 0.16  # vertical room per caption line (inches)
 _ROC_TOP_IN = 0.75  # room above the axes for the (possibly two-line) suptitle
 _ROC_PLOT_IN = 4.8  # the plot region — the same square as the pre-caption figure
-_ROC_XLABEL_IN = 0.7  # clearance under the axes for the tick labels + x label
+_ROC_XLABEL_IN = 1.2  # clearance under the axes: 20 pt ticks + 24 pt x label
+_ROC_LEFT_IN = 1.2  # room left of the axes for the 24 pt y label + 20 pt tick labels
 
 
 def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
@@ -245,7 +247,12 @@ def _roc_figure(summary: str) -> tuple[Figure, Axes, float]:
     strip = _ROC_XLABEL_IN + _ROC_CAPTION_LINE_IN * n_lines + 0.2
     height = _ROC_TOP_IN + _ROC_PLOT_IN + strip
     fig, ax = plt.subplots(figsize=(6.2, height))
-    fig.subplots_adjust(bottom=strip / height, top=1.0 - _ROC_TOP_IN / height)
+    fig.subplots_adjust(
+        bottom=strip / height,
+        top=1.0 - _ROC_TOP_IN / height,
+        left=_ROC_LEFT_IN / 6.2,
+        right=0.97,
+    )
     return fig, ax, (strip - _ROC_XLABEL_IN) / height
 
 
@@ -294,6 +301,7 @@ def plot_null(result: SVMClassificationResult, *, title: str | None = None) -> F
                 ),
             )
             ax.set_xlabel("ROC AUC under permuted labels")
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
             ax.set_ylabel("count")
             ax.legend(fontsize=9)
             n_perm = int(nulls.size)
@@ -347,7 +355,7 @@ def plot_coefficients(
     cmap = plt.get_cmap("viridis")
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(7.2, max(3.0, 0.32 * n + 1.5)))
+        fig, ax = plt.subplots(figsize=(7.2, max(4.0, 0.29 * n + 2.2)))
         try:
             for i in range(n):
                 color = cmap(norm(freq[i]))
@@ -364,10 +372,12 @@ def plot_coefficients(
                 )
             ax.axvline(0.0, color="black", lw=0.8, zorder=1)
             ax.set_yticks(range(n))
-            ax.set_yticklabels(names, fontsize=7)
+            ax.set_yticklabels(names, fontsize=14)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))  # 20 pt numbers collide
             ax.set_ylim(-0.6, n - 0.4)
+            # 24 pt label: two lines, or it is wider than the axes.
             ax.set_xlabel(
-                f"standardized SVM weight  "
+                f"standardized SVM weight\n"
                 f"(- {result.negative_label}   |   {result.positive_label} +)"
             )
             shown = min(top_n, len(table))
@@ -382,7 +392,7 @@ def plot_coefficients(
             fig.colorbar(
                 mappable,
                 ax=ax,
-                label=f"top-{result.top_k} membership frequency",
+                label=f"top-{result.top_k} membership\nfrequency",
                 fraction=0.046,
                 pad=0.04,
             )
@@ -435,9 +445,9 @@ def plot_hyperparameter_curve(
         raise ValueError(f"best_c {result.best_c!r} is not in the C grid.")
     metric = _metric_label(result.tuning_metric)
     with publication_style():
-        fig = plt.figure(figsize=(6.2, 5.2))
+        fig = plt.figure(figsize=(6.2, 7.0))
         try:
-            grid = fig.add_gridspec(2, 1, height_ratios=[5, 1], hspace=0.06)
+            grid = fig.add_gridspec(2, 1, height_ratios=[5, 1.3], hspace=0.06)
             ax = fig.add_subplot(grid[0])
             rug = fig.add_subplot(grid[1], sharex=ax)
             ax.set_xscale("log")
@@ -480,8 +490,13 @@ def plot_hyperparameter_curve(
             ax.set_ylim(y0, y1)
             _draw_fold_picks(ax, rug, result)
             ax.tick_params(labelbottom=False)
-            rug.set_xlabel("C (soft-margin penalty; hard margin = large C)")
-            ax.set_ylabel(f"mean inner-CV {metric}")
+            # 20 pt decade labels collide on a 6-inch axis: label every second decade.
+            lo_e = int(np.floor(np.log10(c_grid.min())))
+            hi_e = int(np.ceil(np.log10(c_grid.max())))
+            decades = [10.0**e for e in range(lo_e, hi_e + 1, 2)]
+            rug.xaxis.set_major_locator(FixedLocator(decades))
+            rug.set_xlabel("C (soft-margin penalty;\nhard margin = large C)")
+            ax.set_ylabel(f"mean inner-CV\n{metric}")
             ax.legend(loc="best", fontsize=9)
             _apply_title(
                 fig, title, "Hyperparameter search (all-data, C curve)", result
@@ -509,7 +524,7 @@ def _draw_fold_picks(ax: Axes, rug: Axes, result: SVMClassificationResult) -> No
     rug.set_yticks([])
     rug.set_ylim(-1.0, 1.0)
     rug.spines["left"].set_visible(False)
-    rug.set_ylabel("fold\npicks", fontsize=8, rotation=0, ha="right", va="center")
+    rug.set_ylabel("fold\npicks", fontsize=16, rotation=0, ha="right", va="center")
     plateau = result.plateau_start_c
     if plateau is not None and plateau != result.best_c:
         ax.axvline(

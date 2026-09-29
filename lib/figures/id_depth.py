@@ -79,7 +79,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "id-depth", "version": "0.1"},
+    "template": {"name": "id-depth", "version": "0.2"},
     "kind": "module",
     "provides": [
         "IdDepthScaleError",
@@ -354,9 +354,9 @@ def plot_id_depth(
                 )
 
             axes[-1].set_xticks(np.arange(n_samples))
-            axes[-1].set_xticklabels(sample_ids, rotation=90, fontsize=5)
+            axes[-1].set_xticklabels(sample_ids, rotation=90, fontsize=10)
             axes[-1].set_xlabel(
-                f"sample (acquisition order, n={n_samples})", fontsize=12
+                f"sample (acquisition order, n={n_samples})", fontsize=24
             )
             if title is not None:
                 fig.suptitle(title, fontsize=15, weight="bold")
@@ -511,7 +511,7 @@ def _resolve_color_by(dataset: Dataset, color_by: str | None) -> np.ndarray | No
 def _figsize(n_levels: int, n_samples: int) -> tuple[float, float]:
     """Width scales with sample count; height with the panel stack."""
     width = max(12.0, n_samples * 0.18)
-    height = 3.0 * n_levels + 1.2
+    height = 4.6 * n_levels + 1.2  # a panel must fit its 22 pt y-label
     return (width, height)
 
 
@@ -546,7 +546,7 @@ def _draw_bars(
         )
 
     ax.set_xlim(-0.5, counts.size - 0.5)
-    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=22)
     ax.set_title(panel_label, loc="left", fontsize=12, weight="bold")
     ax.margins(x=0.01)
     ax.grid(axis="y", linestyle=":", alpha=0.4)

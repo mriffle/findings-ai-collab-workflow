@@ -60,7 +60,7 @@ from figures.colors import DEFAULT_REGISTRY_PATH, assign_colors
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "cv-plot", "version": "0.1"},
+    "template": {"name": "cv-plot", "version": "0.2"},
     "kind": "module",
     "provides": [
         "CVScaleError",
@@ -290,7 +290,7 @@ def plot_cv_distribution(
     title_for_legend = legend_title if legend_title is not None else category
 
     with publication_style():
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(12, 7.5))
         try:
             color_map = assign_colors(
                 category,
@@ -446,9 +446,10 @@ def _draw_distributions(
         )
         _overlay_kde(ax, finite, color=color, x_upper=bin_upper)
 
-    ax.set_xlabel(f"{feature_type} CV (std / mean)", fontsize=16)
-    ax.set_ylabel("Density", fontsize=16)
+    ax.set_xlabel(f"{feature_type} CV (std / mean)", fontsize=32)
+    ax.set_ylabel("Density", fontsize=32)
     ax.set_xlim(0.0, bin_upper)
+    ax.tick_params(axis="x", pad=12)  # keep x "0.00" clear of the y "0.00"
 
 
 def _overlay_kde(ax: Axes, finite: np.ndarray, *, color: str, x_upper: float) -> None:

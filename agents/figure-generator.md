@@ -32,7 +32,7 @@ A parameterized matplotlib script (held to `conventions/coding.md`) whose output
 - **`<name>.png`** at **300 DPI** — the review/embedding target;
 - **`<name>.legend.svg`** + **`<name>.legend.png`** — the legend as a separate image (a swatch key for categorical, a colorbar for continuous), rendered as its own figure so it never overlaps the plot. The figure's textual caption (encoding, axes/units, n) goes in the finding's `figures[].caption`.
 
-Apply the publication defaults (legible fonts at print scale, no chartjunk, axis labels with units, sane aspect ratio), the **Okabe–Ito** palette via the registry, and **consistent category colors** (a value keeps its color across every figure).
+Apply the publication defaults (legible fonts at print scale, no chartjunk, axis labels with units, sane aspect ratio) — for a figure with no `lib/` template too: build it inside `figure_io.publication_style()` so axis labels are 24 pt and tick labels 20 pt, never set them smaller by hand, and make room with height, two-line labels or fewer ticks rather than a wider canvas (`conventions/visualization.md`, *Axis text is large — make room without widening*), the **Okabe–Ito** palette via the registry, and **consistent category colors** (a value keeps its color across every figure).
 
 ## The annotation budget — never write paragraphs on the canvas
 

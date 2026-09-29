@@ -39,12 +39,13 @@ from analysis.classifier_comparison import (
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 from scipy import stats
 
 from figures.figure_io import FigureArtifacts, publication_style, save_figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "classifier-comparison-figures", "version": "0.1"},
+    "template": {"name": "classifier-comparison-figures", "version": "0.2"},
     "kind": "figure",
     "provides": [
         "plot_paired_folds",
@@ -110,6 +111,11 @@ def _format_p(p: float) -> str:
     return "< 0.001" if p < 0.001 else f"= {p:.3f}"
 
 
+def _wrap(label: str) -> str:
+    """Break a long classifier name after its hyphens (20 pt tick labels are wide)."""
+    return label.replace("-", "-\n")
+
+
 def _draw_slope(ax: Axes, result: ClassifierComparisonResult) -> None:
     """Reference AUC -> alternative AUC, one segment per outer fold."""
     frame = result.per_fold
@@ -133,11 +139,11 @@ def _draw_slope(ax: Axes, result: ClassifierComparisonResult) -> None:
     ax.set_xticks([0, 1])
     ax.set_xticklabels(
         [
-            f"{result.reference_label}\nmean {result.reference_auc:.3f}",
-            f"{result.alternative_label}\nmean {result.alternative_auc:.3f}",
+            f"{_wrap(result.reference_label)}\nmean {result.reference_auc:.3f}",
+            f"{_wrap(result.alternative_label)}\nmean {result.alternative_auc:.3f}",
         ]
     )
-    ax.set_ylabel("held-out ROC AUC (per outer fold)")
+    ax.set_ylabel("held-out ROC AUC\n(per outer fold)")
     ax.set_title("paired per-fold AUC", fontsize=11)
 
 
@@ -146,7 +152,7 @@ def _draw_differences(
     result: ClassifierComparisonResult,
     *,
     show_interval: bool = True,
-    xlabel: str = "outer fold (repeats separated by dotted lines)",
+    xlabel: str = "outer fold\n(repeats separated\nby dotted lines)",
 ) -> None:
     """Per-fold ``alternative - reference`` dots, zero line, mean (+ interval)."""
     frame = result.per_fold
@@ -173,8 +179,9 @@ def _draw_differences(
     ax.axhline(result.mean_diff, color=_MEAN_COLOR, ls="--", lw=1.4, zorder=2)
     ax.scatter(x, diff, color=colors, s=30, edgecolor="black", linewidths=0.4, zorder=3)
     ax.set_xlim(0.4, len(diff) + 0.6)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=4, integer=True))
     ax.set_xlabel(xlabel)
-    ax.set_ylabel(f"Δ AUC  ({result.alternative_label} - {result.reference_label})")
+    ax.set_ylabel(f"Δ AUC\n({result.alternative_label} -\n{result.reference_label})")
 
 
 def _summary_lines(result: ClassifierComparisonResult) -> list[str]:
@@ -273,7 +280,7 @@ def plot_paired_folds(
         raise ValueError("the comparison has no folds to draw.")
     with publication_style():
         fig, (ax_slope, ax_diff) = plt.subplots(
-            1, 2, figsize=(11.0, 5.4), gridspec_kw={"width_ratios": [1.0, 1.5]}
+            1, 2, figsize=(11.0, 8.2), gridspec_kw={"width_ratios": [1.0, 1.3]}
         )
         try:
             _draw_slope(ax_slope, result)
@@ -289,7 +296,7 @@ def plot_paired_folds(
             )
             fig.suptitle(title if title is not None else default, fontsize=13)
             fig.subplots_adjust(
-                left=0.08, right=0.98, top=0.86, bottom=0.26, wspace=0.3
+                left=0.10, right=0.99, top=0.89, bottom=0.33, wspace=0.55
             )
             _summary_strip(fig, _summary_lines(result), y=0.04)
         except BaseException:
@@ -323,7 +330,7 @@ def plot_paired_folds_multi_seed(
             1,
             n,
             sharey=True,
-            figsize=(max(3.4 * n, 6.5) + 0.8, 5.0),
+            figsize=(max(3.4 * n, 6.5) + 0.8, 7.5),
             squeeze=False,
         )
         try:
@@ -386,10 +393,10 @@ def plot_paired_folds_multi_seed(
                 f"verdict only when every seed's mean Δ has the same non-zero sign"
             )
             fig.subplots_adjust(
-                left=0.08,
+                left=0.11,
                 right=0.97,
                 top=0.80,
-                bottom=0.14 + 0.05 * len(lines),
+                bottom=0.17 + 0.04 * len(lines),
                 wspace=0.12,
             )
             _summary_strip(fig, lines, y=0.03)

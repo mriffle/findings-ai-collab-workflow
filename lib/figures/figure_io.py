@@ -39,7 +39,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 __script_meta__: dict[str, object] = {
-    "template": {"name": "figure-io", "version": "0.3"},
+    "template": {"name": "figure-io", "version": "0.4"},
     "kind": "module",
     "provides": [
         "PUBLICATION_RCPARAMS",
@@ -63,7 +63,9 @@ DEFAULT_DPI = 300
 # Shared publication style. Sizes are tuned for legibility at print scale; spines are
 # trimmed to reduce chartjunk. A script applies it via ``with publication_style():`` so
 # the defaults live here, not scattered across figure scripts. Individual scripts may
-# still override any rcParam locally for a specific figure.
+# still override any rcParam locally for a specific figure. Axis labels (24) and tick
+# labels (20) are twice the body text: a figure is usually shrunk to a column or page
+# width in print, and at 12/10 its axis text was too small to read there.
 PUBLICATION_RCPARAMS: dict[str, Any] = {
     "figure.dpi": 100,
     "savefig.dpi": DEFAULT_DPI,
@@ -71,9 +73,9 @@ PUBLICATION_RCPARAMS: dict[str, Any] = {
     "font.size": 12,
     "axes.titlesize": 14,
     "axes.titleweight": "bold",
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
+    "axes.labelsize": 24,
+    "xtick.labelsize": 20,
+    "ytick.labelsize": 20,
     "legend.fontsize": 10,
     "legend.frameon": False,
     "axes.spines.top": False,

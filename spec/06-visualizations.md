@@ -41,6 +41,8 @@ Render **legends as separate images** alongside each figure (`<name>.legend.{svg
 
 Figures default to publication quality: legible font sizes at print scale, no chartjunk, clear axis labels with units, appropriate aspect ratios, and consistent typography. The visualization library (`lib/`, doc 04) encodes these defaults so every figure inherits them.
 
+Axis labels are 24 pt and tick labels 20 pt (twice the body text), set by the shared style that every figure — templated or not — renders inside. Because print scales a figure to a fixed width, room for that text comes from height, wrapped labels or fewer ticks, not from a wider canvas, which would print every label smaller.
+
 **The annotation budget — do not embed long descriptions in a figure.** A figure carries only the annotation a reader needs in order to *read* it: axis labels with units, tick labels, a short title naming the comparison (and the processing state + scale where it matters), terse load-bearing numbers (N, effect, p/q, hit counts, a threshold's value), mandatory caveat markers, and direct point/series labels where they beat a legend. **Off the canvas:** paragraphs of any kind (interpretation, "what this shows", methods narrative, conclusions), a duplicated caption (it lives once, in the finding's `figures[].caption`), the legend (a separate image, §6.3), and anything legible only past print scale. *A sentence someone could say about the figure belongs in the text; a label the eye needs while looking at the figure belongs on the figure.* The figure-reviewer fails a render carrying explanatory prose.
 
 ## 6.5 Color — palette and the category registry
