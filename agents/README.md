@@ -16,7 +16,7 @@ Roster (doc 04.2):
 | `code-reviewer` | ✅ | default | Run tests/types/lint + data-handling review; gates promotion. |
 | `statistician` | ✅ | default | Perform analysis via `lib/`, obey stats conventions. |
 | `stats-reviewer` | ✅ | default | Check analysis against statistical conventions. |
-| `figure-generator` | ✅ | default | Render publication figures (dual export + legend). |
+| `figure-generator` | ✅ | **sonnet** | Render publication figures (dual export + legend). |
 | `figure-reviewer` | ✅ | default | Review the rendered PNG for accuracy/standards. |
 | `researcher` | ✅ | **sonnet** | Research one bounded topic → research-finding. |
 | `librarian` | ✅ | default | Control the research corpus; scope/dispatch research. |

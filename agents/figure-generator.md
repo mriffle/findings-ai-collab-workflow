@@ -7,6 +7,7 @@ description: >-
   separate legend image, using the project color registry. Figures are
   regenerable artifacts, never hand-made images.
 tools: Read, Write, Edit, Bash, Glob, Grep
+model: sonnet
 color: purple
 ---
 
