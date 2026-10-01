@@ -594,15 +594,15 @@ class _Panel:
 
 # Layout, in inches (see :func:`_build_layout`).
 _FIG_WIDTH = 18.0
-_LEFT_IN = 2.3  # two-line 44 pt y label + 20 pt tick labels
+_LEFT_IN = 2.0  # two-line 33 pt y label + 20 pt tick labels
 _RIGHT_IN = 0.3
 _GAP_IN = 0.15  # scatter <-> marginal
 _MARGINAL_IN = 1.0  # marginal thickness
-_SPACER_IN = 2.4  # between the panels: PC4 label + tick labels
+_SPACER_IN = 2.1  # between the panels: PC4 label + tick labels
 _SUPTITLE_IN = 0.9
 _STRIP_IN = 2.8  # panel title + stats lines + 3-line method line
 _ROW_GAP_IN = 0.2
-_BOTTOM_IN = 2.1  # 20 pt tick labels + two-line 44 pt x label
+_BOTTOM_IN = 1.85  # 20 pt tick labels + two-line 33 pt x label
 
 
 def _build_layout(*, title: str | None, feature_type: str) -> tuple[Figure, _Panel]:
@@ -695,13 +695,14 @@ def _finalize_axes(
 ) -> None:
     """Set PC axis labels and hide marginal ticks/spines (shared across both modes)."""
     # These PC labels deliberately override the shared style's axes.labelsize (24): on
-    # the large two-panel canvas 44pt (twice the former 22pt) keeps them legible at
-    # print scale. A per-figure override, not chartjunk. Each label wraps onto two lines
-    # (name, then the variance) so a 44pt label fits the panel height and width.
-    panel.ax1.set_xlabel(f"PC1\n({variance_pct[0]:.1f}% variance)", fontsize=44)
-    panel.ax1.set_ylabel(f"PC2\n({variance_pct[1]:.1f}% variance)", fontsize=44)
-    panel.ax2.set_xlabel(f"PC3\n({variance_pct[2]:.1f}% variance)", fontsize=44)
-    panel.ax2.set_ylabel(f"PC4\n({variance_pct[3]:.1f}% variance)", fontsize=44)
+    # the large two-panel canvas 33pt (1.5x the former 22pt, trimmed from a full 2x at
+    # the user's request) keeps them legible at print scale. A per-figure override, not
+    # chartjunk. Each label wraps onto two lines (name, then the variance) so it fits
+    # the panel height and width.
+    panel.ax1.set_xlabel(f"PC1\n({variance_pct[0]:.1f}% variance)", fontsize=33)
+    panel.ax1.set_ylabel(f"PC2\n({variance_pct[1]:.1f}% variance)", fontsize=33)
+    panel.ax2.set_xlabel(f"PC3\n({variance_pct[2]:.1f}% variance)", fontsize=33)
+    panel.ax2.set_ylabel(f"PC4\n({variance_pct[3]:.1f}% variance)", fontsize=33)
 
     # Hide ticks/labels on the four marginals via tick_params (not set_xticks([]), which
     # would clobber the Locator shared with the main scatter axes).
